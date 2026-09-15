@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Self-test runner</title>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"
+} }
+</script>
+<link rel="stylesheet" href="../styles/shell.css">
+<style>
+body{font:13px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace;background:#1e1f22;color:#ddd;margin:16px}
+h2{font-size:15px;margin:18px 0 6px}
+.ok{color:#7fc77f} .fail{color:#ff7b72} .skip{color:#d0a35c} .muted{color:#888}
+table{border-collapse:collapse;width:100%} td{padding:1px 8px 1px 0;vertical-align:top}
+td.n{white-space:nowrap} td.d{color:#aaa}
+#sum{position:sticky;top:0;background:#1e1f22;padding:6px 0;border-bottom:1px solid #444;font-size:14px}
+</style>
+</head>
+<body>
+<div id="sum">running…</div>
+<div id="out"></div>
+<script type="module">
+// Runs every module's runSelfTest() in the browser. Results also land in window.__selftest.
+const MODULES = ['core', 'geometry', 'pattern', 'body', 'cloth', 'viewer3d', 'sizing', 'export', 'ui'];
+const only = new URLSearchParams(location.search).get('m');
+const list = only ? only.split(',').map(s => s.trim()).filter(Boolean) : MODULES;
+const out = document.getElementById('out');
+const sum = document.getElementById('sum');
+const all = {};
+let pass = 0, fail = 0, skip = 0;
+
+for (const m of list) {
+  const h = document.createElement('h2');
+  h.textContent = m;
+  out.appendChild(h);
+  const t = document.createElement('table');
+  out.appendChild(t);
+  const t0 = performance.now();
+  try {
+    const mod = await import(`../src/${m}/selftest.js`);
+    const results = await mod.runSelfTest();
+    all[m] = results;
+    for (const r of results) {
+      const skipped = r.pass && /^skipped/i.test(String(r.details || ''));
+      if (skipped) skip++; else if (r.pass) pass++; else fail++;
+      const tr = document.createElement('tr');
+      const cls = skipped ? 'skip' : r.pass ? 'ok' : 'fail';
+      const label = skipped ? 'SKIP' : r.pass ? 'ok' : 'FAIL';
+      tr.innerHTML = `<td class="n ${cls}">${label}</td><td class="n">${r.name}</td><td class="d"></td>`;
+      tr.lastChild.textContent = String(r.details ?? '');
+      t.appendChild(tr);
+    }
+    h.innerHTML += ` <span class="muted">${results.length} checks, ${Math.round(performance.now() - t0)} ms</span>`;
+  } catch (e) {
+    fail++;
+    all[m] = [{ name: 'import', pass: false, details: String(e && e.stack || e) }];
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td class="n fail">FAIL</td><td class="n">import</td><td class="d"></td>`;
+    tr.lastChild.textContent = String(e);
+    t.appendChild(tr);
+  }
+  sum.textContent = `${pass} passed, ${fail} failed, ${skip} skipped (${list.indexOf(m) + 1}/${list.length} modules)`;
+}
+sum.className = fail ? 'fail' : 'ok';
+sum.textContent = `${pass} passed, ${fail} failed, ${skip} skipped — ${list.length} modules`;
+window.__selftest = { done: true, pass, fail, skip, results: all,
+  failures: Object.entries(all).flatMap(([m, rs]) => rs.filter(r => !r.pass).map(r => `${m}/${r.name}: ${r.details}`)) };
+</script>
+</body>
+</html>

@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Module check</title>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"
+} }
+</script>
+<style>body{font:13px/1.4 ui-monospace,monospace;background:#1e1f22;color:#ddd;margin:16px} .ok{color:#7c6} .fail{color:#f77} pre{white-space:pre-wrap}</style>
+</head>
+<body>
+<h3>ES module import check</h3>
+<p>Usage: <code>modcheck.html?m=src/core/events.js,src/core/store.js</code> (paths relative to the site root). Results in <code>window.__modcheck</code>.</p>
+<pre id="out">running…</pre>
+<script type="module">
+const params = new URLSearchParams(location.search);
+const list = (params.get('m') || '').split(',').map(s => s.trim()).filter(Boolean);
+const out = document.getElementById('out');
+const results = [];
+for (const m of list) {
+  const url = new URL('/' + m.replace(/^\/+/, ''), location.origin).href;
+  try {
+    const mod = await import(url);
+    const names = Object.keys(mod).sort();
+    results.push({ module: m, ok: true, exports: names });
+    out.innerHTML += `<span class="ok">OK</span>   ${m}  (${names.length} exports)\n`;
+  } catch (e) {
+    results.push({ module: m, ok: false, error: String(e && e.stack || e) });
+    out.innerHTML += `<span class="fail">FAIL</span> ${m}\n      ${String(e).replace(/</g, '&lt;')}\n`;
+  }
+}
+window.__modcheck = { done: true, results, failures: results.filter(r => !r.ok).length };
+out.innerHTML += `\n${results.length - window.__modcheck.failures}/${results.length} modules imported`;
+</script>
+</body>
+</html>

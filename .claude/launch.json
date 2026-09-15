@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "clothing-app",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["serve.py", "8710", "--no-open"],
+      "port": 8710
+    }
+  ]
+}

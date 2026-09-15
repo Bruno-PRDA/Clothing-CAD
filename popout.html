@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Clothing App – 3D</title>
+<link rel="stylesheet" href="styles/popout.css">
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+<div id="popout-root" aria-label="3D view (pop-out)">
+  <div id="view-3d"></div>
+</div>
+<div id="popout-status" role="status"></div>
+<script type="module" src="./src/popout/main.js"></script>
+</body>
+</html>

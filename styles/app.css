@@ -1,0 +1,200 @@
+/* styles/app.css — everything that is not grid geometry (shell.css). First pass by the Lead; A7 refines.
+   Rule: never override the geometry rules of shell.css (#app/#main/#dock/#statusbar layout, pane sizing). */
+
+/* ---------- Widgets ---------- */
+button, select, input, output, textarea {
+  font: inherit;
+  color: var(--fg);
+}
+button {
+  height: 26px;
+  padding: 0 9px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-2);
+  cursor: pointer;
+  white-space: nowrap;
+  line-height: 1;
+}
+button:hover:not(:disabled) { background: var(--bg-3); border-color: #4a505a; }
+button:active:not(:disabled) { background: var(--bg-1); }
+button:disabled { opacity: 0.45; cursor: default; }
+button:focus-visible, select:focus-visible, input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+button[aria-pressed="true"], button.active, [role="tab"][aria-selected="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #0b1a2b;
+  font-weight: 600;
+}
+
+select {
+  height: 26px;
+  padding: 0 4px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-2);
+  max-width: 100%;
+}
+input[type="text"], input[type="number"] {
+  height: 24px;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-0);
+  min-width: 0;
+}
+input[type="number"] { width: 5.5em; font-family: var(--mono); }
+input[type="checkbox"] { accent-color: var(--accent); margin: 0 4px 0 0; vertical-align: -1px; }
+input[type="range"] { accent-color: var(--accent); min-width: 0; height: 18px; margin: 0; }
+input[type="color"] {
+  width: 36px; height: 24px; padding: 0; border: 1px solid var(--border); border-radius: 4px;
+  background: var(--bg-0); cursor: pointer;
+}
+output { font-family: var(--mono); color: var(--fg-dim); min-width: 3.5em; text-align: right; }
+
+/* ---------- Toolbar ---------- */
+#toolbar { scrollbar-width: thin; }
+#toolbar label { display: inline-flex; align-items: center; gap: 4px; color: var(--fg-dim); padding: 0 2px; }
+#toolbar .tb-check { color: var(--fg); }
+#tb-tools .tool { min-width: 52px; }
+
+/* ---------- Dock ---------- */
+#dock-tabs [role="tab"] {
+  height: 100%;
+  border: none;
+  border-radius: 0;
+  border-right: 1px solid var(--border);
+  background: var(--bg-1);
+  color: var(--fg-dim);
+}
+#dock-tabs [role="tab"]:last-child { border-right: none; }
+#dock-tabs [role="tab"]:hover { background: var(--bg-2); color: var(--fg); }
+#dock-tabs [role="tab"][aria-selected="true"] {
+  background: var(--bg-2);
+  color: var(--fg);
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+
+.dock-panel { scrollbar-width: thin; scrollbar-color: var(--bg-3) var(--bg-1); }
+.dock-panel h3 {
+  margin: 12px 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+}
+.dock-panel h3:first-child { margin-top: 0; }
+.dock-panel > label,
+.dock-panel fieldset > label {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0;
+  color: var(--fg-dim);
+}
+.dock-panel label > input[type="checkbox"] { grid-column: 1; justify-self: start; }
+.dock-panel label > input[type="checkbox"] + * { grid-column: 2 / -1; }
+.dock-panel label:has(> input[type="checkbox"]) {
+  display: flex;
+  justify-content: flex-start;
+  color: var(--fg);
+}
+.dock-panel fieldset {
+  margin: 8px 0;
+  padding: 6px 8px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  min-width: 0;
+}
+.dock-panel fieldset:disabled { opacity: 0.5; }
+.dock-panel legend { padding: 0 4px; color: var(--fg); font-weight: 600; }
+.dock-panel legend span { color: var(--fg-dim); font-weight: 400; margin-left: 4px; }
+
+.row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 6px 0; }
+.row > span { color: var(--fg-dim); font-family: var(--mono); font-size: 12px; }
+
+/* ---------- Lists ---------- */
+.list {
+  list-style: none;
+  margin: 0 0 6px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-0);
+  min-height: 28px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+.list:empty::after { content: "\2014"; display: block; padding: 6px 8px; color: var(--fg-dim); }
+.list li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--bg-2);
+  cursor: pointer;
+  user-select: none;
+}
+.list li:last-child { border-bottom: none; }
+.list li:hover { background: var(--bg-2); }
+.list li.selected { background: rgba(77, 163, 255, 0.18); box-shadow: inset 2px 0 0 var(--accent); }
+.list li[data-warn="true"] { color: var(--warn); }
+.list li[data-level="error"] { color: var(--err); }
+.list li[data-level="warn"] { color: var(--warn); }
+.list li button { height: 20px; padding: 0 6px; font-size: 11px; }
+.list .swatch { width: 10px; height: 10px; border-radius: 2px; flex: 0 0 auto; }
+.badge {
+  font-size: 10px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--bg-3);
+  color: var(--fg-dim);
+}
+
+/* ---------- Body panel ---------- */
+#body-params { margin: 8px 0; }
+.param-row {
+  display: grid;
+  grid-template-columns: 1fr 5.5em;
+  grid-template-areas: "label num" "range range";
+  column-gap: 6px;
+  row-gap: 2px;
+  padding: 3px 0;
+  border-bottom: 1px solid var(--bg-2);
+}
+.param-row:last-child { border-bottom: none; }
+.param-row label { grid-area: label; color: var(--fg-dim); align-self: center; }
+.param-row input[type="range"] { grid-area: range; width: 100%; }
+.param-row input[type="number"] { grid-area: num; width: 100%; }
+#body-measured, #body-closest-size { font-family: var(--mono); font-size: 12px; color: var(--fg-dim); margin: 4px 0; }
+#body-measured span { display: block; }
+#body-measured span[data-warn="true"] { color: var(--warn); }
+
+/* ---------- Tables (fabric physics, sizes) ---------- */
+table { border-collapse: collapse; width: 100%; font-size: 12px; }
+th, td { padding: 3px 4px; border-bottom: 1px solid var(--bg-2); text-align: left; white-space: nowrap; }
+th { color: var(--fg-dim); font-weight: 600; }
+td { font-family: var(--mono); }
+#fabric-physics { margin-top: 6px; }
+#fabric-physics td:last-child { text-align: right; }
+
+#panel-sizes { overflow-x: auto; }
+#table-sizes input[type="number"] { width: 4.5em; height: 22px; padding: 0 3px; }
+#table-sizes input[type="text"] { width: 5em; height: 22px; padding: 0 3px; }
+#table-sizes tr[data-base="true"] input[data-key="name"] { font-weight: 600; border-color: var(--accent); }
+#table-sizes tr.selected { background: rgba(77, 163, 255, 0.12); }
+
+/* ---------- Panes ---------- */
+#canvas-2d { background: var(--bg-0); cursor: crosshair; }
+#canvas-2d:focus { box-shadow: inset 0 0 0 1px rgba(77, 163, 255, 0.5); }
+#view-3d { background: var(--bg-0); }
+.pane-msg button { margin-left: 4px; }
+
+/* ---------- Status bar ---------- */
+#status-tool { color: var(--accent); }
+#status-sim { font-variant-numeric: tabular-nums; }

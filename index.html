@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Clothing App</title>
+<link rel="stylesheet" href="styles/shell.css">
+<link rel="stylesheet" href="styles/app.css">
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+<div id="app" data-layout="split" data-swapped="false" data-popout="false" data-tool="select">
+
+  <header id="toolbar" role="toolbar" aria-label="Main toolbar">
+    <div class="tb-group" id="tb-file">
+      <button id="btn-new" type="button" title="New project">New</button>
+      <button id="btn-open" type="button" title="Open project JSON (Ctrl+O)">Open</button>
+      <input id="input-file" type="file" accept=".json,application/json" hidden>
+      <button id="btn-save" type="button" title="Save project JSON (Ctrl+S)">Save</button>
+      <select id="sel-sample" title="Built-in sample">
+        <option value="tshirt" selected>T-shirt</option>
+        <option value="skirt">A-line skirt</option>
+      </select>
+      <button id="btn-load-sample" type="button" title="Load the selected built-in sample">Load sample</button>
+    </div>
+    <div class="tb-group" id="tb-edit">
+      <button id="btn-undo" type="button" title="Undo (Ctrl+Z)" disabled>&#8630; Undo</button>
+      <button id="btn-redo" type="button" title="Redo (Ctrl+Y)" disabled>&#8631; Redo</button>
+    </div>
+    <div class="tb-group" id="tb-tools" role="radiogroup" aria-label="Pattern tools">
+      <button id="tool-select"    type="button" class="tool" data-tool="select"    aria-pressed="true"  title="Select (V)">Select</button>
+      <button id="tool-draw"      type="button" class="tool" data-tool="draw"      aria-pressed="false" title="Draw piece (P)">Draw</button>
+      <button id="tool-edit"      type="button" class="tool" data-tool="edit"      aria-pressed="false" title="Edit points (E)">Edit</button>
+      <button id="tool-split"     type="button" class="tool" data-tool="split"     aria-pressed="false" title="Split edge (X)">Split</button>
+      <button id="tool-seam"      type="button" class="tool" data-tool="seam"      aria-pressed="false" title="Seam (S)">Seam</button>
+      <button id="tool-notch"     type="button" class="tool" data-tool="notch"     aria-pressed="false" title="Notch (N)">Notch</button>
+      <button id="tool-grainline" type="button" class="tool" data-tool="grainline" aria-pressed="false" title="Grainline (G)">Grain</button>
+      <button id="tool-measure"   type="button" class="tool" data-tool="measure"   aria-pressed="false" title="Measure (M)">Measure</button>
+      <button id="btn-mirror" type="button" title="Set or clear the fold edge (Shift+M)">Fold</button>
+      <button id="btn-fit-2d" type="button" title="Fit pieces in view (F)">Fit</button>
+    </div>
+    <div class="tb-group" id="tb-sim">
+      <button id="btn-arrange" type="button" title="Re-arrange pieces on the body">Arrange</button>
+      <button id="btn-drape" type="button" title="Arrange + sew + play (D)">Drape</button>
+      <button id="btn-play" type="button" title="Play (Space)">&#9654; Play</button>
+      <button id="btn-pause" type="button" title="Pause (Space)" hidden>&#10074;&#10074; Pause</button>
+      <button id="btn-reset" type="button" title="Reset simulation (R)">Reset</button>
+      <label class="tb-check"><input id="chk-selfcollision" type="checkbox" checked> Self-collision</label>
+      <button id="btn-frame-3d" type="button" title="Frame the body in 3D (Shift+F)">Frame</button>
+    </div>
+    <div class="tb-group" id="tb-size">
+      <label for="sel-size">Size</label>
+      <select id="sel-size" title="Active size (graded export and ghost outline)"></select>
+    </div>
+    <div class="tb-group" id="tb-view">
+      <button id="btn-layout-split" type="button" data-layout="split" aria-pressed="true"  title="Split view (3)">Split</button>
+      <button id="btn-layout-2d"    type="button" data-layout="2d"    aria-pressed="false" title="2D only (1)">2D</button>
+      <button id="btn-layout-3d"    type="button" data-layout="3d"    aria-pressed="false" title="3D only (2)">3D</button>
+      <button id="btn-swap" type="button" title="Swap panes">&#8646; Swap</button>
+      <button id="btn-popout" type="button" title="Open the 3D view in a separate window">Pop-out 3D</button>
+    </div>
+    <div class="tb-group" id="tb-export">
+      <select id="sel-paper" title="Paper for tiled print">
+        <option value="A4" selected>A4</option><option value="Letter">Letter</option><option value="A3">A3</option>
+      </select>
+      <button id="btn-export-svg"   type="button" title="Download 1:1 SVG sheet of the active size">SVG</button>
+      <button id="btn-export-print" type="button" title="Open tiled print pages (Ctrl+P &rarr; Save as PDF)">Print</button>
+      <button id="btn-export-csv"   type="button" title="Download size chart CSV">CSV</button>
+      <button id="btn-export-json"  type="button" title="Download size chart JSON">JSON</button>
+      <button id="btn-export-obj"   type="button" title="Download the draped garment as OBJ">OBJ</button>
+    </div>
+  </header>
+
+  <main id="main">
+    <section id="pane-left" class="pane" data-slot="left">
+      <div id="pane-2d" class="pane-content" data-pane="2d">
+        <canvas id="canvas-2d" tabindex="0" aria-label="2D pattern editor"></canvas>
+      </div>
+    </section>
+    <div id="resizer" role="separator" aria-orientation="vertical" aria-valuemin="20" aria-valuemax="80" aria-valuenow="50"
+         title="Drag to resize, double-click to reset"></div>
+    <section id="pane-right" class="pane" data-slot="right">
+      <div id="pane-3d" class="pane-content" data-pane="3d">
+        <div id="view-3d" aria-label="3D view"></div>
+        <div id="msg-3d-popout" class="pane-msg" hidden>
+          The 3D view is open in a separate window. <button id="btn-popin" type="button">Bring back</button>
+        </div>
+      </div>
+    </section>
+
+    <aside id="dock" aria-label="Panels">
+      <nav id="dock-tabs" role="tablist">
+        <button id="tab-pieces" type="button" role="tab" data-tab="pieces" aria-controls="panel-pieces" aria-selected="true">Pieces</button>
+        <button id="tab-body"   type="button" role="tab" data-tab="body"   aria-controls="panel-body"   aria-selected="false">Body</button>
+        <button id="tab-fabric" type="button" role="tab" data-tab="fabric" aria-controls="panel-fabric" aria-selected="false">Fabric</button>
+        <button id="tab-sizes"  type="button" role="tab" data-tab="sizes"  aria-controls="panel-sizes"  aria-selected="false">Sizes</button>
+      </nav>
+
+      <section id="panel-pieces" class="dock-panel" role="tabpanel" data-panel="pieces">
+        <h3>Pieces</h3>
+        <ul id="list-pieces" class="list"></ul>
+        <div class="row">
+          <button id="btn-piece-duplicate" type="button" disabled>Duplicate</button>
+          <button id="btn-piece-delete" type="button" disabled>Delete</button>
+        </div>
+        <fieldset id="piece-props" disabled>
+          <legend>Piece <span id="piece-fold" data-testid="piece-fold"></span></legend>
+          <label>Name <input id="inp-piece-name" type="text"></label>
+          <label>Cut qty <input id="num-piece-qty" type="number" min="1" max="8" step="1"></label>
+          <label>Layer <input id="num-piece-layer" type="number" min="0" max="4" step="1"></label>
+          <label>Mesh spacing (mm) <input id="num-piece-mesh" type="number" min="8" max="40" step="1"></label>
+          <label>Seam allowance (mm) <input id="num-piece-allowance" type="number" min="0" max="60" step="0.5"></label>
+          <label>Fabric <select id="sel-piece-fabric"></select></label>
+          <label><input id="chk-piece-simulate" type="checkbox"> Simulate</label>
+          <label><input id="chk-piece-exporthidden" type="checkbox"> Hide in export</label>
+        </fieldset>
+        <fieldset id="piece-placement" disabled>
+          <legend>Placement</legend>
+          <label>Anchor
+            <select id="sel-placement-anchor">
+              <option value="torso">torso</option><option value="armL">armL</option><option value="armR">armR</option>
+              <option value="legL">legL</option><option value="legR">legR</option><option value="skirt">skirt</option><option value="head">head</option>
+            </select></label>
+          <label>Side
+            <select id="sel-placement-side">
+              <option value="front">front</option><option value="back">back</option><option value="left">left</option><option value="right">right</option>
+            </select></label>
+          <label>Offset dx (mm) <input id="num-placement-dx" type="number" step="5"></label>
+          <label>Offset dy (mm) <input id="num-placement-dy" type="number" step="5"></label>
+          <label>Wrap <input id="range-placement-wrap" type="range" min="0" max="1" step="0.05"> <output id="range-placement-wrap-val"></output></label>
+          <label><input id="chk-placement-flip" type="checkbox"> Flip</label>
+        </fieldset>
+        <fieldset id="piece-grade" disabled>
+          <legend>Grading</legend>
+          <label>Width ref <select id="sel-grade-width"></select></label>
+          <label>Length ref <select id="sel-grade-length"></select></label>
+          <label>Anchor X
+            <select id="sel-grade-anchorx"><option value="fold">fold</option><option value="center">center</option><option value="left">left</option><option value="right">right</option></select></label>
+          <label>Anchor Y
+            <select id="sel-grade-anchory"><option value="top">top</option><option value="center">center</option><option value="bottom">bottom</option></select></label>
+        </fieldset>
+        <fieldset id="edge-props" disabled>
+          <legend>Edge <span id="edge-index" data-testid="edge-index"></span></legend>
+          <label>Label <input id="inp-edge-label" type="text" list="edge-labels"></label>
+          <datalist id="edge-labels">
+            <option value="hem"><option value="side"><option value="neck"><option value="shoulder"><option value="armhole"><option value="sleeve"><option value="waist">
+          </datalist>
+          <label>Allowance (mm) <input id="num-edge-allowance" type="number" min="0" max="60" step="0.5" placeholder="piece default"></label>
+          <label><input id="chk-edge-pinned" type="checkbox"> Pin to body</label>
+        </fieldset>
+        <h3>Seams</h3>
+        <ul id="list-seams" class="list"></ul>
+        <div class="row">
+          <span id="seam-ease" data-testid="seam-ease" data-warn="false"></span>
+          <button id="btn-seam-flip" type="button" disabled title="Toggle pairing direction (reverse)">Flip</button>
+          <button id="btn-seam-delete" type="button" disabled>Delete</button>
+        </div>
+        <h3>Issues</h3>
+        <ul id="list-issues" class="list"></ul>
+      </section>
+
+      <section id="panel-body" class="dock-panel" role="tabpanel" data-panel="body" hidden>
+        <label>Preset <select id="sel-body-preset"></select></label>
+        <div id="body-params">
+          <div class="param-row" data-param="height_cm">
+            <label for="body-height_cm">Height (cm)</label>
+            <input id="body-height_cm" type="range" min="120" max="210" step="0.5" value="165">
+            <input id="body-height_cm-num" type="number" min="120" max="210" step="0.5" value="165">
+          </div>
+          <div class="param-row" data-param="chest_cm">
+            <label for="body-chest_cm">Chest / bust (cm)</label>
+            <input id="body-chest_cm" type="range" min="60" max="150" step="0.5" value="88">
+            <input id="body-chest_cm-num" type="number" min="60" max="150" step="0.5" value="88">
+          </div>
+          <div class="param-row" data-param="underbust_cm">
+            <label for="body-underbust_cm">Underbust (cm)</label>
+            <input id="body-underbust_cm" type="range" min="55" max="130" step="0.5" value="76">
+            <input id="body-underbust_cm-num" type="number" min="55" max="130" step="0.5" value="76">
+          </div>
+          <div class="param-row" data-param="waist_cm">
+            <label for="body-waist_cm">Waist (cm)</label>
+            <input id="body-waist_cm" type="range" min="50" max="140" step="0.5" value="70">
+            <input id="body-waist_cm-num" type="number" min="50" max="140" step="0.5" value="70">
+          </div>
+          <div class="param-row" data-param="hips_cm">
+            <label for="body-hips_cm">Hips (cm)</label>
+            <input id="body-hips_cm" type="range" min="65" max="160" step="0.5" value="96">
+            <input id="body-hips_cm-num" type="number" min="65" max="160" step="0.5" value="96">
+          </div>
+          <div class="param-row" data-param="shoulderWidth_cm">
+            <label for="body-shoulderWidth_cm">Shoulder width (cm)</label>
+            <input id="body-shoulderWidth_cm" type="range" min="28" max="56" step="0.5" value="38">
+            <input id="body-shoulderWidth_cm-num" type="number" min="28" max="56" step="0.5" value="38">
+          </div>
+          <div class="param-row" data-param="neck_cm">
+            <label for="body-neck_cm">Neck (cm)</label>
+            <input id="body-neck_cm" type="range" min="26" max="50" step="0.5" value="34">
+            <input id="body-neck_cm-num" type="number" min="26" max="50" step="0.5" value="34">
+          </div>
+          <div class="param-row" data-param="upperArm_cm">
+            <label for="body-upperArm_cm">Upper arm (cm)</label>
+            <input id="body-upperArm_cm" type="range" min="18" max="50" step="0.5" value="27">
+            <input id="body-upperArm_cm-num" type="number" min="18" max="50" step="0.5" value="27">
+          </div>
+          <div class="param-row" data-param="forearm_cm">
+            <label for="body-forearm_cm">Forearm (cm)</label>
+            <input id="body-forearm_cm" type="range" min="16" max="40" step="0.5" value="23">
+            <input id="body-forearm_cm-num" type="number" min="16" max="40" step="0.5" value="23">
+          </div>
+          <div class="param-row" data-param="wrist_cm">
+            <label for="body-wrist_cm">Wrist (cm)</label>
+            <input id="body-wrist_cm" type="range" min="12" max="24" step="0.5" value="15.5">
+            <input id="body-wrist_cm-num" type="number" min="12" max="24" step="0.5" value="15.5">
+          </div>
+          <div class="param-row" data-param="thigh_cm">
+            <label for="body-thigh_cm">Thigh (cm)</label>
+            <input id="body-thigh_cm" type="range" min="35" max="85" step="0.5" value="54">
+            <input id="body-thigh_cm-num" type="number" min="35" max="85" step="0.5" value="54">
+          </div>
+          <div class="param-row" data-param="calf_cm">
+            <label for="body-calf_cm">Calf (cm)</label>
+            <input id="body-calf_cm" type="range" min="25" max="55" step="0.5" value="36">
+            <input id="body-calf_cm-num" type="number" min="25" max="55" step="0.5" value="36">
+          </div>
+          <div class="param-row" data-param="ankle_cm">
+            <label for="body-ankle_cm">Ankle (cm)</label>
+            <input id="body-ankle_cm" type="range" min="16" max="32" step="0.5" value="22">
+            <input id="body-ankle_cm-num" type="number" min="16" max="32" step="0.5" value="22">
+          </div>
+          <div class="param-row" data-param="armLength_cm">
+            <label for="body-armLength_cm">Arm length (cm)</label>
+            <input id="body-armLength_cm" type="range" min="40" max="80" step="0.5" value="56">
+            <input id="body-armLength_cm-num" type="number" min="40" max="80" step="0.5" value="56">
+          </div>
+          <div class="param-row" data-param="inseam_cm">
+            <label for="body-inseam_cm">Inseam (cm)</label>
+            <input id="body-inseam_cm" type="range" min="50" max="100" step="0.5" value="76">
+            <input id="body-inseam_cm-num" type="number" min="50" max="100" step="0.5" value="76">
+          </div>
+          <div class="param-row" data-param="torsoLength_cm">
+            <label for="body-torsoLength_cm">Back length (cm)</label>
+            <input id="body-torsoLength_cm" type="range" min="30" max="55" step="0.5" value="40">
+            <input id="body-torsoLength_cm-num" type="number" min="30" max="55" step="0.5" value="40">
+          </div>
+          <div class="param-row" data-param="headHeight_cm">
+            <label for="body-headHeight_cm">Head height (cm)</label>
+            <input id="body-headHeight_cm" type="range" min="17" max="27" step="0.5" value="22">
+            <input id="body-headHeight_cm-num" type="number" min="17" max="27" step="0.5" value="22">
+          </div>
+          <div class="param-row" data-param="bustFullness">
+            <label for="body-bustFullness">Bust fullness</label>
+            <input id="body-bustFullness" type="range" min="0" max="1" step="0.01" value="0.4">
+            <input id="body-bustFullness-num" type="number" min="0" max="1" step="0.01" value="0.4">
+          </div>
+          <div class="param-row" data-param="armAbduction_deg">
+            <label for="body-armAbduction_deg">Arm angle (A-pose) (°)</label>
+            <input id="body-armAbduction_deg" type="range" min="15" max="60" step="1" value="30">
+            <input id="body-armAbduction_deg-num" type="number" min="15" max="60" step="1" value="30">
+          </div>
+          <div class="param-row" data-param="legSpread_deg">
+            <label for="body-legSpread_deg">Leg spread (°)</label>
+            <input id="body-legSpread_deg" type="range" min="0" max="20" step="1" value="6">
+            <input id="body-legSpread_deg-num" type="number" min="0" max="20" step="1" value="6">
+          </div>
+        </div>
+        <div id="body-measured" data-testid="body-measured"></div>
+        <div id="body-closest-size" data-testid="body-closest-size"></div>
+        <div class="row">
+          <button id="btn-body-fit-size" type="button" title="Copy the active size row into the body parameters">Fit body to active size</button>
+          <span id="body-build-ms" data-testid="body-build-ms"></span>
+        </div>
+      </section>
+
+      <section id="panel-fabric" class="dock-panel" role="tabpanel" data-panel="fabric" hidden>
+        <label>Piece <select id="sel-fabric-piece"></select></label>
+        <div>Fabric instance: <span id="fabric-id" data-testid="fabric-id"></span></div>
+        <label>Preset <select id="sel-fabric-preset"></select></label>
+        <label>Colour <input id="input-color" type="color"></label>
+        <label>Texture <select id="sel-texture"></select></label>
+        <label>Colour 2 <input id="input-color2" type="color"></label>
+        <label>Texture scale (mm) <input id="range-texture-scale" type="range" min="2" max="100" step="1"> <output id="range-texture-scale-val"></output></label>
+        <h3>Simulation</h3>
+        <label>Bend scale <input id="range-bend-scale" type="range" min="-1" max="1" step="0.05"> <output id="range-bend-scale-val"></output></label>
+        <label>Stretch scale <input id="range-stretch-scale" type="range" min="-1" max="1" step="0.05"> <output id="range-stretch-scale-val"></output></label>
+        <table id="fabric-physics" data-testid="fabric-physics"></table>
+      </section>
+
+      <section id="panel-sizes" class="dock-panel" role="tabpanel" data-panel="sizes" hidden>
+        <table id="table-sizes"></table>
+        <div class="row">
+          <button id="btn-size-add" type="button">Add size</button>
+          <button id="btn-size-remove" type="button">Remove size</button>
+          <label>Base <select id="sel-base-size"></select></label>
+          <button id="btn-size-from-body" type="button" title="Create or update the row 'Body' from the current body parameters">Size from body</button>
+        </div>
+        <ul id="list-size-issues" class="list"></ul>
+      </section>
+    </aside>
+  </main>
+
+  <footer id="statusbar">
+    <span id="status-tool" data-testid="status-tool"></span>
+    <span id="status-msg" data-level="info"></span>
+    <span id="status-cursor"></span>
+    <span id="status-seam-ease" data-warn="false"></span>
+    <span id="status-quality" data-level="info"></span>
+    <span id="status-sim"></span>
+  </footer>
+</div>
+<script type="module" src="./src/app/main.js"></script>
+</body>
+</html>
