@@ -153,30 +153,36 @@ export function gradePieceDetailed(piece, chart, sizeName) {
     }
   }
 
-  // 6. vertex rules (after scaling, array order, accumulating)
+  // 6. vertex rules (after scaling, array order, accumulating). The loop runs at every size including
+  // the base: at step 0 the per-step term is zero and every `ref` scale is 1, so the base outline is
+  // untouched, and the index validation happens once rather than in two places.
   const rules = Array.isArray(grade.vertexRules) ? grade.vertexRules : [];
-  if (step !== 0) {
-    for (const rule of rules) {
-      const v = rule.vertex;
-      if (!Number.isInteger(v) || v < 0 || v >= n) {
-        issues.push({ level: 'warn', code: 'GRADE_RULE_INDEX', pieceId: piece.id, message: `Piece ${piece.name}: grade rule vertex ${String(v)} out of range` });
-        continue;
-      }
-      const dx = step * (Number.isFinite(rule.dx_mm) ? rule.dx_mm : 0);
-      const dy = step * (Number.isFinite(rule.dy_mm) ? rule.dy_mm : 0);
-      out.vertices[v] = [out.vertices[v][0] + dx, out.vertices[v][1] + dy];
-      const leaving = out.edges[v];
-      if (leaving && leaving.type === 'cubic' && leaving.c1) leaving.c1 = [leaving.c1[0] + dx, leaving.c1[1] + dy];
-      const arriving = out.edges[(v - 1 + n) % n];
-      if (arriving && arriving.type === 'cubic' && arriving.c2) arriving.c2 = [arriving.c2[0] + dx, arriving.c2[1] + dy];
+  for (const rule of rules) {
+    const v = rule.vertex;
+    if (!Number.isInteger(v) || v < 0 || v >= n) {
+      issues.push({ level: 'warn', code: 'GRADE_RULE_INDEX', pieceId: piece.id, message: `Piece ${piece.name}: grade rule vertex ${String(v)} out of range` });
+      continue;
     }
-  } else {
-    for (const rule of rules) {
-      const v = rule.vertex;
-      if (!Number.isInteger(v) || v < 0 || v >= n) {
-        issues.push({ level: 'warn', code: 'GRADE_RULE_INDEX', pieceId: piece.id, message: `Piece ${piece.name}: grade rule vertex ${String(v)} out of range` });
-      }
+    let dx = step * (Number.isFinite(rule.dx_mm) ? rule.dx_mm : 0);
+    let dy = step * (Number.isFinite(rule.dy_mm) ? rule.dy_mm : 0);
+
+    // A vertex that tracks its own measurement REPLACES the piece's axis scale for that vertex: its
+    // offset from the pivot is re-derived from the base outline, so the correction is exact rather
+    // than an increment on top of a scale that already moved it.
+    if (rule.ref) {
+      const rs = axisScale(piece, rule.ref, base, row, issues);
+      const axis = rule.refAxis === 'y' || rule.refAxis === 'both' ? rule.refAxis : 'x';
+      const src = piece.vertices[v];
+      if (axis === 'x' || axis === 'both') dx += (px + (src[0] - px) * rs) - out.vertices[v][0];
+      if (axis === 'y' || axis === 'both') dy += (py + (src[1] - py) * rs) - out.vertices[v][1];
     }
+    if (dx === 0 && dy === 0) continue;
+
+    out.vertices[v] = [out.vertices[v][0] + dx, out.vertices[v][1] + dy];
+    const leaving = out.edges[v];
+    if (leaving && leaving.type === 'cubic' && leaving.c1) leaving.c1 = [leaving.c1[0] + dx, leaving.c1[1] + dy];
+    const arriving = out.edges[(v - 1 + n) % n];
+    if (arriving && arriving.type === 'cubic' && arriving.c2) arriving.c2 = [arriving.c2[0] + dx, arriving.c2[1] + dy];
   }
 
   // 7. sanity

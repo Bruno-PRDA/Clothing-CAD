@@ -49,6 +49,12 @@ export {};
  * @property {number} vertex   vertex index in Piece.vertices
  * @property {number} dx_mm    added per size step: delta = (sizeIndex - baseIndex) * dx_mm
  * @property {number} dy_mm
+ * @property {string} [ref]    a size-chart key this ONE vertex tracks instead of the piece's own
+ *                             widthRef/lengthRef: its offset from the grading pivot is scaled by
+ *                             row[ref] / base[ref]. Lets a shoulder point follow shoulder width while
+ *                             the rest of the panel follows the chest, which is what real grading does
+ *                             and what a single uniform scale cannot express.
+ * @property {'x'|'y'|'both'} [refAxis]   which axis `ref` drives; default 'x'
  */
 
 /**

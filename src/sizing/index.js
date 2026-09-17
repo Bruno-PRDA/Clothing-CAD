@@ -12,4 +12,8 @@ export {
   gradePieceDetailed, gradePiece, gradeDoc, gradeDocDetailed, gradeScale, seamEasePct, seamEaseDrift,
 } from './grading.js';
 
+export {
+  EASE_LIMITS, SHOULDER_LIMIT, checkFit, torsoGirth, shoulderSpan, closestRow,
+} from './fit.js';
+
 export { runSelfTest } from './selftest.js';

@@ -13,6 +13,7 @@ export { step, drape, reset, phase } from './solver.js';
 export { bendingCoefficients, bendingC, solveDistance, solveBending, solveSeams, applyPins } from './constraints.js';
 export { FRICTION_FLOOR } from './collide.js';
 export { LRA_ANCHORS, LRA_RINGS, LRA_SLACK, solveLra } from './lra.js';
+export { TEAR_STRAIN, TEAR_GAP_M, CLUSTER_M, MAX_MARKS, findTears } from './tears.js';
 export { sphereField, capsuleField, floorField } from './testfields.js';
 export { makeHangingSheet, makeSphereDrape, makeSeamFixture, makeSlopeFixture, makeLatticeMesh } from './fixtures.js';
 

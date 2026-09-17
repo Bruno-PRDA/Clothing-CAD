@@ -26,7 +26,7 @@ html, body { height: 100%; margin: 0; overflow: hidden; background: var(--bg-0);
 .tb-group { display: inline-flex; align-items: center; gap: 2px; padding: 0 6px; border-right: 1px solid var(--border); }
 .tb-group:last-child { border-right: none; }
 
-#main { grid-row: 2; display: grid; min-height: 0; min-width: 0;
+#main { grid-row: 2; position: relative; display: grid; min-height: 0; min-width: 0;
         grid-template-rows: minmax(0, 1fr);
         grid-template-columns: calc((100% - var(--dock-w) - var(--resizer-w)) * var(--split)) var(--resizer-w) minmax(0, 1fr) var(--dock-w); }
 #main[data-solo="left"]  { grid-template-columns: minmax(0, 1fr) 0 0 var(--dock-w); }

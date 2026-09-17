@@ -198,3 +198,31 @@ td { font-family: var(--mono); }
 /* ---------- Status bar ---------- */
 #status-tool { color: var(--accent); }
 #status-sim { font-variant-numeric: tabular-nums; }
+
+/* --- fit warning ----------------------------------------------------------------------------------
+   Anchored to the LEFT of #main rather than to a pane, so it survives a pane swap and both solo
+   layouts; the 3D view is exactly where you look when a garment tears, and that is the pane most
+   likely to be soloed. pointer-events are re-enabled only on the buttons so the banner never steals a
+   drag from the 2D canvas underneath it. */
+#fit-warning {
+  position: absolute; z-index: 6; top: 8px; left: 8px; max-width: min(46ch, calc(100% - 32px));
+  display: flex; align-items: flex-start; gap: 8px;
+  padding: 7px 9px; border-radius: 6px; pointer-events: none;
+  border: 1px solid var(--warn); background: rgba(38, 32, 12, 0.94); color: var(--warn);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45); font-size: 12px; line-height: 1.35;
+}
+#fit-warning[hidden] { display: none; }
+#fit-warning[data-level="tight"] { border-color: var(--err); background: rgba(44, 18, 18, 0.94); color: var(--err); }
+#fit-warning-icon::before { content: "A0"; font-size: 13px; line-height: 1.2; }
+#fit-warning-text { flex: 1 1 auto; min-width: 0; }
+#fit-warning button { pointer-events: auto; flex: 0 0 auto; }
+#btn-fit-use {
+  padding: 2px 8px; border-radius: 4px; cursor: pointer;
+  border: 1px solid currentColor; background: transparent; color: inherit; font: inherit;
+}
+#btn-fit-use:hover { background: rgba(255, 255, 255, 0.12); }
+#btn-fit-dismiss {
+  padding: 0 4px; border: none; background: transparent; color: inherit;
+  font-size: 15px; line-height: 1; cursor: pointer; opacity: 0.7;
+}
+#btn-fit-dismiss:hover { opacity: 1; }

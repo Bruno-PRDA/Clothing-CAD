@@ -14,11 +14,11 @@ import { clothObj, parseProjectText, slug, FILENAMES } from './download.js';
 /** @typedef {import('../core/types.js').SelfTestResult} SelfTestResult */
 
 const CSV_EXPECT = [
-  'size,chest_cm,waist_cm,hips_cm,height_cm,torsoLength_cm,armLength_cm',
-  'S,84,66,92,160,39,55',
-  'M,88,70,96,165,40,56',
-  'L,92,74,100,170,41,57',
-  'XL,96,78,104,175,42,58',
+  'size,chest_cm,waist_cm,hips_cm,height_cm,torsoLength_cm,armLength_cm,shoulderWidth_cm',
+  'S,84,66,92,160,39,55,37',
+  'M,88,70,96,165,40,56,38',
+  'L,92,74,100,170,41,57,39',
+  'XL,96,78,104,175,42,58,40',
 ].join('\n');
 
 /** @param {string} hay @param {string} needle @returns {number} */

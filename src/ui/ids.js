@@ -29,6 +29,7 @@ export const REQUIRED_IDS = Object.freeze([
   'range-stretch-scale', 'range-stretch-scale-val', 'fabric-physics', 'panel-sizes', 'table-sizes', 'btn-size-add',
   'btn-size-remove', 'sel-base-size', 'btn-size-from-body', 'list-size-issues', 'statusbar', 'status-tool', 'status-msg',
   'status-cursor', 'status-seam-ease', 'status-quality', 'status-sim',
+  'fit-warning', 'fit-warning-text', 'btn-fit-use', 'btn-fit-dismiss',
 ]);
 
 /** `body-<key>` + `body-<key>-num` for the 20 keys of SPEC 6.1 (static in index.html; the panel BINDS them). */

@@ -190,7 +190,9 @@ export async function runSelfTest() {
     const r = closestSize(female_m, chart);
     assert(r.name === 'M' && r.index === 1, 'closestSize(female_m) should be M, got ' + r.name);
     assert(Object.values(r.deltas).every((d) => d === 0), 'deltas should all be 0');
-    const ex = closestSize({ ...female_m, chest_cm: 91, waist_cm: 73, hips_cm: 99, height_cm: 169, torsoLength_cm: 40.8, armLength_cm: 56.8 }, chart);
+    // shoulderWidth matches row L exactly, so this stays the SPEC 10.1 worked example (score 0.000482)
+    // now that the default chart grades shoulders too; the column is exercised, it just contributes 0.
+    const ex = closestSize({ ...female_m, chest_cm: 91, waist_cm: 73, hips_cm: 99, height_cm: 169, torsoLength_cm: 40.8, armLength_cm: 56.8, shoulderWidth_cm: 39 }, chart);
     assert(ex.name === 'L' && ex.index === 2, '10.1 example should return L, got ' + ex.name);
     assert(near(ex.score, 0.000482, 2e-6), 'score should be ~0.000482, got ' + ex.score);
     assert(ex.deltas.chest_cm === 1 && ex.deltas.torsoLength_cm === 0.2, 'deltas mismatch ' + JSON.stringify(ex.deltas));

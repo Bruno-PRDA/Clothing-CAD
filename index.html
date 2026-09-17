@@ -79,6 +79,12 @@
   </header>
 
   <main id="main">
+    <div id="fit-warning" data-level="" data-testid="fit-warning" hidden>
+      <span id="fit-warning-icon" aria-hidden="true"></span>
+      <span id="fit-warning-text" data-testid="fit-warning-text"></span>
+      <button id="btn-fit-use" type="button" title="Switch to the size that fits" hidden></button>
+      <button id="btn-fit-dismiss" type="button" title="Dismiss" aria-label="Dismiss">×</button>
+    </div>
     <section id="pane-left" class="pane" data-slot="left">
       <div id="pane-2d" class="pane-content" data-pane="2d">
         <canvas id="canvas-2d" tabindex="0" aria-label="2D pattern editor"></canvas>

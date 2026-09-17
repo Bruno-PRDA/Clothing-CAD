@@ -3119,6 +3119,46 @@ Physics columns are the effective simulation values of 7.10 (`bend_Nm` effective
 
 ## 10. Sizing and export (`src/sizing/`, `src/export/`) — agent A6
 
+> **Amendment (lead, 2026-09-17) — shoulder width is a graded measurement, and the fit check (10.4).**
+> Two related defects, both of which showed up as a garment tearing in the 3D view rather than as anything the UI
+> said.
+>
+> **(a) Nothing checked that the active size could fit the body.** XPBD has no way to refuse: asked to sew a seam
+> whose two sides cannot reach each other it stretches the fabric until they do, and where it cannot, the seam stays
+> open. Measured on `plus_f` (chest 113.4 cm, hips 122 cm) in the sample T-shirt: the finished circumference is
+> 106.9 / 112.0 / 117.1 / 122.2 cm for S / M / L / XL, so S is 15.1 cm short of the hips, and the drape settles with
+> 14.1 mm of open seam, p99 tensile strain 35 % and a peak of 219 % concentrated on the front armhole. The gap is
+> monotone in the shortfall (14.1 mm at S, 2.6 mm at M, 0.1 mm at XL).
+>
+> `sizing/fit.js` `checkFit(doc, size, body)` now reports this geometrically, before a frame is simulated: graded
+> torso-panel widths against the body's LARGEST torso girth (a tee that clears the bust still has to pass the hips),
+> plus the pattern's shoulder span against the body's, plus `seamEaseDrift` so a garment that grading has broken
+> against itself is caught in the same place. `ui/fitWarning.js` renders it as a banner at the top-left of `#main`
+> (anchored there, not to a pane, so it survives a swap and both solo layouts) with a one-click switch to a size that
+> would fit. `cloth/tears.js` `findTears` and `viewer3d/tearMarks.js` mark WHERE it is failing — clustered rings at
+> every vertex past 30 % strain and every seam pair past 3 mm, depth-test off so a failure on the far side is still
+> visible. Refreshed every `TEAR_INTERVAL_MS`, and suppressed until `sewTime + 0.5 s` because mid-sewing the panels
+> are legitimately apart.
+>
+> **(b) The chart had no shoulder width**, so the shoulder could only be graded as a side effect of scaling the whole
+> panel by the chest: chest grades 4 cm a size and shoulders about 1 cm, so the shoulder ran out by ~1.5 cm a size
+> (span 38.2 / 40 / 41.8 / 43.6 cm across S–XL). `shoulderWidth_cm` is now in `DEFAULT_SIZE_MEASUREMENTS` and in both
+> sample charts (37 / 38 / 39 / 40), and `GradeRule` takes an optional `ref` + `refAxis`: that ONE vertex takes its
+> offset from the pivot from `row[ref] / base[ref]` instead of the piece's own axis scale. The T-shirt's shoulder tip
+> (front and back, vertex 3) uses it, giving 38.9 / 40 / 41.1 / 42.1 cm. All eight preset × size drapes are unchanged
+> to 0.1 mm, so the stock chart is a pure improvement in intent.
+>
+> **Do not widen the shoulder far past the draft.** The armhole SHRINKS as the shoulder tip moves out (242 → 226 mm
+> from shoulder 40 → 49 on XL) while the sleeve cap does not, so the cap arrives too long: ease drift reaches 3.2 % at
+> shoulder 46 and 4.4 % at 49, and the drape blows out to a 56.5 mm open cap seam with 319 % strain. `seamEaseDrift`
+> already flags it from 3 pp, and `checkFit` now surfaces that in the banner. Grading the GIRTHS to the body is what
+> actually fixes a broad build — an XL row re-cut to `athletic_m` (chest 104, waist 82, hips 98) drapes at 0.0 mm
+> with 19 % peak strain and no markers, against 4.0 mm and 185 % at stock M.
+>
+> Also fixed here: `setActiveSize` only re-meshed when the size NAME changed, so editing a chart cell re-graded the
+> 2D ghost and the exports while the 3D garment kept its old mesh — the model went on wearing a size that no longer
+> existed. It now also compares the chart key.
+
 > **Amendment (lead, 2026-09-17) — the simulation drapes the ACTIVE SIZE.** Section 12.2 originally left the
 > simulation untouched on `size:active`: the size selector drove the 2D ghost outline and the exported pattern, while
 > the 3D view always draped the base pieces. Choosing L or XL therefore changed the printed pattern but not the

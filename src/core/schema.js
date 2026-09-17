@@ -33,7 +33,7 @@ export const DEFAULT_BODY_PARAMS = Object.freeze({
 /** @type {ReadonlyArray<string>} the 23 keys, in the order above */
 export const BODY_PARAM_KEYS = Object.freeze(Object.keys(DEFAULT_BODY_PARAMS));
 export const DEFAULT_SIZE_MEASUREMENTS = Object.freeze([
-  'chest_cm', 'waist_cm', 'hips_cm', 'height_cm', 'torsoLength_cm', 'armLength_cm',
+  'chest_cm', 'waist_cm', 'hips_cm', 'height_cm', 'torsoLength_cm', 'armLength_cm', 'shoulderWidth_cm',
 ]);
 
 const ANCHORS = Object.freeze(['torso', 'armL', 'armR', 'legL', 'legR', 'skirt', 'head']);
@@ -119,10 +119,10 @@ export function defaultSizeChart() {
     measurements: DEFAULT_SIZE_MEASUREMENTS.slice(),
     baseSize: 'M',
     rows: [
-      { name: 'S', chest_cm: 84, waist_cm: 66, hips_cm: 92, height_cm: 160, torsoLength_cm: 39, armLength_cm: 55 },
-      { name: 'M', chest_cm: 88, waist_cm: 70, hips_cm: 96, height_cm: 165, torsoLength_cm: 40, armLength_cm: 56 },
-      { name: 'L', chest_cm: 92, waist_cm: 74, hips_cm: 100, height_cm: 170, torsoLength_cm: 41, armLength_cm: 57 },
-      { name: 'XL', chest_cm: 96, waist_cm: 78, hips_cm: 104, height_cm: 175, torsoLength_cm: 42, armLength_cm: 58 },
+      { name: 'S', chest_cm: 84, waist_cm: 66, hips_cm: 92, height_cm: 160, torsoLength_cm: 39, armLength_cm: 55, shoulderWidth_cm: 37 },
+      { name: 'M', chest_cm: 88, waist_cm: 70, hips_cm: 96, height_cm: 165, torsoLength_cm: 40, armLength_cm: 56, shoulderWidth_cm: 38 },
+      { name: 'L', chest_cm: 92, waist_cm: 74, hips_cm: 100, height_cm: 170, torsoLength_cm: 41, armLength_cm: 57, shoulderWidth_cm: 39 },
+      { name: 'XL', chest_cm: 96, waist_cm: 78, hips_cm: 104, height_cm: 175, torsoLength_cm: 42, armLength_cm: 58, shoulderWidth_cm: 40 },
     ],
   };
 }
@@ -300,7 +300,15 @@ export function normalizePiece(partial, ctx) {
     anchorY: oneOf(gr.anchorY, ANCHOR_Y, dgr.anchorY),
     vertexRules: (Array.isArray(gr.vertexRules) ? gr.vertexRules : []).map((r) => {
       const s = isObj(r) ? r : {};
-      return { vertex: int(s.vertex, 0), dx_mm: num(s.dx_mm, 0), dy_mm: num(s.dy_mm, 0) };
+      /** @type {any} */
+      const rule = { vertex: int(s.vertex, 0), dx_mm: num(s.dx_mm, 0), dy_mm: num(s.dy_mm, 0) };
+      // Optional per-vertex measurement tracking. Carried through only when the key looks like a size
+      // key, so a malformed document cannot smuggle an arbitrary property into the grading maths.
+      if (typeof s.ref === 'string' && /^[a-z][A-Za-z]*_cm$/.test(s.ref)) {
+        rule.ref = s.ref;
+        rule.refAxis = (s.refAxis === 'y' || s.refAxis === 'both') ? s.refAxis : 'x';
+      }
+      return rule;
     }),
   };
 

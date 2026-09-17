@@ -10,6 +10,7 @@ import { fabricMaterial, updateMaterial, materialFor, materialCacheSize, dispose
 import { TEXTURE_SIZE, textureKey, drawTextureCanvas, fabricTexture, textureCacheSize, disposeTextures } from './textures.js';
 import { createLoop } from './loop.js';
 import { GIZMO_COLORS, createAnchorsGizmo } from './anchorsGizmo.js';
+import { MARK_COLORS, MARK_SIZE, createTearMarks } from './tearMarks.js';
 
 export { VIEWER_DEFAULTS, DEFAULT_BODY_BOX, createViewer };
 export { BODY_SKIN, createBodyMesh };
@@ -18,6 +19,7 @@ export { fabricMaterial, updateMaterial, materialFor, materialCacheSize, dispose
 export { TEXTURE_SIZE, textureKey, drawTextureCanvas, fabricTexture, textureCacheSize, disposeTextures };
 export { createLoop };
 export { GIZMO_COLORS, createAnchorsGizmo };
+export { MARK_COLORS, MARK_SIZE, createTearMarks };
 
 /** @typedef {import('../core/types.js').ClothState} ClothState */
 /** @typedef {import('../core/types.js').BodyModel} BodyModel */
@@ -259,7 +261,8 @@ export function createViewer3D(container, opts = {}) {
   const body = createBodyMesh();
   const cloth = createClothMesh();
   const gizmo = createAnchorsGizmo();
-  viewer.root.add(body.object, cloth.object, cloth.wire, gizmo.object);
+  const tears = createTearMarks();
+  viewer.root.add(body.object, cloth.object, cloth.wire, gizmo.object, tears.object);
 
   /** @type {BodyModel|null} */
   let currentBody = null;
@@ -353,6 +356,8 @@ export function createViewer3D(container, opts = {}) {
   function setLandmarks(on) { body.setLandmarksVisible(on); }
   /** @param {boolean} on */
   function setGizmo(on) { gizmo.setVisible(on); }
+  /** Where the garment is failing; null or [] clears the overlay. @param {import('../cloth/tears.js').TearMark[]|null} marks */
+  function setTears(marks) { tears.setMarks(marks); }
   /** @param {number} a */
   function setBodyOpacity(a) { body.setOpacity(a); }
 
@@ -369,6 +374,7 @@ export function createViewer3D(container, opts = {}) {
     disposed = true;
     loop.dispose();
     popout.dispose();
+    tears.dispose();
     gizmo.dispose();
     cloth.dispose();
     body.dispose();
@@ -380,8 +386,8 @@ export function createViewer3D(container, opts = {}) {
   }
 
   return {
-    viewer, body, cloth, gizmo, loop, popout,
+    viewer, body, cloth, gizmo, tears, loop, popout,
     setBody, setCloth, sync, setPieceFabric, fit, render, screenshot,
-    setWireframe, setLandmarks, setGizmo, setBodyOpacity, stats, dispose,
+    setWireframe, setLandmarks, setGizmo, setTears, setBodyOpacity, stats, dispose,
   };
 }

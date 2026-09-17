@@ -1270,6 +1270,21 @@ export function installDebugApi(ctx, wiring) {
       }
     },
 
+    /**
+     * Will the active size (or `name`) actually go round the body? See sizing/fit.js.
+     * @param {string} [name] @returns {import('../sizing/fit.js').FitReport}
+     */
+    fit(name) {
+      const doc = liveDoc();
+      return sizingMod.checkFit(doc, name ? requireSize(name) : doc.ui.activeSize, doc.body.params);
+    },
+
+    /** Seam-length mismatch introduced by grading. @param {string} [name] @returns {any[]} */
+    easeDrift(name) {
+      const doc = liveDoc();
+      return sizingMod.seamEaseDrift(doc, name ? requireSize(name) : doc.ui.activeSize);
+    },
+
     /** @returns {{name:string, score:number}} */
     closest() {
       const doc = liveDoc();

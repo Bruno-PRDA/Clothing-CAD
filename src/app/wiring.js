@@ -97,6 +97,9 @@ function nowMs() {
   return (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
 }
 
+/** How often the tear overlay is recomputed while the sim runs (ms). */
+export const TEAR_INTERVAL_MS = 400;
+
 /** @param {number} n @returns {string} */
 function fmtInt(n) {
   return String(Math.round(n));
@@ -117,6 +120,7 @@ function ensureCtx(ctx) {
     c.cloth = {
       state: null, stale: false, lastStats: null, running: false, userPaused: false,
       phase: 'empty', stepping: false, nanEvents: [], dirty: false, errorPaused: false,
+      tears: null, lastTearMs: 0,
     };
   }
   if (!c.keys) {
@@ -565,6 +569,30 @@ export function createWiring(ctx) {
     if (!v || !state) return;
     try { v.sync(state, !!force); } catch (err) { handleError('viewer.sync', err); }
     if (force) ctx.cloth.dirty = false;
+    syncTears(state, !!force);
+  }
+
+  /**
+   * Refresh the "this is where it is failing" overlay. Scanning every edge costs about the same as one
+   * solver substep, so it runs on a timer rather than per frame — the markers only need to track the
+   * garment's slow settling, not its per-frame jitter. Nothing is shown while the seams are still
+   * closing: mid-sewing the panels are legitimately far apart and everything would light up.
+   * @param {ClothState} state @param {boolean} force
+   */
+  function syncTears(state, force) {
+    const v = viewer();
+    if (!v || typeof v.setTears !== 'function') return;
+    const now = nowMs();
+    if (!force && now - ctx.cloth.lastTearMs < TEAR_INTERVAL_MS) return;
+    ctx.cloth.lastTearMs = now;
+    const d = doc();
+    const sew = d && d.sim && Number.isFinite(d.sim.sewTime_s) ? d.sim.sewTime_s : 1;
+    if (state.time < sew + 0.5) { v.setTears(null); ctx.cloth.tears = null; return; }
+    try {
+      const report = clothMod.findTears(state);
+      ctx.cloth.tears = report;
+      v.setTears(report.marks);
+    } catch (err) { handleError('viewer.setTears', err); }
   }
 
   /** Push a freshly built state into the viewer (geometry rebuild). @param {ClothState} state */
@@ -760,12 +788,18 @@ export function createWiring(ctx) {
     const d = doc();
     if (!d || !name) return;
     const prev = ctx.lastActiveSize;
+    const prevChart = ctx.keys.sizes;
     let row = null;
     try { row = sizingMod.rowByName(d.sizes, name) || null; } catch (_) { row = null; }
     ctx.lastActiveSize = name;
     ctx.keys.sizes = keyOf(d.sizes);
     emit(EVENT.SIZE_ACTIVE, { size: name, prev, row });
-    if (prev !== undefined && prev !== name) scheduleRemesh(d.pieces.filter((p) => p.simulate).map((p) => p.id));
+    // Re-grade the simulated pieces when the size changed OR the chart itself was edited. Keying only
+    // on the NAME meant that editing a cell re-graded the 2D ghost and the exports while the 3D
+    // garment kept its old mesh — the model quietly went on wearing a size that no longer existed.
+    if (prev !== undefined && (prev !== name || prevChart !== ctx.keys.sizes)) {
+      scheduleRemesh(d.pieces.filter((p) => p.simulate).map((p) => p.id));
+    }
   }
 
   // ---------------------------------------------------------------- the debounced pipeline
@@ -1368,6 +1402,7 @@ export function createWiring(ctx) {
       if (v && (dirty || ctx.cloth.dirty)) {
         v.sync(state, ctx.cloth.dirty);
         ctx.cloth.dirty = false;
+        syncTears(state, false);
       }
       if (dirty && ctx.cloth.lastStats) {
         ctx.bus.emit(EVENT.SIM_STATS, ctx.cloth.lastStats);
@@ -1430,6 +1465,7 @@ export function createWiring(ctx) {
     if (v) {
       try {
         v.sync(state, true);
+        syncTears(state, true);
         if (loop && typeof loop.renderNow === 'function') loop.renderNow();
       } catch (err) { handleError('viewer.sync', err); }
     }

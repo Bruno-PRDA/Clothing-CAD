@@ -9,7 +9,9 @@ import { defaultSizeChart } from '../core/schema.js';
 /** @typedef {import('../core/types.js').Issue} Issue */
 
 /** @type {ReadonlyArray<string>} */
-export const DEFAULT_MEASUREMENTS = Object.freeze(['chest_cm', 'waist_cm', 'hips_cm', 'height_cm', 'torsoLength_cm', 'armLength_cm']);
+export const DEFAULT_MEASUREMENTS = Object.freeze([
+  'chest_cm', 'waist_cm', 'hips_cm', 'height_cm', 'torsoLength_cm', 'armLength_cm', 'shoulderWidth_cm',
+]);
 
 const NAME_MAX = 16;
 const KEY_RE = /^[a-z][A-Za-z]*_cm$/;

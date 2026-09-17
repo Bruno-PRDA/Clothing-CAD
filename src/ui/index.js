@@ -6,6 +6,7 @@ export { createLayout, SPLIT_MIN, SPLIT_MAX, LAYOUT_MODES } from './layout.js';
 export { createToolbar, TOOLBAR_ACTIONS, EXPORT_ACTIONS } from './toolbar.js';
 export { createDock, DOCK_TABS } from './dock.js';
 export { createStatusbar, LOG_LIMIT, TTL_MS } from './statusbar.js';
+export { createFitWarning, COALESCE_MS } from './fitWarning.js';
 export { createShortcuts, SHORTCUTS } from './shortcuts.js';
 export { createPiecesPanel } from './panels/pieces.js';
 export { createBodyPanel } from './panels/body.js';
@@ -17,6 +18,7 @@ import { createLayout } from './layout.js';
 import { createToolbar } from './toolbar.js';
 import { createDock } from './dock.js';
 import { createStatusbar } from './statusbar.js';
+import { createFitWarning } from './fitWarning.js';
 import { createShortcuts } from './shortcuts.js';
 import { createPiecesPanel } from './panels/pieces.js';
 import { createBodyPanel } from './panels/body.js';
@@ -43,6 +45,7 @@ export function createUi({ store, bus, root = document }) {
   const toolbar = createToolbar(store, bus, root);
   const dock = createDock(store, bus, root);
   const statusbar = createStatusbar(bus, root);
+  const fitWarning = createFitWarning(store, bus, root);
   const pieces = createPiecesPanel(store, bus, root);
   const body = createBodyPanel(store, bus, root);
   const fabric = createFabricPanel(store, bus, root);
@@ -74,13 +77,14 @@ export function createUi({ store, bus, root = document }) {
     body.refresh();
     fabric.refresh();
     sizes.refresh();
+    fitWarning.refresh();
   }
 
   return {
-    layout, toolbar, dock, statusbar, shortcuts, panels,
+    layout, toolbar, dock, statusbar, fitWarning, shortcuts, panels,
     setSelection, elements, refresh, root,
     destroy() {
-      for (const part of [shortcuts, sizes, fabric, body, pieces, statusbar, dock, toolbar, layout]) {
+      for (const part of [shortcuts, sizes, fabric, body, pieces, fitWarning, statusbar, dock, toolbar, layout]) {
         try { part.destroy(); } catch { /* ignore */ }
       }
     },
