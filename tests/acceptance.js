@@ -1049,6 +1049,45 @@ async function checkRuntime() {
 
 // ================================================================== the check table
 
+/**
+ * The 3D view must drape the SIZE THE USER SELECTED, not the base pattern (SPEC 10.2 / 12.2 setActiveSize).
+ * This was a real gap: the size selector drove the 2D ghost and the exports while the simulation always used the base
+ * pieces, so choosing XL changed the printed pattern but not the garment on the model — and a bigger body then had no
+ * way to wear the garment at all. Measured on the sample T-shirt, base size M against the closest size on each body:
+ * male_l p99 strain 19.3% -> 10.6% and penetration 5.15 -> 2.94 mm, plus_f 15.9% -> 8.6% and 5.07 -> 2.81 mm.
+ * @returns {Promise<string>}
+ */
+async function checkSizeDrapes() {
+  await reloadSample('tshirt');
+  const widthAt = async (size) => {
+    app().sizes.setActive(size);
+    await app().idle();
+    expect(app().doc().ui.activeSize === size, `activeSize is ${app().doc().ui.activeSize}, expected ${size}`);
+    const st = stateOf();
+    let minX = Infinity;
+    let maxX = -Infinity;
+    for (const pc of st.pieces) {
+      const P = pc.mesh.positions2d;
+      for (let k = 0; k < P.length; k += 2) {
+        if (P[k] < minX) minX = P[k];
+        if (P[k] > maxX) maxX = P[k];
+      }
+    }
+    return maxX - minX;
+  };
+  const s = await widthAt('S');
+  const m = await widthAt('M');
+  const l = await widthAt('L');
+  const xl = await widthAt('XL');
+  expect(s < m && m < l && l < xl,
+    `simulated pattern width must grow with size, got S ${fmt(s)} M ${fmt(m)} L ${fmt(l)} XL ${fmt(xl)} mm`);
+  expect(xl - s > 40, `XL is only ${fmt(xl - s)} mm wider than S in the simulation (expected > 40)`);
+  app().sizes.setActive('M');
+  await app().idle();
+  drapeStage = 0;
+  return `simulated pattern width S ${fmt(s)} / M ${fmt(m)} / L ${fmt(l)} / XL ${fmt(xl)} mm`;
+}
+
 /** How long the runner waits for a timed-out check's abandoned work to settle before starting the next one. */
 const SETTLE_AFTER_TIMEOUT_MS = 30000;
 
@@ -1082,6 +1121,7 @@ export const CHECKS = Object.freeze([
   { id: '24', name: 'undo_redo', timeoutMs: 20000, fn: checkUndoRedo },
   { id: '25', name: 'editor_api', timeoutMs: 20000, fn: checkEditorApi },
   { id: '26', name: 'ui_clicks', timeoutMs: 20000, fn: checkUiClicks },
+  { id: '26b', name: 'size_drapes', timeoutMs: 30000, fn: checkSizeDrapes },
   { id: '27', name: 'runtime', timeoutMs: 5000, fn: checkRuntime },
 ]);
 

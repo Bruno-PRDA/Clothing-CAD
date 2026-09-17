@@ -252,11 +252,40 @@ export function createWiring(ctx) {
     return out;
   }
 
+
+  /**
+   * The document as it should be SIMULATED: the pieces graded to the active size (SPEC 10.2).
+   *
+   * The size chart exists so a pattern can be cut for a range of bodies, and until now it only reached the 2D ghost
+   * and the exports — the 3D view always draped the base size, so choosing L or XL changed the printed pattern but
+   * not the garment on the model. Grading here makes the viewport show the size the user actually selected, and it is
+   * what lets a bigger body wear the garment at all: on `male_l` the base-size T-shirt reaches 19.3% strain at p99,
+   * because it is simply the wrong size for that body, not because the solver is wrong.
+   *
+   * `gradeDoc(doc, baseSize)` returns deep copies equal to `doc.pieces`, so at the base size this is a no-op beyond
+   * the clone. Grading preserves piece ids and edge counts, so `doc.seams` still resolves and seam parity is kept.
+   * @param {ProjectDoc} d @returns {ProjectDoc}
+   */
+  function simDoc(d) {
+    const size = d.ui && d.ui.activeSize;
+    if (!size || !d.sizes || size === d.sizes.baseSize) return d;
+    try {
+      const graded = sizingMod.gradeDoc(d, size);
+      if (Array.isArray(graded) && graded.length === d.pieces.length) return { ...d, pieces: graded };
+    } catch (err) {
+      const e = /** @type {any} */ (err);
+      showStatus('warn', 'Size ' + size + ' could not be graded: ' + String((e && e.message) || err)
+        + ' — draping the base size', e && e.code ? String(e.code) : 'GradeError');
+    }
+    return d;
+  }
+
   /** @param {ProjectDoc} d @param {Piece} p @returns {number} */
   function meshKeyOf(d, p) {
     return keyOf({
       v: p.vertices, e: p.edges, f: p.foldEdge, n: p.notches,
       h: p.meshSpacing_mm, sf: ctx.mesh.spacingFactor, s: seamsTouching(d, p.id),
+      z: (d.ui && d.ui.activeSize) || '', g: p.grade,
     });
   }
 
@@ -334,8 +363,9 @@ export function createWiring(ctx) {
    * @param {string[]|null} pieceIds @param {{force?: boolean}} [opts] @returns {PieceMesh[]}
    */
   function remesh(pieceIds, opts) {
-    const d = doc();
-    if (!d) return [];
+    const d0 = doc();
+    if (!d0) return [];
+    const d = simDoc(d0);
     const force = !!(opts && opts.force);
     pruneMeshes(d);
     const ids = pieceIds && pieceIds.length
@@ -373,8 +403,9 @@ export function createWiring(ctx) {
 
   /** Remesh every simulate piece ignoring fingerprints, without re-entering the vertex cap. */
   function remeshAllForced() {
-    const d = doc();
-    if (!d) return;
+    const d0 = doc();
+    if (!d0) return;
+    const d = simDoc(d0);
     for (const p of d.pieces) {
       if (!p.simulate) continue;
       try {
@@ -444,11 +475,12 @@ export function createWiring(ctx) {
 
   /** Build a NEW ClothState without touching ctx (used for the atomic swap). @returns {ClothState|null} */
   function buildClothState() {
-    const d = doc();
-    if (!d) return null;
+    const d0 = doc();
+    if (!d0) return null;
     const meshes = meshList();
     if (meshes.length === 0) return null;
-    return clothMod.buildCloth({ meshes, doc: d, fabrics: resolveAll(d) });
+    // The graded document, so the piece the solver reads is the piece the mesh came from.
+    return clothMod.buildCloth({ meshes, doc: simDoc(d0), fabrics: resolveAll(d0) });
   }
 
   /** Apply doc.sim to a state (in place). @param {ClothState} state */
@@ -503,8 +535,9 @@ export function createWiring(ctx) {
 
   /** @param {ClothState} state */
   function arrangeState(state) {
-    const d = doc();
-    if (!d || !state) return;
+    const d0 = doc();
+    if (!d0 || !state) return;
+    const d = simDoc(d0);
     const model = ctx.body.model;
     if (!model) {
       showStatus('warn', 'No body model — the garment cannot be arranged', 'E_NO_BODY');
@@ -716,7 +749,11 @@ export function createWiring(ctx) {
   }
 
   /**
-   * Emit size:active (the editor draws the ghost itself; the simulation is untouched).
+   * Emit size:active and rebuild the garment at that size.
+   *
+   * The simulation used to be left alone here, so picking L or XL changed the 2D ghost and the exported pattern but
+   * not the garment on the model. It now re-meshes from the graded pieces (see simDoc) and rebuilds the cloth, which
+   * is both what the size selector should obviously do and the only way a larger body can wear the garment.
    * @param {string} name
    */
   function setActiveSize(name) {
@@ -728,6 +765,7 @@ export function createWiring(ctx) {
     ctx.lastActiveSize = name;
     ctx.keys.sizes = keyOf(d.sizes);
     emit(EVENT.SIZE_ACTIVE, { size: name, prev, row });
+    if (prev !== undefined && prev !== name) scheduleRemesh(d.pieces.filter((p) => p.simulate).map((p) => p.id));
   }
 
   // ---------------------------------------------------------------- the debounced pipeline

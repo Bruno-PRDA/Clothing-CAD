@@ -3055,6 +3055,33 @@ Physics columns are the effective simulation values of 7.10 (`bend_Nm` effective
 
 ## 10. Sizing and export (`src/sizing/`, `src/export/`) — agent A6
 
+> **Amendment (lead, 2026-09-17) — the simulation drapes the ACTIVE SIZE.** Section 12.2 originally left the
+> simulation untouched on `size:active`: the size selector drove the 2D ghost outline and the exported pattern, while
+> the 3D view always draped the base pieces. Choosing L or XL therefore changed the printed pattern but not the
+> garment on the model, and a body bigger than the draft body had no way to wear the garment at all.
+>
+> `wiring.js` now has `simDoc(doc)`, which returns the document with its pieces graded to `doc.ui.activeSize`
+> (`sizing.gradeDoc`), and `remesh`, `remeshAllForced`, `buildClothState` and `arrangeState` all work from it, so the
+> piece the solver reads is the piece its mesh came from. `meshKeyOf` includes the active size and the piece's grade
+> rules, so switching size invalidates the cached meshes, and `setActiveSize` schedules a remesh of every simulated
+> piece. At the base size `gradeDoc` returns copies equal to `doc.pieces`, so nothing changes there; grading preserves
+> piece ids and edge counts, so `doc.seams` still resolves and seam parity holds.
+>
+> Verified: the simulated pattern width now grows 534.5 / 560.0 / 585.5 / 610.9 mm across S / M / L / XL (acceptance
+> check 26b, `size_drapes`). The point of it is fit — draping the sample T-shirt at its closest size instead of the
+> base size, on the body presets that are far from the draft body:
+>
+> | body | base size M | closest size | p99 strain | peak | penetration |
+> |---|---|---|---|---|---|
+> | male_m | 13.3% / 53% / 3.79 mm | XL | 8.7% | 23% | 2.20 mm |
+> | male_l | 19.3% / 65% / 5.15 mm | XL | 10.6% | 34% | 2.94 mm |
+> | plus_f | 15.9% / 77% / 5.07 mm | XL | 8.6% | 27% | 2.81 mm |
+> | athletic_m | 21.3% / 55% / 5.19 mm | XL | 11.2% | 36% | 2.95 mm |
+>
+> Penetration returns under the 5 mm bar on every preset, and the strain roughly halves. Note that the default chart
+> tops out at a 96 cm chest, so `male_m` (98 cm) and `male_l` (108 cm) still pick XL as merely the closest row rather
+> than a true fit; a chart with more rows, or `sizes.fitBody`, is the answer for those bodies.
+
 Both directories are **pure**: no DOM, no `three`, no store, no bus. Every function takes plain data (`ProjectDoc`, `Piece`, `SizeChart`, `BodyParams`, `ClothState`) and returns plain data or strings. The single exception is `src/export/download.js`, which touches `document`/`URL`/`Blob` only inside the four functions that exist for that purpose (10.6) and throws `Error{code:'NO_DOM'}` when `typeof document === 'undefined'`. Wiring (section 12) is the only place that calls these modules in reaction to events; the UI (section 11) wraps returned strings in downloads. **Every exporter returns its string; nothing here ever opens a window or triggers a download by itself**, so automation asserts on strings.
 
 Imports allowed: `sizing -> core, geometry`; `export -> core, geometry, sizing` (section 2). Errors: `throw Object.assign(new Error(message), { name: 'ValidationError', code })`; the codes are listed per function below.
@@ -5391,6 +5418,24 @@ Store contract (section 3.3, authoritative): `update(mutator, label)` emits `doc
 ---
 
 ## 13. Acceptance suite (`tests/acceptance.js`)
+
+> **Known flake (lead, 2026-09-17) — check 14 `color_change` intermittently reports 76-79 s.** The suite has run
+> clean end to end in 58.8 s with every check but 10 passing; on other runs of the identical build this one check
+> stalls and the 90 s runtime check fails with it. The application is not at fault, and this was measured rather than
+> assumed: the same operation takes 128-372 ms when driven directly, running check 13 and then 14 back to back takes
+> 13.0 s and 224 ms, the event bus holds 37 listeners before and after five sample reloads, and fourteen consecutive
+> `loadSample` calls each take about 150 ms with the renderer's geometry, texture and program counts flat at 1 / 1 / 3
+> and the heap steady at 22-42 MB. Instrumenting the check itself shows its own steps total about 1.4 s
+> (`reloadSample` internals 1.26 s, `setColor` 1 ms, the two `idle()` calls 75 and 58 ms) while the outer measurement
+> reads 76 s — that is, the main thread is blocked while the check is suspended at an await, which points at the host
+> (a hidden browser pane is throttled, and these runs shared the machine with four other simulations) rather than at
+> anything the suite or the app does.
+>
+> Two real defects WERE found and fixed while chasing it, both in the runner: `Promise.race` abandons a timed-out
+> check without stopping it, so its synchronous solver steps then blocked the next check (the runner now waits for an
+> abandoned check to settle, and check 13's budget is sized to the ~13 s of simulation it actually runs); and several
+> checks restart the drape when they reload a sample, so the animation loop competed with later checks (the runner now
+> pauses the solver before every check, not only once in the preamble).
 
 > **Amendment (lead, 2026-09-15) — the shoulder strain, and how it was reduced.** Peak tensile strain on the sample
 > T-shirt fell from 124% to 19% and the 99th percentile from 11.4% to 8.1%, by two independent changes that compose.
