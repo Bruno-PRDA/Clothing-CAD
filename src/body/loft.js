@@ -4,13 +4,31 @@
 // R(th) = (|cos th / a|^n + |sin th / b|^n)^(-1/n). Between rings (a, b, cz) are interpolated with a cubic Hermite
 // in y (Catmull-Rom style finite-difference tangents on the non-uniform ring heights), clamped beyond the ends.
 
+import { describeBuild } from './build.js';
+
 /** @typedef {import('./skeleton.js').Skeleton} Skeleton */
 /** @typedef {import('../core/types.js').BodyParams} BodyParams */
-/** @typedef {{y:number, a:number, b:number, n:number, cz:number}} Ring */
+/**
+ * `aRef` / `bRef` are the semi-axes the ring would have had WITHOUT the build modulation. They are internal to the
+ * body module (index.js copies only y/a/b/n/cz into BodyModel.rings): primitives.js uses them to keep the blended
+ * fills — breasts, buttocks, pelvis — in the same place ON the section when adiposity rounds it, so that the volume
+ * they add to a measured circumference stays what the reduction terms below were tuned for.
+ * @typedef {{y:number, a:number, b:number, n:number, cz:number, aRef?:number, bRef?:number}} Ring
+ */
 
-export const RING_NAMES = Object.freeze(['crotch', 'hip', 'waist', 'underbust', 'chest', 'armpit', 'shoulder', 'neckBase']);
+/** The rings solved directly from a circumference / a width, bottom to top. */
+export const BASE_RING_NAMES = Object.freeze(['crotch', 'hip', 'waist', 'underbust', 'chest', 'armpit', 'shoulder', 'neckBase']);
+/** All rings of the loft, bottom to top. `abdomen` is derived from the others (see `buildRings`). */
+export const RING_NAMES = Object.freeze(['crotch', 'hip', 'abdomen', 'waist', 'underbust', 'chest', 'armpit', 'shoulder', 'neckBase']);
 export const SUPERELLIPSE_N = 2.4;
 const PERIMETER_SAMPLES = 256;
+
+/**
+ * `unitPerimeter` is memoised, and with the build modulation every k is a continuous function of the parameters, so
+ * a slider drag now produces a fresh key per build instead of reusing the six tuned ones. Dropping the whole cache
+ * past a generous cap keeps it bounded; a miss costs ~256 pow pairs (tens of microseconds), a build needs nine.
+ */
+const PERIMETER_CACHE_MAX = 4096;
 
 /** @type {Map<string, number>} */
 const perimeterCache = new Map();
@@ -46,6 +64,7 @@ export function unitPerimeter(k, n = SUPERELLIPSE_N) {
     px = x;
     pz = z;
   }
+  if (perimeterCache.size >= PERIMETER_CACHE_MAX) perimeterCache.clear();
   perimeterCache.set(key, sum);
   return sum;
 }
@@ -73,43 +92,155 @@ export const RING_TUNING = Object.freeze({
   armpitFactor: 0.96, armpitBustReduce: 0.10, armpitK: 0.78, armpitCz: 0.005,
   shoulderInset: 0.045, shoulderK: 0.55, shoulderCz: 0.0,
   neckFactor: 1.35, neckK: 0.85, neckCz: -0.005,
+
+  // --- build modulation (weight_kg / muscle / age_y via build.js) ---------------------------------------------
+  adipKGain: 0.18,        // dk per unit adiposity at ring weight 1 (waist 0.74 -> 0.92 at adiposity +1)
+  adipLeanKGain: 0.14,    // dk per unit leanness  at ring weight 1 (waist 0.74 -> 0.60 at adiposity -1)
+  adipBackShare: 0.25,    // of the depth the rounding adds, this fraction goes behind the spine; the rest in front
+  kMin: 0.45, kMax: 0.96, // a torso section is never deeper than it is wide, and never a blade
+  shoulderInsetMuscle: 0.15,  // the shoulder ring reaches this much further out (x inset) per unit tone
+  abdomenT: 0.50,         // abdomen ring height, as a fraction of the way from the hip ring to the waist ring
+  // Extra half-depth as a fraction of the interpolated b, per unit adiposity. 0.15 rather than the 0.18 that looked
+  // right by eye: at 0.18 the plus_f skirt's residual penetration jumped from 4.2 mm to 5.5 mm, while 0.12-0.15 all
+  // sat at 4.2-4.3 mm. The cliff is the loft's perpendicular slope correction — a steeper db/dy divides the reported
+  // distance by a larger sqrt(1 + slope^2), so the contact solver under-corrects exactly where the belly is steepest.
+  // 0.15 still carries plus_f's abdomen 57 mm further forward than the unmodulated body, with margin under the cliff.
+  abdomenBulge: 0.15,
+  abdomenAge: 0.35,       // the same bulge grows this much at 70 y (fat migrates centrally with age)
+  abdomenLean: 0.06,      // the profile between hip and waist runs slightly hollow when lean
+  abdomenWiden: 0.04,     // extra half-width per unit adiposity
+  abdomenBack: 0.15,      // of the abdominal bulge, this fraction goes into the lumbar region; the rest forward
+});
+
+/**
+ * How strongly adiposity rounds each ring (a multiplier on `adipKGain` / `adipLeanKGain`).
+ *
+ * The waist and the abdomen carry the whole effect: that is where fat is deposited first and where the section goes
+ * from an ellipse to a circle. The ribcage follows much less (bone sets its aspect) and the shoulder almost not at
+ * all — the clavicles fix its width and depth however heavy the body is.
+ *
+ * The hip and crotch weights are HALF what the anatomy alone would suggest, for a measurement reason worth recording:
+ * rounding a ring at constant perimeter narrows it, and the hip ring is the only one whose width is in a race with
+ * fixed-girth neighbours. The thigh round cones (r = thigh_cm/2pi, an input) have their proximal sphere centred
+ * 30 mm above the crotch, so they cut the hip measuring plane; when `a_hip` shrinks they emerge from the side of the
+ * torso and measure.js picks them up. At weight 0.85 that cost +2.2 cm of measured hip on plus_f — a girth the user
+ * typed in. At 0.45 the residual is a few millimetres, and the belly is carried by the waist and abdomen rings
+ * anyway, which have no such neighbour.
+ */
+const ADIPOSITY_W = Object.freeze({
+  crotch: 0.20, hip: 0.45, abdomen: 1.00, waist: 1.00, underbust: 0.70,
+  chest: 0.45, armpit: 0.30, shoulder: 0.08, neckBase: 0.25,
+});
+
+/**
+ * dk per unit muscle tone, signed. NEGATIVE = flatter and therefore WIDER at the same circumference, which is what a
+ * developed chest and lat spread look like from the front; the V-taper comes out of the upper rings widening while
+ * the waist, whose circumference is an input, stays exactly where it is. The shoulder ring is the exception: its `a`
+ * is set by shoulderWidth (and widened further by `shoulderInsetMuscle`), so a POSITIVE dk there is the front-to-back
+ * thickness that trapezius and deltoid add.
+ */
+const MUSCLE_DK = Object.freeze({
+  crotch: 0, hip: 0, abdomen: 0, waist: 0, underbust: -0.025,
+  chest: -0.050, armpit: -0.045, shoulder: 0.040, neckBase: -0.015,
 });
 
 /**
  * Build the torso ring table from the skeleton and the parameters.
+ *
+ * The circumference of every ring stays exactly what the parameters ask for: `a` is re-solved from C after the build
+ * modulation picks k, so the measurement in measure.js is preserved by construction and only the SHAPE changes.
  * @param {Skeleton} sk @param {BodyParams} params @param {Partial<typeof RING_TUNING>} [tuning] overrides (tuning scripts only)
  * @returns {Record<string, Ring>}
  */
 export function buildRings(sk, params, tuning) {
   const t = tuning ? { ...RING_TUNING, ...tuning } : RING_TUNING;
+  const bd = describeBuild(params, tuning);
   const m = sk.m;
   const y = sk.y;
   const n = SUPERELLIPSE_N;
-  /** @param {number} yy @param {number} C @param {number} k @param {number} cz @returns {Ring} */
-  const ring = (yy, C, k, cz) => {
-    const a = Math.max(C, 0.05) / unitPerimeter(k, n);
-    return { y: yy, a, b: k * a, n, cz };
+
+  /** Aspect ratio after the build modulation. @param {string} name @param {number} k0 @returns {number} */
+  const kFor = (name, k0) => {
+    const w = ADIPOSITY_W[name] || 0;
+    const k = k0 + w * (bd.adipPos * t.adipKGain - bd.adipNeg * t.adipLeanKGain) + (MUSCLE_DK[name] || 0) * bd.tone;
+    return k < t.kMin ? t.kMin : k > t.kMax ? t.kMax : k;
   };
-  const shoulderA = Math.max(m.shoulderW / 2 - t.shoulderInset * sk.s, 0.06);
+  /**
+   * The depth that rounding the section just added is spent mostly IN FRONT of the spine — that is the difference
+   * between a belly and a barrel. Flattening (b < b0) moves the front back by the same rule, giving the hollow
+   * abdomen of a lean body. Derived from the actual b, so it is identically zero at adiposity 0.
+   * @param {number} cz0 @param {number} b @param {number} b0 @returns {number}
+   */
+  const czFor = (cz0, b, b0) => cz0 + (b - b0) * (1 - t.adipBackShare);
+
+  /** @param {string} name @param {number} yy @param {number} C @param {number} k0 @param {number} cz0 @returns {Ring} */
+  const ring = (name, yy, C, k0, cz0) => {
+    const Cm = Math.max(C, 0.05);
+    const k = kFor(name, k0);
+    const a = Cm / unitPerimeter(k, n);
+    const b = k * a;
+    const aRef = Cm / unitPerimeter(k0, n);
+    const bRef = k0 * aRef;
+    return { y: yy, a, b, n, cz: czFor(cz0, b, bRef), aRef, bRef };
+  };
+
+  const inset0 = t.shoulderInset;
+  const inset = inset0 * (1 - t.shoulderInsetMuscle * bd.tone);
+  const shoulderA = Math.max(m.shoulderW / 2 - inset * sk.s, 0.06);
+  const shoulderA0 = Math.max(m.shoulderW / 2 - inset0 * sk.s, 0.06);
+  const shoulderKv = kFor('shoulder', t.shoulderK);
+  const shoulderB = shoulderKv * shoulderA;
   /** @type {Record<string, Ring>} */
   const rings = {
-    crotch: ring(y.crotch, t.crotchFactor * m.hips, t.crotchK, t.crotchCz),
-    hip: ring(y.hip, m.hips - t.hipReduce, t.hipK, t.hipCz),
-    waist: ring(y.waist, m.waist - t.waistReduce, t.waistK, t.waistCz),
-    underbust: ring(y.underbust, m.underbust, t.underbustK, t.underbustCz),
-    chest: ring(y.chest, m.chest - t.chestBustReduce * m.bust - t.chestReduce, t.chestK, t.chestCz),
-    armpit: ring(y.armpit, t.armpitFactor * m.chest - t.armpitBustReduce * m.bust, t.armpitK, t.armpitCz),
-    shoulder: { y: y.shoulder, a: shoulderA, b: t.shoulderK * shoulderA, n, cz: t.shoulderCz },
-    neckBase: ring(y.neckBase, t.neckFactor * m.neck, t.neckK, t.neckCz),
+    crotch: ring('crotch', y.crotch, t.crotchFactor * m.hips, t.crotchK, t.crotchCz),
+    hip: ring('hip', y.hip, m.hips - t.hipReduce, t.hipK, t.hipCz),
+    waist: ring('waist', y.waist, m.waist - t.waistReduce, t.waistK, t.waistCz),
+    underbust: ring('underbust', y.underbust, m.underbust, t.underbustK, t.underbustCz),
+    chest: ring('chest', y.chest, m.chest - t.chestBustReduce * m.bust - t.chestReduce, t.chestK, t.chestCz),
+    armpit: ring('armpit', y.armpit, t.armpitFactor * m.chest - t.armpitBustReduce * m.bust, t.armpitK, t.armpitCz),
+    shoulder: {
+      y: y.shoulder, a: shoulderA, b: shoulderB, n,
+      cz: czFor(t.shoulderCz, shoulderB, t.shoulderK * shoulderA0), aRef: shoulderA0, bRef: t.shoulderK * shoulderA0,
+    },
+    neckBase: ring('neckBase', y.neckBase, t.neckFactor * m.neck, t.neckK, t.neckCz),
   };
   // Robustness for extreme parameter mixes: ring heights must increase strictly from crotch to neckBase.
+  bumpHeights(rings, BASE_RING_NAMES);
+
+  // --- abdomen ring ------------------------------------------------------------------------------------------
+  // Rounding the waist and hip sections is not enough: between them the Hermite still runs almost straight, so a
+  // heavy body gets a thick cylinder instead of a belly. The abdomen ring is placed ON the eight-ring curve (so at
+  // adiposity 0 it is a redundant control point and the tuned silhouette is unchanged to within the re-estimated
+  // tangents) and then pushed forward. Its own circumference is free — it is not one of the measured girths, and
+  // waist / hip / chest are control points, so their measurements cannot move at all.
+  const yA = rings.hip.y + t.abdomenT * (rings.waist.y - rings.hip.y);
+  const o = makeLoft(rings).ringAt(yA, new Float64Array(6));
+  const bulge = bd.adipPos * t.abdomenBulge * (1 + t.abdomenAge * bd.ageF) - bd.adipNeg * t.abdomenLean;
+  const bA = o[1] * (1 + bulge);
+  rings.abdomen = {
+    y: yA,
+    a: o[0] * (1 + bd.adipPos * t.abdomenWiden - bd.adipNeg * t.abdomenWiden * 0.5),
+    b: bA,
+    n,
+    cz: o[2] + (bA - o[1]) * (1 - t.abdomenBack),
+    aRef: o[0], bRef: o[1],
+  };
+  bumpHeights(rings, RING_NAMES);
+  return rings;
+}
+
+/**
+ * Force strictly increasing ring heights (5 mm apart) in list order.
+ * @param {Record<string, Ring>} rings @param {ReadonlyArray<string>} names
+ */
+function bumpHeights(rings, names) {
   let prevY = -Infinity;
-  for (let i = 0; i < RING_NAMES.length; i++) {
-    const r = rings[RING_NAMES[i]];
+  for (let i = 0; i < names.length; i++) {
+    const r = rings[names[i]];
+    if (!r) continue;
     if (r.y < prevY + 0.005) r.y = prevY + 0.005;
     prevY = r.y;
   }
-  return rings;
 }
 
 /**
@@ -130,7 +261,13 @@ export function buildRings(sk, params, tuning) {
  * @param {Record<string, Ring>} rings @returns {Loft}
  */
 export function makeLoft(rings) {
-  const list = RING_NAMES.map((name) => rings[name]);
+  // `abdomen` is absent on the first of the two passes in buildRings, which is how that ring is placed on the curve.
+  /** @type {Ring[]} */
+  const list = [];
+  for (let i = 0; i < RING_NAMES.length; i++) {
+    const r = rings[RING_NAMES[i]];
+    if (r) list.push(r);
+  }
   const N = list.length;
   const ys = new Float64Array(N);
   const va = new Float64Array(N);

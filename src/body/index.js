@@ -10,10 +10,11 @@ import { buildAnchors } from './anchors.js';
 import { buildRenderMesh } from './mesh.js';
 import { RING_NAMES } from './loft.js';
 
-export { PARAM_DEFS, PARAM_KEYS, clampParams, paramsEqual } from './params.js';
+export { PARAM_DEFS, PARAM_KEYS, clampParams, paramsEqual, estimateMeasurements } from './params.js';
 export { BODY_PRESETS, DEFAULT_PRESET_ID, PRESET_LABELS, listPresets } from './presets.js';
 export { CELL_FULL, CELL_COARSE, bakeSdf } from './bake.js';
 export { buildSkeleton, SKELETON_TUNING } from './skeleton.js';
+export { describeBuild, BUILD_TUNING } from './build.js';
 export { analyticBody, sdSphere, sdEllipsoid, sdRoundCone, smin, SMIN_K, SMIN_K_LIMB, PRIM_TUNING } from './primitives.js';
 export { buildRings, makeLoft, unitPerimeter, RING_TUNING, RING_NAMES } from './loft.js';
 export { measureBody } from './measure.js';

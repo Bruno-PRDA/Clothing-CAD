@@ -2097,6 +2097,70 @@ export function packRects(items, sheetWidth, opts)
 
 ## 6. Parametric body (`src/body/`) — agent A3
 
+> **Amendment (A3 + lead, 2026-09-17) — weight and build reshape the body.** `src/body/build.js` turns the three new
+> parameters into dimensionless factors: `adiposity = tanh((BMI − 5*(muscle − 0.35) − 22)/10)`, a `tone` term from
+> muscle, and small age terms, all centred so the tuned presets sit near 0 and the sliders move away from them.
+>
+> `loft.js` spends them on SHAPE AT CONSTANT PERIMETER, which is the whole trick: each ring's aspect `k = b/a` rounds
+> toward 1 with adiposity while `a` is re-solved from the same circumference, so the girth is preserved by
+> construction, and 75% of the depth the rounding adds is spent IN FRONT of the spine — a belly, not a barrel. A ninth
+> `abdomen` ring between waist and hip carries the bulge. `primitives.js` adds taper softening on the upper arm and
+> thigh, muscle bellies on biceps and calf, a thicker neck with a submental sphere, a deltoid cap and gluteal
+> lift/spread. Breasts, buttocks and the pelvis fill now track each ring's UNMODULATED half-width; without that,
+> narrowing a ring pushed them proud of the section and moved measured chest and hips by 2-4 cm.
+>
+> Verified independently of the implementer. At 165 cm with the girths held fixed at chest 88 / waist 70 / hips 96,
+> sweeping weight moves the front of the abdomen from 81.0 mm to 142.0 mm while the back moves only 109.5 to 116.5 mm,
+> and the measured girths stay at 87.8 / 70.0 / 95.7 throughout:
+>
+> | weight | BMI | abdomen front | abdomen back | measured chest / waist / hips |
+> |---|---|---|---|---|
+> | 45 kg | 16.5 | 81.0 mm | −109.5 mm | 87.8 / 70.0 / 95.7 |
+> | 60 kg | 22.0 | 94.5 mm | −111.5 mm | 87.8 / 70.0 / 95.8 |
+> | 75 kg | 27.5 | 118.5 mm | −114.0 mm | 87.8 / 70.0 / 95.9 |
+> | 95 kg | 34.9 | 136.0 mm | −115.5 mm | 87.9 / 70.0 / 95.9 |
+> | 120 kg | 44.1 | 142.0 mm | −116.5 mm | 87.9 / 70.0 / 95.9 |
+>
+> Body self-tests are 15 (the original 12 unchanged, plus `build.factors`, `build.shape` and `build.girthInvariance`,
+> the last holding the same tolerances as `measure.female_m` while weight, muscle and age are swept). A full build is
+> 127-139 ms. Garments still drape on every preset with seam gaps at or under 4.2 mm.
+>
+> Known limits, measured rather than assumed. The abdomen bulge is capped at 0.15 because at 0.18 the `plus_f` skirt's
+> penetration jumps from 4.2 to 5.5 mm: the loft's perpendicular slope correction shrinks the reported depth where
+> `db/dy` is steepest, exactly at the belly, so contact under-corrects there; the real fix is to widen the skirt
+> anchor for the abdomen ring in `anchors.js`. The hip section rounds only half as much as anatomy suggests, because
+> the thigh cones' proximal spheres cut the hip measuring plane and narrowing `a_hip` exposed them (+2.2 cm on
+> `plus_f`); the belly is carried by the waist and abdomen rings instead. And `adiposity` compresses at the extremes —
+> 160 kg and 200 kg on a 1.65 m frame differ by under 0.005, monotone but visually identical.
+
+> **Amendment (lead, 2026-09-17) — weight, build and age; estimating a body from a few numbers.** The body took 20
+> measurements and had no notion of mass at all: you could make a person wider but not heavier, and every girth had to
+> be supplied by hand. `BodyParams` now carries three more — `weight_kg`, `muscle` (0..1 build / exercise level) and
+> `age_y` — bringing it to 23, with slider definitions in `PARAM_DEFS`, values on all nine presets (BMI 16.8 for
+> `child_10` through 21.5 for `female_m` to 32.6 for `plus_f`), defaults in `schema.js`, ranges in `validateShape`, and
+> rows in `index.html`.
+>
+> `body/params.js estimateMeasurements(partial, {overwrite})` fills in every remaining girth and length from height,
+> weight, build, bust fullness and age. The reference is the circumference a uniform cylinder would have at the
+> person's height and mass at the density of water, `C = 2*sqrt(pi * 1000 * weight_kg / height_cm)` cm — one number
+> that already carries most of the size information, since across the nine presets the waist is 1.02 to 1.21 times it,
+> the chest 1.25 to 1.40 and the hips 1.32 to 1.47. What remains is how the mass is distributed, so each girth is
+> `C * (c0 + c1*(BMI - 22) + c2*(muscle - 0.4) + c3*bustFullness)` with coefficients fitted by least squares to the
+> nine presets. They come out anatomically sensible — the waist grows with BMI (+0.017 per unit) and shrinks with
+> build (-0.176) and bust fullness (-0.228); the chest is driven mostly by build (+0.161); the hips mostly by bust
+> fullness (+0.205) — and reproduce all nine presets to within 2.0 cm. Lengths are fractions of height, with the head
+> tapering from a child's larger fraction to the adult one by about 16 years.
+>
+> By default it only fills what the caller has not set, so it completes a body rather than overwriting measurements
+> someone typed; the `Estimate from height & weight` button (`btn-body-estimate`) and `__app.body.estimate()` pass
+> `overwrite`. Verified end to end by acceptance check 26c (`body_estimate`): 180 cm and 95 kg gives chest 111.0,
+> waist 103.0 and hips 109.0 cm, and the body that is then built measures back to within 3 cm; dropping to 62 kg at
+> the same height takes the waist to 72.0 cm.
+>
+> The three parameters are inputs to the SHAPE as well, and that is the point of them — see the shape amendment below.
+> They must never change a measured girth: the girths are explicit inputs that `loft.js` solves the ring semi-axes
+> from, and `measure.js` plus the body self-tests hold every preset to its stated measurements.
+
 Procedural human body from 20 parameters, no assets. Outputs a `BodyModel` (section 3.1): landmarks, anchors, torso rings, a baked `SdfGrid` for collision, a render mesh, and measured circumferences. Imports: `core/types.js`, `core/sdf.js` (`makeGridFromFn`, `sampleSdf`), `core/units.js`; `body/mesh.js` is the only file that imports `three` (`BufferGeometryUtils.mergeGeometries` from `three/addons/utils/BufferGeometryUtils.js`). Everything is in **metres, y up, model faces +z, +x = the model's LEFT**; parameters are cm (`_cm`), converted once in `skeleton.js`.
 
 Files: `params.js`, `presets.js`, `skeleton.js`, `primitives.js`, `loft.js`, `bake.js`, `measure.js`, `anchors.js`, `mesh.js`, `index.js`, `selftest.js`.

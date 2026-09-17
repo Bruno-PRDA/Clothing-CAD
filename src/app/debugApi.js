@@ -923,6 +923,21 @@ export function installDebugApi(ctx, wiring) {
       return applyBodyParams(patch, doCommit);
     },
 
+    /**
+     * Fill in every measurement from height, weight, build and age (body/params.js estimateMeasurements) — the
+     * body-visualizer.com flow. Without `overwrite` it only fills what is missing; the UI button passes overwrite.
+     * @param {{overwrite?: boolean}} [opts] @returns {any} the new body params
+     */
+    estimate(opts) {
+      const overwrite = !!(opts && opts.overwrite !== false);
+      if (typeof bodyMod.estimateMeasurements !== 'function') throw fail('E_NO_BODY', 'estimateMeasurements unavailable');
+      commit((d) => {
+        d.body.params = bodyMod.estimateMeasurements(d.body.params, { overwrite });
+        d.body.preset = 'custom';
+      }, 'body:estimate');
+      return clone(liveDoc().body.params);
+    },
+
     /** @param {string} id @returns {any} */
     setPreset(id) {
       const presets = bodyMod.BODY_PRESETS || {};

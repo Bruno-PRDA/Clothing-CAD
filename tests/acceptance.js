@@ -1088,6 +1088,44 @@ async function checkSizeDrapes() {
   return `simulated pattern width S ${fmt(s)} / M ${fmt(m)} / L ${fmt(l)} / XL ${fmt(xl)} mm`;
 }
 
+/**
+ * A body can be built from a handful of real numbers — the body-visualizer.com flow (SPEC 6.1 estimateMeasurements).
+ * Height, weight, build and bust fullness fill in every girth and length, and the body that gets built must actually
+ * MEASURE back to the estimate, which is the only thing that proves the estimate is realisable.
+ * @returns {Promise<string>}
+ */
+async function checkBodyEstimate() {
+  await reloadSample('tshirt');
+  app().ui.setValue('body-height_cm', 180);
+  app().ui.setValue('body-weight_kg', 95);
+  app().ui.setValue('body-muscle', 0.4);
+  app().ui.setValue('body-bustFullness', 0);
+  await app().idle();
+  app().ui.click('btn-body-estimate');
+  await app().idle();
+  const p = app().body.params();
+  expect(p.height_cm === 180 && p.weight_kg === 95, `estimate changed height/weight: ${p.height_cm} cm, ${p.weight_kg} kg`);
+  expect(p.chest_cm > 95 && p.chest_cm < 130, `estimated chest ${fmt(p.chest_cm)} cm is not plausible for 180 cm / 95 kg`);
+  expect(p.waist_cm > 85 && p.waist_cm < 120, `estimated waist ${fmt(p.waist_cm)} cm is not plausible`);
+  expect(p.hips_cm > 90 && p.hips_cm < 130, `estimated hips ${fmt(p.hips_cm)} cm is not plausible`);
+  expect(p.chest_cm > p.waist_cm, `estimated chest ${fmt(p.chest_cm)} is not larger than waist ${fmt(p.waist_cm)}`);
+  await app().idle();
+  const m = app().body.measured();
+  expect(Math.abs(m.chest_cm - p.chest_cm) < 3, `built body measures chest ${fmt(m.chest_cm)} against an estimate of ${fmt(p.chest_cm)}`);
+  expect(Math.abs(m.waist_cm - p.waist_cm) < 3, `built body measures waist ${fmt(m.waist_cm)} against an estimate of ${fmt(p.waist_cm)}`);
+  expect(Math.abs(m.hips_cm - p.hips_cm) < 3.5, `built body measures hips ${fmt(m.hips_cm)} against an estimate of ${fmt(p.hips_cm)}`);
+  // a heavier person of the same height must come out bigger everywhere that carries mass
+  app().ui.setValue('body-weight_kg', 62);
+  await app().idle();
+  app().ui.click('btn-body-estimate');
+  await app().idle();
+  const lean = app().body.params();
+  expect(lean.waist_cm < p.waist_cm - 10, `at 62 kg the waist is ${fmt(lean.waist_cm)}, barely under the 95 kg waist ${fmt(p.waist_cm)}`);
+  expect(lean.chest_cm < p.chest_cm, 'a lighter body must not estimate a larger chest');
+  drapeStage = 0;
+  return `180 cm 95 kg -> chest ${fmt(p.chest_cm)} waist ${fmt(p.waist_cm)} hips ${fmt(p.hips_cm)} cm, measured back within 3 cm; at 62 kg waist ${fmt(lean.waist_cm)} cm`;
+}
+
 /** How long the runner waits for a timed-out check's abandoned work to settle before starting the next one. */
 const SETTLE_AFTER_TIMEOUT_MS = 30000;
 
@@ -1122,6 +1160,7 @@ export const CHECKS = Object.freeze([
   { id: '25', name: 'editor_api', timeoutMs: 20000, fn: checkEditorApi },
   { id: '26', name: 'ui_clicks', timeoutMs: 20000, fn: checkUiClicks },
   { id: '26b', name: 'size_drapes', timeoutMs: 30000, fn: checkSizeDrapes },
+  { id: '26c', name: 'body_estimate', timeoutMs: 20000, fn: checkBodyEstimate },
   { id: '27', name: 'runtime', timeoutMs: 5000, fn: checkRuntime },
 ]);
 

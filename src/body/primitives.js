@@ -2,6 +2,7 @@
 
 import { buildSkeleton } from './skeleton.js';
 import { buildRings, makeLoft } from './loft.js';
+import { describeBuild } from './build.js';
 
 /** @typedef {import('../core/types.js').BodyParams} BodyParams */
 /** @typedef {import('../core/types.js').Vec3} Vec3 */
@@ -60,6 +61,29 @@ export const PRIM_TUNING = Object.freeze({
   kLimb: SMIN_K_LIMB,     // shoulders, upper arms, thighs
   kPelvis: 0.016,         // pelvis fill (forms the crotch)
   kSoft: SMIN_K,          // breasts, buttocks, neck, head — all interior blends
+
+  // --- build modulation (weight_kg / muscle / age_y via build.js) ---------------------------------------------
+  // Adiposity SOFTENS the limb taper: a heavy upper arm is nearly as thick at the elbow as at the shoulder, and a
+  // heavy thigh barely narrows toward the knee. Leanness sharpens it toward the joint's own girth. Expressed as a
+  // fraction of the way from the tuned mid-joint radius to the proximal radius (soften) or the distal one (sharpen),
+  // so nothing can invert the cone.
+  taperSoften: 0.40, taperSharpen: 0.22,
+  // Muscle adds a BELLY to the upper arm and the calf — the one thing that distinguishes a trained limb from a thick
+  // one at the same girth. Modelled as a sphere on the limb axis whose radius is the cone's own radius there plus a
+  // fraction of the proximal radius, so it is exactly buried (zero effect) at tone <= 0 and emerges continuously.
+  bicepsT: 0.40, bicepsBulge: 0.11,
+  calfBellyT: 0.26, calfBellyBulge: 0.10,
+  deltoidMuscle: 0.06,    // shoulder-sphere radius per unit tone
+  // Neck and chin. High adiposity thickens the neck and fills the submental triangle (the double chin); this is very
+  // visible for very little geometry. neck_cm is an input but is not one of measure.js's three ray-cast girths.
+  neckFat: 0.10,          // neck round-cone radius per unit adiposity
+  submentalR: 0.032,      // submental sphere radius at adiposity 1, times s
+  submentalZ: 0.030,      // its z offset from the chin landmark, times s
+  // Gluteal shape. Muscle lifts and compacts it, adiposity drops and spreads it. Deliberately small: the buttock
+  // ellipsoids are inside the hip ring's measuring plane, so anything bigger moves the measured hip circumference.
+  glutePosture: 0.012,    // metres of lift per unit tone / drop per unit adiposity
+  gluteFirm: 0.05,        // y-radius shrink per unit tone, z-radius growth per unit tone
+  gluteSpread: 0.06,      // x/y-radius growth per unit adiposity
 });
 /** Nodes farther than this (metres) from every bounding sphere take the cheapest lower bound (SPEC 6.4). */
 export const FAR_DISTANCE = 0.10;
@@ -331,40 +355,74 @@ export function analyticBody(params, tuning) {
   const TWO_PI = 2 * Math.PI;
 
   const pt = tuning ? { ...PRIM_TUNING, ...tuning } : PRIM_TUNING;
+  const bd = describeBuild(params, tuning);
+  /** @param {Vec3} p @param {Vec3} q @param {number} f @returns {Vec3} */
+  const lerp3 = (p, q, f) => [p[0] + (q[0] - p[0]) * f, p[1] + (q[1] - p[1]) * f, p[2] + (q[2] - p[2]) * f];
   /** @type {Primitive[]} */
   const prims = [];
   // 1 head
   prims.push(ellipsoid('head', 'smin', [0, y.chin + m.headH / 2, 0.01], [0.34 * m.headH, 0.5 * m.headH, 0.41 * m.headH], null, pt.kSoft));
-  // 2 neck
-  prims.push(roundCone('neck', 'smin', [0, y.shoulder + 0.01, 0], m.neck / TWO_PI * 1.05, [0, y.chin - 0.005, 0.015], m.neck / TWO_PI, pt.kSoft));
-  // 3-4 shoulders (small blend radius: these bound the armpit slot)
-  const rSh = pt.shoulderRadius * s * Math.sqrt(params.shoulderWidth_cm / 38);
+  // 2 neck — thickened by adiposity (neck_cm is an input, but it is not one of measure.js's three ray-cast girths)
+  const rNk = m.neck / TWO_PI * (1 + pt.neckFat * bd.adipPos);
+  prims.push(roundCone('neck', 'smin', [0, y.shoulder + 0.01, 0], rNk * 1.05, [0, y.chin - 0.005, 0.015], rNk, pt.kSoft));
+  // 2b submental fullness (the double chin): radius grows from zero with adiposity, so it is continuous at the gate.
+  const hasSubmental = bd.adipPos > 0.02;
+  if (hasSubmental) {
+    prims.push(sphere('submental', 'smin', [0, y.chin - 0.010 * s, pt.submentalZ * s], pt.submentalR * s * bd.adipPos, pt.kSoft));
+  }
+  // 3-4 shoulders (small blend radius: these bound the armpit slot); muscle adds the deltoid cap.
+  const rSh = pt.shoulderRadius * s * Math.sqrt(params.shoulderWidth_cm / 38) * (1 + pt.deltoidMuscle * bd.tone);
   prims.push(sphere('shoulderL', 'smin', J.shoulderL, rSh, pt.kLimb));
   prims.push(sphere('shoulderR', 'smin', J.shoulderR, rSh, pt.kLimb));
-  // 5-6 breasts
+  // 5-6 breasts. `aRef / a` keeps them at the same RELATIVE position on the chest section when adiposity rounds it:
+  // an absolute bx on a narrower section would push them proud of the superellipse and inflate the measured chest.
   const rc = rings.chest;
   const bf = 0.5 + m.bust;
-  const bx = 0.085 * (params.chest_cm / 88);
+  const cw = rc.aRef ? rc.a / rc.aRef : 1;
+  const bx = 0.085 * (params.chest_cm / 88) * cw;
   const bz = rc.cz + rc.b - 0.025;
-  prims.push(ellipsoid('breastL', 'smin', [bx, y.chest + 0.01, bz], [0.070 * bf, 0.060 * bf, 0.045 * bf], null, pt.kSoft));
-  prims.push(ellipsoid('breastR', 'smin', [-bx, y.chest + 0.01, bz], [0.070 * bf, 0.060 * bf, 0.045 * bf], null, pt.kSoft));
-  // 7-8 buttocks
+  const bRad = /** @type {Vec3} */ ([0.070 * bf * cw, 0.060 * bf, 0.045 * bf]);
+  prims.push(ellipsoid('breastL', 'smin', [bx, y.chest + 0.01, bz], bRad, null, pt.kSoft));
+  prims.push(ellipsoid('breastR', 'smin', [-bx, y.chest + 0.01, bz], bRad, null, pt.kSoft));
+  // 7-8 buttocks (same relative-position rule as the breasts). Muscle lifts and compacts them, adiposity drops and
+  // spreads them; both effects are small on purpose, because these sit in the hip ring's measuring plane.
   const rh = rings.hip;
   const hf = params.hips_cm / 96;
-  const gx = pt.buttockX * hf;
+  const hw = rh.aRef ? rh.a / rh.aRef : 1;
+  const gx = pt.buttockX * hf * hw;
   const gz = rh.cz - rh.b + pt.buttockInset;
   const gs = pt.buttockScale * hf;
-  prims.push(ellipsoid('buttockL', 'smin', [gx, y.hip - pt.buttockDrop, gz], [0.090 * gs, 0.080 * gs, 0.060 * gs], null, pt.kSoft));
-  prims.push(ellipsoid('buttockR', 'smin', [-gx, y.hip - pt.buttockDrop, gz], [0.090 * gs, 0.080 * gs, 0.060 * gs], null, pt.kSoft));
-  // 9 pelvis fill
-  prims.push(ellipsoid('pelvis', 'smin', [0, y.crotch + 0.06, 0], [J.hipJointL[0] + 0.03, 0.09, 0.85 * rh.b], null, pt.kPelvis));
-  // 10-11 upper arms, 12-13 forearms
+  // The REAR PROJECTION (z radius) and the height of the ellipsoid's centre are deliberately left alone: both sit in
+  // the hip ring's measuring plane, and moving either moves the measured hip circumference by roughly twice as much.
+  // What is free is the vertical spread — long and low for adiposity, short and high for muscle.
+  const gDrop = pt.buttockDrop + pt.glutePosture * (bd.adipPos - bd.tonePos);
+  const gRad = /** @type {Vec3} */ ([
+    0.090 * gs * hw * (1 + pt.gluteSpread * bd.adipPos),
+    0.080 * gs * (1 + pt.gluteSpread * bd.adipPos - pt.gluteFirm * bd.tonePos),
+    0.060 * gs,
+  ]);
+  prims.push(ellipsoid('buttockL', 'smin', [gx, y.hip - gDrop, gz], gRad, null, pt.kSoft));
+  prims.push(ellipsoid('buttockR', 'smin', [-gx, y.hip - gDrop, gz], gRad, null, pt.kSoft));
+  // 9 pelvis fill. Its depth follows the UNMODULATED hip ring: the ellipsoid crosses the hip measuring plane, so
+  // letting it deepen with adiposity would add circumference to a girth the user typed in.
+  prims.push(ellipsoid('pelvis', 'smin', [0, y.crotch + 0.06, 0],
+    [J.hipJointL[0] + 0.03, 0.09, 0.85 * (rh.bRef || rh.b)], null, pt.kPelvis));
+  // 10-11 upper arms, 12-13 forearms. Adiposity softens the taper toward the elbow, leanness sharpens it.
   const rUA = m.upperArm / TWO_PI;
-  const rEl = (m.upperArm + m.forearm) / 2 / TWO_PI;
   const rFA = m.forearm / TWO_PI;
   const rWr = m.wrist / TWO_PI;
+  const rEl0 = (m.upperArm + m.forearm) / 2 / TWO_PI;
+  const rEl = Math.max(rEl0 + (rUA - rEl0) * pt.taperSoften * bd.adipPos - (rEl0 - rFA) * pt.taperSharpen * bd.adipNeg, 0.01);
   prims.push(roundCone('upperArmL', 'smin', J.shoulderL, rUA, J.elbowL, rEl, pt.kLimb));
   prims.push(roundCone('upperArmR', 'smin', J.shoulderR, rUA, J.elbowR, rEl, pt.kLimb));
+  // 11b biceps bellies: a sphere on the upper-arm axis whose radius is the cone's own radius there plus a fraction of
+  // rUA, so it is exactly buried at tone 0 and grows out of the cone continuously.
+  const hasBiceps = bd.tonePos > 0.01;
+  if (hasBiceps) {
+    const rB = rUA + (rEl - rUA) * pt.bicepsT + pt.bicepsBulge * rUA * bd.tonePos;
+    prims.push(sphere('bicepsL', 'smin', lerp3(J.shoulderL, J.elbowL, pt.bicepsT), rB, pt.kLimb));
+    prims.push(sphere('bicepsR', 'smin', lerp3(J.shoulderR, J.elbowR, pt.bicepsT), rB, pt.kLimb));
+  }
   prims.push(roundCone('forearmL', 'min', J.elbowL, rFA, J.wristL, rWr));
   prims.push(roundCone('forearmR', 'min', J.elbowR, rFA, J.wristR, rWr));
   // 14-15 hands
@@ -372,27 +430,42 @@ export function analyticBody(params, tuning) {
   prims.push(ellipsoid('handR', 'min', J.handR, [0.045 * s, 0.09 * s, 0.02 * s], frameAlong(dirs.dFAR)));
   // 16-17 thighs, 18-19 shanks
   const rTh = m.thigh / TWO_PI;
-  const rKn = (m.thigh + m.calf) / 2 / TWO_PI;
   const rCa = m.calf / TWO_PI;
   const rAn = m.ankle / TWO_PI;
+  const rKn0 = (m.thigh + m.calf) / 2 / TWO_PI;
+  const rKn = Math.max(rKn0 + (rTh - rKn0) * pt.taperSoften * bd.adipPos - (rKn0 - rCa) * pt.taperSharpen * bd.adipNeg, 0.01);
   prims.push(roundCone('thighL', 'smin', J.hipJointL, rTh, J.kneeL, rKn, pt.kLimb));
   prims.push(roundCone('thighR', 'smin', J.hipJointR, rTh, J.kneeR, rKn, pt.kLimb));
   prims.push(roundCone('shankL', 'min', J.kneeL, rCa, J.ankleL, rAn));
   prims.push(roundCone('shankR', 'min', J.kneeR, rCa, J.ankleR, rAn));
+  // 19b calf bellies — same construction as the biceps, but a plain union: min of two exact fields IS the exact
+  // distance to their union outside it, so this costs nothing in field quality.
+  const hasCalf = bd.tonePos > 0.01;
+  if (hasCalf) {
+    const rCB = rCa + (rAn - rCa) * pt.calfBellyT + pt.calfBellyBulge * rCa * bd.tonePos;
+    prims.push(sphere('calfBellyL', 'min', lerp3(J.kneeL, J.ankleL, pt.calfBellyT), rCB));
+    prims.push(sphere('calfBellyR', 'min', lerp3(J.kneeR, J.ankleR, pt.calfBellyT), rCB));
+  }
   // 20-21 feet (capsules)
   const rFt = 0.035 * s;
   prims.push(roundCone('footL', 'min', [J.ankleL[0], J.ankleL[1] - 0.03, J.ankleL[2] - 0.03], rFt, J.footEndL, rFt));
   prims.push(roundCone('footR', 'min', [J.ankleR[0], J.ankleR[1] - 0.03, J.ankleR[2] - 0.03], rFt, J.footEndR, rFt));
 
   // Evaluation order (SPEC 6.3): loft, then smin with pelvis, breasts, buttocks, shoulders, neck, head, upper arms,
-  // thighs; then plain min with forearms, hands, shanks, feet.
-  const order = ['pelvis', 'breastL', 'breastR', 'buttockL', 'buttockR', 'shoulderL', 'shoulderR', 'neck', 'head',
-    'upperArmL', 'upperArmR', 'thighL', 'thighR', 'forearmL', 'forearmR', 'handL', 'handR', 'shankL', 'shankR',
-    'footL', 'footR'];
+  // thighs; then plain min with forearms, hands, shanks, feet. The build-dependent primitives are spliced in next to
+  // the part they belong to, so that each one smooth-mins against that part rather than against the whole body.
+  const order = ['pelvis', 'breastL', 'breastR', 'buttockL', 'buttockR', 'shoulderL', 'shoulderR', 'neck'];
+  if (hasSubmental) order.push('submental');
+  order.push('head', 'upperArmL', 'upperArmR');
+  if (hasBiceps) order.push('bicepsL', 'bicepsR');
+  order.push('thighL', 'thighR');
+  const sminCount = order.length;
+  order.push('forearmL', 'forearmR', 'handL', 'handR', 'shankL', 'shankR');
+  if (hasCalf) order.push('calfBellyL', 'calfBellyR');
+  order.push('footL', 'footR');
   const byName = new Map(prims.map((p) => [p.name, p]));
   const ordered = order.map((n) => /** @type {Primitive} */ (byName.get(n)));
   const NP = ordered.length;
-  const sminCount = 13;
 
   // Loft bounding sphere.
   const loftC = [0, (loft.yMin + loft.yMax) / 2, 0];

@@ -194,6 +194,21 @@
             <input id="body-hips_cm" type="range" min="65" max="160" step="0.5" value="96">
             <input id="body-hips_cm-num" type="number" min="65" max="160" step="0.5" value="96">
           </div>
+          <div class="param-row" data-param="weight_kg">
+            <label for="body-weight_kg">Weight (kg)</label>
+            <input id="body-weight_kg" type="range" min="25" max="200" step="0.5" value="58.5">
+            <input id="body-weight_kg-num" type="number" min="25" max="200" step="0.5" value="58.5">
+          </div>
+          <div class="param-row" data-param="muscle">
+            <label for="body-muscle">Build / exercise</label>
+            <input id="body-muscle" type="range" min="0" max="1" step="0.01" value="0.35">
+            <input id="body-muscle-num" type="number" min="0" max="1" step="0.01" value="0.35">
+          </div>
+          <div class="param-row" data-param="age_y">
+            <label for="body-age_y">Age (years)</label>
+            <input id="body-age_y" type="range" min="8" max="90" step="1" value="30">
+            <input id="body-age_y-num" type="number" min="8" max="90" step="1" value="30">
+          </div>
           <div class="param-row" data-param="shoulderWidth_cm">
             <label for="body-shoulderWidth_cm">Shoulder width (cm)</label>
             <input id="body-shoulderWidth_cm" type="range" min="28" max="56" step="0.5" value="38">
@@ -273,6 +288,7 @@
         <div id="body-measured" data-testid="body-measured"></div>
         <div id="body-closest-size" data-testid="body-closest-size"></div>
         <div class="row">
+          <button id="btn-body-estimate" type="button" title="Estimate every measurement from height, weight, build and age">Estimate from height &amp; weight</button>
           <button id="btn-body-fit-size" type="button" title="Copy the active size row into the body parameters">Fit body to active size</button>
           <span id="body-build-ms" data-testid="body-build-ms"></span>
         </div>

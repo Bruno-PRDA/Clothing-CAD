@@ -6,7 +6,7 @@
 
 import { EVENT } from '../../core/events.js';
 import { clamp } from '../../core/units.js';
-import { PARAM_DEFS, BODY_PRESETS, PRESET_LABELS, clampParams } from '../../body/index.js';
+import { PARAM_DEFS, BODY_PRESETS, PRESET_LABELS, clampParams, estimateMeasurements, describeBuild } from '../../body/index.js';
 import { rowByName } from '../../sizing/index.js';
 import { byId } from '../ids.js';
 
@@ -33,6 +33,7 @@ export function createBodyPanel(store, bus, root = document) {
   const elClosest = byId(root, 'body-closest-size');
   const elBuildMs = byId(root, 'body-build-ms');
   const btnFit = byId(root, 'btn-body-fit-size');
+  const btnEstimate = byId(root, 'btn-body-estimate');
 
   /** @type {Map<string, {def:any, range:HTMLInputElement|null, num:HTMLInputElement|null}>} */
   const rows = new Map();
@@ -162,6 +163,18 @@ export function createBodyPanel(store, bus, root = document) {
 
   // ------------------------------------------------------------------ fit body to the active size
 
+  // Fill in every measurement from height, weight, build and age — the body-visualizer.com flow, where a handful of
+  // real numbers is enough to get a plausible person and the individual girths are a refinement afterwards.
+  on(btnEstimate, 'click', () => {
+    if (btnEstimate && typeof (/** @type {any} */ (btnEstimate).blur) === 'function') /** @type {any} */ (btnEstimate).blur();
+    store.update((d) => {
+      d.body.params = estimateMeasurements(d.body.params, { overwrite: true });
+      d.body.preset = 'custom';
+    }, 'body:estimate');
+    bus.emit(EVENT.BODY_PARAMS_COMMIT, { key: null, preset: 'custom', params: structuredClone(store.get().body.params) });
+    bus.emit(EVENT.UI_STATUS, { level: 'info', text: 'Measurements estimated from height, weight and build', source: 'body' });
+  });
+
   on(btnFit, 'click', () => {
     if (btnFit && typeof (/** @type {any} */ (btnFit).blur) === 'function') /** @type {any} */ (btnFit).blur();
     store.update((d) => {
@@ -186,6 +199,20 @@ export function createBodyPanel(store, bus, root = document) {
     }
     if (elMeasured) {
       elMeasured.textContent = '';
+      // BMI and the build it implies, the way body-visualizer.com leads with them: the number that decides how the
+      // soft tissue is shaped, shown next to the girths it deliberately does NOT change.
+      if (model.params && Number.isFinite(Number(model.params.weight_kg)) && Number.isFinite(Number(model.params.height_cm))) {
+        const h = Number(model.params.height_cm) / 100;
+        const bmi = Number(model.params.weight_kg) / (h * h);
+        let adip = NaN;
+        try { adip = Number(describeBuild(model.params).adiposity); } catch (_) { adip = NaN; }
+        const span = doc0.createElement('span');
+        span.dataset.testid = 'body-bmi';
+        span.textContent = 'BMI ' + bmi.toFixed(1)
+          + (Number.isFinite(adip) ? ' · ' + (adip < -0.25 ? 'lean' : adip > 0.45 ? 'heavy' : adip > 0.15 ? 'full' : 'average') : '');
+        elMeasured.appendChild(span);
+        elMeasured.appendChild(doc0.createTextNode(' '));
+      }
       for (const k of MEASURED_KEYS) {
         const target = model.params ? Number(model.params[k]) : NaN;
         const got = model.measured ? Number(model.measured[k]) : NaN;

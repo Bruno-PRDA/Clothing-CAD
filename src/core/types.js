@@ -158,6 +158,9 @@ export {};
  * @property {number} inseam_cm          floor to crotch
  * @property {number} torsoLength_cm     neck base to waist (back length)
  * @property {number} headHeight_cm
+ * @property {number} weight_kg          body mass; with height_cm it gives the BMI that drives soft-tissue shape
+ * @property {number} muscle             0..1 build / exercise level: broadens the shoulders and limbs, keeps the waist
+ * @property {number} age_y              years; small posture and soft-tissue effects
  * @property {number} bustFullness       0..1
  * @property {number} armAbduction_deg   A-pose angle of the upper arm from vertical
  * @property {number} legSpread_deg

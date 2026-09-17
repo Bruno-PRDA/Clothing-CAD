@@ -1,10 +1,14 @@
-// src/body/selftest.js — the 12 cases of SPEC 6.9. Pure; runs under node (no three, no DOM).
+// src/body/selftest.js — the 12 cases of SPEC 6.9, plus three for the build model (weight_kg / muscle / age_y).
+// Pure; runs under node (no three, no DOM).
 
 import { DEFAULT_BODY_PARAMS } from '../core/schema.js';
 import { gridBounds } from '../core/sdf.js';
 import { PARAM_DEFS, clampParams, paramsEqual } from './params.js';
 import { BODY_PRESETS } from './presets.js';
 import { buildSkeleton } from './skeleton.js';
+import { describeBuild } from './build.js';
+import { analyticBody } from './primitives.js';
+import { unitPerimeter, RING_TUNING } from './loft.js';
 import { buildBody, sampleBody } from './index.js';
 import { CELL_FULL, CELL_COARSE } from './bake.js';
 
@@ -40,7 +44,7 @@ export async function runSelfTest() {
 
   results.push(runCase('presets.clamp', () => {
     assert(paramsEqual(DEFAULT_BODY_PARAMS, BODY_PRESETS.female_m), 'schema.DEFAULT_BODY_PARAMS must equal BODY_PRESETS.female_m');
-    assert(PARAM_DEFS.length === 20, 'PARAM_DEFS has 20 entries');
+    assert(PARAM_DEFS.length === 23, 'PARAM_DEFS has 23 entries');
     for (const id of Object.keys(BODY_PRESETS)) {
       const p = BODY_PRESETS[id];
       assert(paramsEqual(clampParams(p), p), 'preset ' + id + ' changed by clampParams');
@@ -166,6 +170,95 @@ export async function runSelfTest() {
       const dc = model.measured.chest_cm - p.chest_cm;
       assert(Math.abs(dc) <= 2.5, id + ': chest ' + model.measured.chest_cm + ' vs ' + p.chest_cm);
       parts.push(id + ' ' + (dc >= 0 ? '+' : '') + dc.toFixed(1));
+    }
+    return parts.join(', ');
+  }));
+
+  results.push(runCase('build.factors', () => {
+    const at = (over) => describeBuild({ ...BODY_PRESETS.female_m, ...over });
+    const bmi25 = at({ height_cm: 170, weight_kg: 72.25 });
+    assert(Math.abs(bmi25.bmi - 25) < 1e-9, 'BMI = weight / height^2, got ' + bmi25.bmi);
+    const neutral = at({ height_cm: 170, weight_kg: 63.58, muscle: 0.35 });
+    assert(Math.abs(neutral.bmi - 22) < 0.01 && Math.abs(neutral.adiposity) < 0.002, 'BMI 22 at the neutral build must give adiposity 0, got ' + neutral.adiposity);
+    assert(at({ muscle: 1 }).tone === 1, 'muscle 1 must reach tone exactly +1, got ' + at({ muscle: 1 }).tone);
+    assert(at({ muscle: 0 }).tone < -0.4, 'muscle 0 tone = ' + at({ muscle: 0 }).tone);
+    // Muscle displaces fat at equal mass: same weight, more build => less adiposity, more tone.
+    const soft = at({ weight_kg: 80, muscle: 0.1 });
+    const hard = at({ weight_kg: 80, muscle: 0.9 });
+    assert(hard.adiposity < soft.adiposity - 0.1 && hard.tone > soft.tone, 'build must lower adiposity at equal mass ('
+      + soft.adiposity.toFixed(2) + ' -> ' + hard.adiposity.toFixed(2) + ')');
+    // Never saturates: the shape has to keep moving past the obese anchor (a hard clamp made 95 kg and 120 kg equal
+    // on a 1.65 m frame). Strictly monotone everywhere, and still visibly moving across the plausible range.
+    let prev = -Infinity;
+    for (const w of [40, 55, 70, 85, 100, 120, 160, 200]) {
+      const a = at({ weight_kg: w }).adiposity;
+      assert(a > prev, 'adiposity must be strictly increasing in weight: ' + w + ' kg gave ' + a.toFixed(5));
+      if (w <= 120) assert(a > prev + 0.005, 'adiposity must keep rising with weight: ' + w + ' kg gave ' + a.toFixed(3));
+      assert(a > -1 && a < 1, 'adiposity out of range at ' + w + ' kg: ' + a);
+      prev = a;
+    }
+    const P = (id) => describeBuild(BODY_PRESETS[id]);
+    assert(P('plus_f').adiposity > P('male_l').adiposity && P('male_l').adiposity > P('female_m').adiposity
+      && P('female_m').adiposity > P('child_10').adiposity, 'preset adiposity ordering');
+    assert(P('athletic_m').tone === Math.max(...Object.keys(BODY_PRESETS).map((id) => P(id).tone)), 'athletic_m must be the most toned preset');
+    assert(P('athletic_m').adiposity < P('female_l').adiposity, 'athletic_m (BMI 24.2, trained) must be leaner than female_l (BMI 24.2, not)');
+    return 'child_10 ' + P('child_10').adiposity.toFixed(2) + ', female_m ' + P('female_m').adiposity.toFixed(2)
+      + ', male_l ' + P('male_l').adiposity.toFixed(2) + ', plus_f ' + P('plus_f').adiposity.toFixed(2)
+      + '; athletic_m tone ' + P('athletic_m').tone.toFixed(2);
+  }));
+
+  results.push(runCase('build.shape', () => {
+    // Analytic only (no bake): the rings are the shape model, and this is what must actually move.
+    const ring = (over, name) => analyticBody(clampParams({ ...BODY_PRESETS.female_m, ...over })).rings[name];
+    const front = (r) => r.cz + r.b;
+    const back = (r) => r.cz - r.b;
+    let pk = -Infinity;
+    let pcz = -Infinity;
+    let pf = -Infinity;
+    const lo = ring({ weight_kg: 45 }, 'abdomen');
+    let hi = lo;
+    for (const w of [45, 60, 75, 95, 120]) {
+      const wr = ring({ weight_kg: w }, 'waist');
+      const ab = ring({ weight_kg: w }, 'abdomen');
+      const k = wr.b / wr.a;
+      assert(k > pk + 0.005, 'waist k must rise with weight: ' + w + ' kg gave ' + k.toFixed(3));
+      assert(wr.cz > pcz + 0.0002, 'waist cz must move forward with weight: ' + w + ' kg gave ' + wr.cz.toFixed(4));
+      assert(front(ab) > pf + 0.002, 'abdomen front must move forward with weight: ' + w + ' kg gave ' + f3(front(ab)));
+      // Constant perimeter: the measured girth is an input, so `a` is re-solved for the new k.
+      const C = wr.a * unitPerimeter(wr.b / wr.a, wr.n);
+      assert(Math.abs(C - (BODY_PRESETS.female_m.waist_cm / 100 - RING_TUNING.waistReduce)) < 1e-9,
+        'waist ring perimeter drifted to ' + C.toFixed(6) + ' m at ' + w + ' kg');
+      pk = k; pcz = wr.cz; pf = front(ab); hi = ab;
+    }
+    const dFront = front(hi) - front(lo);
+    const dBack = back(lo) - back(hi);
+    assert(dFront > 0.040, 'abdomen only moved forward ' + (dFront * 1000).toFixed(1) + ' mm over 45 -> 120 kg');
+    assert(dBack < 0.35 * dFront, 'a belly protrudes forward: front +' + (dFront * 1000).toFixed(1)
+      + ' mm but back -' + (dBack * 1000).toFixed(1) + ' mm');
+    // Muscle broadens the shoulders and flattens (widens) the chest at the same circumference.
+    const sh0 = ring({ muscle: 0 }, 'shoulder');
+    const sh1 = ring({ muscle: 1 }, 'shoulder');
+    const ch0 = ring({ muscle: 0 }, 'chest');
+    const ch1 = ring({ muscle: 1 }, 'chest');
+    assert(sh1.a > sh0.a + 0.005, 'muscle must broaden the shoulder ring: ' + f3(sh0.a) + ' -> ' + f3(sh1.a));
+    assert(ch1.b / ch1.a < ch0.b / ch0.a - 0.05, 'muscle must flatten the chest section');
+    assert(ch1.a > ch0.a, 'flatter at the same circumference means wider: ' + f3(ch0.a) + ' -> ' + f3(ch1.a));
+    return 'abdomen front +' + (dFront * 1000).toFixed(0) + ' mm / back -' + (dBack * 1000).toFixed(0)
+      + ' mm over 45-120 kg; shoulder a ' + f3(sh0.a) + ' -> ' + f3(sh1.a) + ' m over the build slider';
+  }));
+
+  results.push(runCase('build.girthInvariance', () => {
+    // The point of the whole model: weight and build reshape the body WITHOUT moving a measured girth. Same
+    // tolerances as measure.female_m — this case may never be loosened below them.
+    const parts = [];
+    for (const over of [{ weight_kg: 45 }, { weight_kg: 95 }, { muscle: 0 }, { muscle: 1 }, { age_y: 75, weight_kg: 78 }]) {
+      const p = clampParams({ ...BODY_PRESETS.female_m, ...over });
+      const me = buildBody(p, { cell: CELL_FULL }).measured;
+      const label = Object.keys(over).map((k) => k + ' ' + over[k]).join('/');
+      assert(Math.abs(me.chest_cm - 88) <= 1.5, label + ': chest ' + me.chest_cm);
+      assert(Math.abs(me.waist_cm - 70) <= 1.5, label + ': waist ' + me.waist_cm);
+      assert(Math.abs(me.hips_cm - 96) <= 2.0, label + ': hips ' + me.hips_cm);
+      parts.push(label + ' ' + me.chest_cm + '/' + me.waist_cm + '/' + me.hips_cm);
     }
     return parts.join(', ');
   }));
