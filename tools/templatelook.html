@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Template body look</title>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"
+} }
+</script>
+<style>
+  body { font: 12px/1.4 ui-monospace, monospace; background: #202225; color: #ddd; margin: 10px; }
+  #grid { display: grid; gap: 8px; }
+  figure { margin: 0; } figcaption { text-align: center; padding: 3px 0; color: #9aa; }
+  canvas { display: block; width: 100%; background: #2a2d31; border-radius: 4px; }
+  #hud { margin-bottom: 8px; color: #9c9; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<div id="hud">loading…</div>
+<div id="grid"></div>
+<script type="module">
+import * as THREE from 'three';
+import { loadTemplate, applyTargets, computeNormals, jointAt } from '/src/body/template.js';
+import { fitBody } from '/src/body/fit.js';
+
+const q = new URLSearchParams(location.search);
+const W = Number(q.get('w') || 195), H = Number(q.get('h') || 430);
+const wire = q.get('wire') === '1';
+const fy = q.get('fy') === null ? null : Number(q.get('fy'));
+const fh = Number(q.get('fh') || 1.12);
+const hud = document.getElementById('hud');
+
+const t0 = performance.now();
+const tpl = await loadTemplate('/assets/body/');
+const tLoad = performance.now() - t0;
+
+// ?fit=female_m;male_m;plus_f  — solve each named preset's measurements and render the result
+const FIT_CASES = {
+  female_s: { height_cm: 160, weight_kg: 53, muscle: 0.30, age_y: 28, sex: 1, bustFullness: 0.35, chest_cm: 84, underbust_cm: 72, waist_cm: 66, hips_cm: 92, neck_cm: 33, shoulderWidth_cm: 37, upperArm_cm: 25.5, wrist_cm: 15, thigh_cm: 51, calf_cm: 34.5, ankle_cm: 21.5, armLength_cm: 54, inseam_cm: 74, torsoLength_cm: 39 },
+  female_m: { height_cm: 165, weight_kg: 58.5, muscle: 0.35, age_y: 30, sex: 1, bustFullness: 0.40, chest_cm: 88, underbust_cm: 76, waist_cm: 70, hips_cm: 96, neck_cm: 34, shoulderWidth_cm: 38, upperArm_cm: 27, wrist_cm: 15.5, thigh_cm: 54, calf_cm: 36, ankle_cm: 22, armLength_cm: 56, inseam_cm: 76, torsoLength_cm: 40 },
+  male_m: { height_cm: 178, weight_kg: 75, muscle: 0.50, age_y: 32, sex: 0, bustFullness: 0, chest_cm: 98, underbust_cm: 90, waist_cm: 84, hips_cm: 98, neck_cm: 39, shoulderWidth_cm: 46, upperArm_cm: 30, wrist_cm: 17.5, thigh_cm: 56, calf_cm: 38, ankle_cm: 23.5, armLength_cm: 62, inseam_cm: 82, torsoLength_cm: 44 },
+  plus_f: { height_cm: 168, weight_kg: 92, muscle: 0.25, age_y: 40, sex: 1, bustFullness: 0.70, chest_cm: 112, underbust_cm: 98, waist_cm: 100, hips_cm: 122, neck_cm: 38, shoulderWidth_cm: 41, upperArm_cm: 36, wrist_cm: 17.5, thigh_cm: 68, calf_cm: 43, ankle_cm: 25, armLength_cm: 57, inseam_cm: 76, torsoLength_cm: 41 },
+  child_10: { height_cm: 140, weight_kg: 33, muscle: 0.30, age_y: 10, sex: 0.5, bustFullness: 0, chest_cm: 68, underbust_cm: 62, waist_cm: 60, hips_cm: 72, neck_cm: 28, shoulderWidth_cm: 31, upperArm_cm: 20, wrist_cm: 13, thigh_cm: 40, calf_cm: 28, ankle_cm: 19, armLength_cm: 47, inseam_cm: 65, torsoLength_cm: 33 },
+  athletic_m: { height_cm: 182, weight_kg: 80, muscle: 0.85, age_y: 27, sex: 0, bustFullness: 0, chest_cm: 104, underbust_cm: 94, waist_cm: 82, hips_cm: 98, neck_cm: 40, shoulderWidth_cm: 49, upperArm_cm: 34, wrist_cm: 18, thigh_cm: 60, calf_cm: 40, ankle_cm: 24, armLength_cm: 64, inseam_cm: 84, torsoLength_cm: 45 },
+};
+const FIT = (q.get('fit') || '').split(';').map((s) => s.trim()).filter(Boolean);
+
+// ?t=name:w,name:w   — several bodies to compare are separated by ';', labelled by ?l=a;b
+const SETS = (q.get('t') || '').split(';').map(s => s.trim());
+const parse = (s) => s.split(',').map(x => x.trim()).filter(Boolean)
+  .map(x => { const i = x.lastIndexOf(':'); return [x.slice(0, i), Number(x.slice(i + 1))]; });
+
+const bodies = [];
+let tMorph = 0;
+for (const name of FIT) {
+  const params = FIT_CASES[name];
+  if (!params) continue;
+  const r = fitBody(tpl, params);
+  const n = computeNormals(tpl, r.pos);
+  let lo = Infinity, hi = -Infinity;
+  for (let i = 0; i < tpl.nBodyVerts; i++) { const y = r.pos[i * 3 + 1]; if (y < lo) lo = y; if (y > hi) hi = y; }
+  const keys = Object.keys(r.residual);
+  const rms = Math.sqrt(keys.reduce((s, k) => s + r.residual[k] ** 2, 0) / keys.length);
+  bodies.push({ weights: r.weights, pos: new Float32Array(r.pos), nrm: n, minY: lo, maxY: hi,
+    label: `${name} (rms ${rms.toFixed(1)}cm)` });
+  tMorph += r.ms;
+}
+for (const set of FIT.length ? [] : SETS) {
+  const weights = parse(set);
+  const t1 = performance.now();
+  const p = applyTargets(tpl, weights);
+  tMorph += performance.now() - t1;
+  const n = computeNormals(tpl, p);
+  let lo = Infinity, hi = -Infinity;
+  for (let i = 0; i < tpl.nBodyVerts; i++) { const y = p[i * 3 + 1]; if (y < lo) lo = y; if (y > hi) hi = y; }
+  bodies.push({ weights, pos: p, nrm: n, minY: lo, maxY: hi,
+    label: (q.get('l') || '').split(';')[bodies.length] || set || 'rest' });
+}
+const { pos, minY } = bodies[0] || { pos: tpl.rest, minY: 0 };
+hud.textContent =
+  `${tpl.nVerts} verts (${tpl.nBodyVerts} body), ${tpl.nTris} tris, ${tpl.targets.size} targets  ` +
+  `| load ${tLoad.toFixed(0)}ms morph ${(tMorph / bodies.length).toFixed(1)}ms/body | heights ` +
+  bodies.map(b => (b.maxY - b.minY).toFixed(3)).join(' / ') + ' m';
+
+for (const b of bodies) {
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(b.pos, 3));
+  g.setAttribute('normal', new THREE.BufferAttribute(b.nrm, 3));
+  g.setIndex(new THREE.BufferAttribute(tpl.indices, 1));
+  g.setDrawRange(0, tpl.nTris * 3);
+  g.computeBoundingBox();
+  b.geo = g; b.centre = new THREE.Vector3(); g.boundingBox.getCenter(b.centre);
+}
+// one camera framing for every body so sizes are comparable
+const height = Math.max(...bodies.map(b => b.maxY - b.minY));
+const centre = bodies[0].centre.clone();
+centre.y = (Math.max(...bodies.map(b => b.maxY)) + Math.min(...bodies.map(b => b.minY))) / 2;
+
+const mat = wire
+  ? new THREE.MeshBasicMaterial({ color: '#c9a58a', wireframe: true })
+  : new THREE.MeshStandardMaterial({ color: '#c9a58a', roughness: 0.75, metalness: 0, side: THREE.DoubleSide });
+
+let VIEWS = [[0, 'front'], [40, 'three-quarter'], [90, 'side'], [180, 'back']];
+const only = q.get('only');
+if (only) VIEWS = VIEWS.filter(v => only.split(',').includes(v[1]));
+const grid = document.getElementById('grid');
+grid.style.gridTemplateColumns = `repeat(${VIEWS.length * bodies.length}, max-content)`;
+
+for (const b of bodies) for (const [az, label] of VIEWS) {
+  const fig = document.createElement('figure');
+  const cv = document.createElement('canvas');
+  cv.width = W * 2; cv.height = H * 2;
+  const cap = document.createElement('figcaption');
+  cap.textContent = bodies.length > 1 ? `${b.label} — ${label}` : label;
+  fig.append(cv, cap); grid.append(fig);
+
+  const renderer = new THREE.WebGLRenderer({ canvas: cv, antialias: true });
+  renderer.setClearColor('#2a2d31', 1);
+  const scene = new THREE.Scene();
+  scene.add(new THREE.Mesh(b.geo, mat));
+  scene.add(new THREE.HemisphereLight('#ffffff', '#3a3630', 1.4));
+  const key = new THREE.DirectionalLight('#fff6ec', 2.0); key.position.set(1.2, 2.0, 1.6); scene.add(key);
+  const rim = new THREE.DirectionalLight('#8fb3ff', 0.9); rim.position.set(-1.4, 1.2, -1.4); scene.add(rim);
+
+  const halfH = height * fh * 0.5, halfW = halfH * (W / H);
+  const cam = new THREE.OrthographicCamera(-halfW, halfW, halfH, -halfH, 0.01, 20);
+  const a = az * Math.PI / 180;
+  cam.position.set(centre.x + 5 * Math.sin(a), centre.y, centre.z + 5 * Math.cos(a));
+  const target = centre.clone();
+  if (fy !== null) target.y = minY + height * fy;
+  cam.position.y += target.y - centre.y;
+  cam.lookAt(target);
+  renderer.render(scene, cam);
+}
+
+window.__tpl = { tpl, bodies, pos, applyTargets, jointAt: (n) => jointAt(tpl, pos, n), done: true };
+</script>
+</body>
+</html>

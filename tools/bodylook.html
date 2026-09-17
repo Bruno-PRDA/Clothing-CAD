@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Body look</title>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"
+} }
+</script>
+<style>
+  body { font: 12px/1.4 ui-monospace, monospace; background: #202225; color: #ddd; margin: 10px; }
+  #grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  figure { margin: 0; }
+  figcaption { text-align: center; padding: 3px 0; color: #9aa; }
+  canvas { display: block; width: 100%; background: #2a2d31; border-radius: 4px; }
+  #hud { margin-bottom: 8px; color: #9c9; }
+</style>
+</head>
+<body>
+<div id="hud">building…</div>
+<div id="grid"></div>
+<script type="module">
+import * as THREE from 'three';
+import { buildBody, BODY_PRESETS } from '/src/body/index.js';
+
+const q = new URLSearchParams(location.search);
+const presetId = q.get('preset') || 'female_m';
+const wire = q.get('wire') === '1';
+const W = Number(q.get('w') || 340), H = Number(q.get('h') || 620);
+
+const params = { ...(BODY_PRESETS[presetId] || BODY_PRESETS.female_m) };
+for (const [k, v] of q.entries()) if (k in params && Number.isFinite(Number(v))) params[k] = Number(v);
+
+const model = buildBody(params);
+const g = model.geometry;
+document.getElementById('hud').textContent =
+  `${presetId} — ${g.positions.length / 3} verts, ${g.indices.length / 3} tris, ` +
+  `measured chest ${model.measured.chest_cm.toFixed(1)} waist ${model.measured.waist_cm.toFixed(1)} hips ${model.measured.hips_cm.toFixed(1)} cm`;
+
+const geo = new THREE.BufferGeometry();
+geo.setAttribute('position', new THREE.BufferAttribute(g.positions, 3));
+geo.setAttribute('normal', new THREE.BufferAttribute(g.normals, 3));
+geo.setIndex(new THREE.BufferAttribute(g.indices, 1));
+geo.computeBoundingBox();
+const bb = geo.boundingBox;
+const centre = new THREE.Vector3(); bb.getCenter(centre);
+const height = bb.max.y - bb.min.y;
+
+const mat = wire
+  ? new THREE.MeshBasicMaterial({ color: '#c9a58a', wireframe: true })
+  : new THREE.MeshStandardMaterial({ color: '#c9a58a', roughness: 0.75, metalness: 0 });
+
+// azimuth (deg from +Z, i.e. from the front), elevation, label
+let VIEWS = [
+  [0, 0, 'front'], [40, 0, 'three-quarter'], [90, 0, 'side'], [180, 0, 'back'],
+];
+const only = q.get('only');
+if (only) VIEWS = VIEWS.filter(v => only.split(',').includes(v[2]));
+document.getElementById('grid').style.gridTemplateColumns = `repeat(${VIEWS.length}, max-content)`;
+// optional framing: fy = fraction of body height to centre on, fh = fraction of height to span
+const fy = q.get('fy') === null ? null : Number(q.get('fy'));
+const fh = Number(q.get('fh') || 1.12);
+
+const grid = document.getElementById('grid');
+for (const [az, el, label] of VIEWS) {
+  const fig = document.createElement('figure');
+  const cv = document.createElement('canvas');
+  cv.width = W * 2; cv.height = H * 2;
+  const cap = document.createElement('figcaption'); cap.textContent = label;
+  fig.append(cv, cap); grid.append(fig);
+
+  const renderer = new THREE.WebGLRenderer({ canvas: cv, antialias: true });
+  renderer.setClearColor('#2a2d31', 1);
+  const scene = new THREE.Scene();
+  scene.add(new THREE.Mesh(geo, mat));
+  scene.add(new THREE.HemisphereLight('#ffffff', '#3a3630', 1.4));
+  const key = new THREE.DirectionalLight('#fff6ec', 2.0);
+  key.position.set(1.2, 2.0, 1.6); scene.add(key);
+  const rim = new THREE.DirectionalLight('#8fb3ff', 0.9);
+  rim.position.set(-1.4, 1.2, -1.4); scene.add(rim);
+
+  // orthographic so proportions read true, no perspective flattering
+  const aspect = W / H;
+  const halfH = height * fh * 0.5, halfW = halfH * aspect;
+  const cam = new THREE.OrthographicCamera(-halfW, halfW, halfH, -halfH, 0.01, 20);
+  const a = az * Math.PI / 180, e = el * Math.PI / 180;
+  cam.position.set(
+    centre.x + 5 * Math.cos(e) * Math.sin(a),
+    centre.y + 5 * Math.sin(e),
+    centre.z + 5 * Math.cos(e) * Math.cos(a),
+  );
+  const target = centre.clone();
+  if (fy !== null) target.y = bb.min.y + height * fy;
+  cam.position.y += target.y - centre.y;
+  cam.lookAt(target);
+  renderer.render(scene, cam);
+}
+window.__bodylook = { done: true, verts: g.positions.length / 3, tris: g.indices.length / 3, measured: model.measured };
+</script>
+</body>
+</html>
