@@ -152,6 +152,15 @@ function buildProfile(A, sdf, tMin, tMax, c, f, sVec) {
       if (valid[row]) { nextV = row; } else if (nextV >= 0) { r.copyWithin(row * ang, nextV * ang, nextV * ang + ang); valid[row] = 2; }
     }
   }
+  // Garments BRIDGE a concavity, they do not sink into one, so every row is made convex before any arc
+  // length is measured off it. On the analytic body this changed nothing — its sections are superellipses
+  // and already convex — but a real scanned torso is not: at bust height the cross-section has a notch
+  // between the breasts, and a radial profile follows it straight down. Measured on the template body:
+  // neighbouring front-panel vertices arranged 9 cm apart in depth, one at z = 0.076 in the cleavage and
+  // the next at z = 0.160 on the breast, and the edge between them settled at 624 % strain. The armpit
+  // and the hollow of the back are the same shape of problem.
+  for (let row = 0; row < rows; row++) convexifyRow(r, row * ang, ang, dTheta);
+
   // Cumulative arc length per row (chord lengths between successive samples).
   for (let row = 0; row < rows; row++) {
     const ro = row * ang;
@@ -166,6 +175,61 @@ function buildProfile(A, sdf, tMin, tMax, c, f, sVec) {
     }
   }
   return { rows, tMin, tStep, r, s, ease };
+}
+
+/**
+ * Replace one row of radii with the radii of its convex hull, sampled at the same angles.
+ *
+ * The row is a star-shaped polygon around the axis (angle a is at θ = a·dTheta, radius r[off+a]). Taking
+ * the hull of those points and re-measuring the radius along each original ray is exactly "lay a taut
+ * band around the section": concave stretches get spanned by a straight chord, convex ones are untouched.
+ * The axis is inside the body, so the hull contains the origin and every ray hits exactly one hull edge.
+ *
+ * @param {Float64Array} r @param {number} off @param {number} ang @param {number} dTheta
+ */
+function convexifyRow(r, off, ang, dTheta) {
+  const x = new Float64Array(ang);
+  const y = new Float64Array(ang);
+  for (let a = 0; a < ang; a++) {
+    const rad = r[off + a];
+    x[a] = rad * Math.cos(dTheta * a);
+    y[a] = rad * Math.sin(dTheta * a);
+  }
+  // monotone chain over indices sorted by x then y
+  const order = Array.from({ length: ang }, (_, i) => i).sort((p, q) => (x[p] - x[q]) || (y[p] - y[q]));
+  const cross = (o, a, b) => (x[a] - x[o]) * (y[b] - y[o]) - (y[a] - y[o]) * (x[b] - x[o]);
+  /** @param {number[]} src @returns {number[]} */
+  const half = (src) => {
+    /** @type {number[]} */
+    const h = [];
+    for (const i of src) {
+      while (h.length >= 2 && cross(h[h.length - 2], h[h.length - 1], i) <= 0) h.pop();
+      h.push(i);
+    }
+    h.pop();
+    return h;
+  };
+  const hull = half(order).concat(half(order.slice().reverse()));
+  const n = hull.length;
+  if (n < 3) return;                                  // degenerate row: leave it alone
+
+  for (let a = 0; a < ang; a++) {
+    const th = dTheta * a;
+    const dx = Math.cos(th), dy = Math.sin(th);
+    let best = r[off + a];
+    for (let k = 0; k < n; k++) {
+      const p = hull[k], q = hull[(k + 1) % n];
+      const ex = x[q] - x[p], ey = y[q] - y[p];
+      // solve  p + u*e = t*d  for t > 0 and u in [0, 1]
+      const den = dx * ey - dy * ex;
+      if (Math.abs(den) < 1e-12) continue;
+      const u = (dx * y[p] - dy * x[p]) / den;
+      if (u < 0 || u > 1) continue;
+      const t = Math.abs(dx) > Math.abs(dy) ? (x[p] + u * ex) / dx : (y[p] + u * ey) / dy;
+      if (t > best) { best = t; break; }
+    }
+    r[off + a] = best;
+  }
 }
 
 /**

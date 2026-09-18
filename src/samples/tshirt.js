@@ -14,7 +14,7 @@ export const TSHIRT = {
       shoulderWidth_cm: 38, neck_cm: 34, upperArm_cm: 27, forearm_cm: 23, wrist_cm: 15.5,
       thigh_cm: 54, calf_cm: 36, ankle_cm: 22, armLength_cm: 56, inseam_cm: 76,
       torsoLength_cm: 40, headHeight_cm: 22, bustFullness: 0.4, armAbduction_deg: 30, legSpread_deg: 6,
-      weight_kg: 58.5, muscle: 0.35, age_y: 30,
+      weight_kg: 58.5, muscle: 0.35, age_y: 30, sex: 1,
     },
   },
   fabrics: [

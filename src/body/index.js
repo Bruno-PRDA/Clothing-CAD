@@ -8,6 +8,9 @@ import { bakeSdf, CELL_FULL, CELL_COARSE } from './bake.js';
 import { measureBody } from './measure.js';
 import { buildAnchors } from './anchors.js';
 import { buildRenderMesh } from './mesh.js';
+import { loadTemplate as loadTemplateImpl } from './template.js';
+import { calibrate as calibrateFit } from './fit.js';
+import { buildTemplateBody as buildTemplateBodyImpl } from './templateModel.js';
 import { RING_NAMES } from './loft.js';
 
 export { PARAM_DEFS, PARAM_KEYS, clampParams, paramsEqual, estimateMeasurements } from './params.js';
@@ -20,6 +23,13 @@ export { buildRings, makeLoft, unitPerimeter, RING_TUNING, RING_NAMES } from './
 export { measureBody } from './measure.js';
 export { buildAnchors, CLEARANCE } from './anchors.js';
 export { buildRenderMesh } from './mesh.js';
+export { loadTemplate, applyTargets, computeNormals, jointAt, decodeTemplate } from './template.js';
+export { macroSliders, macroWeights, macroWeightsFor, ETHNICITY } from './macro.js';
+export { measureTemplate } from './measureTemplate.js';
+export { buildIndex, girthAt, limbGirth } from './section.js';
+export { fitBody, calibrate, MEASURE_TARGETS, UNSTEERABLE, FIT_DEFAULTS } from './fit.js';
+export { bakeMeshSdf, BAND_CELLS } from './sdfMesh.js';
+export { buildTemplateBody } from './templateModel.js';
 
 /** @typedef {import('../core/types.js').BodyParams} BodyParams */
 /** @typedef {import('../core/types.js').BodyModel} BodyModel */
@@ -45,12 +55,69 @@ function validGeometry(g) {
 }
 
 /**
+ * The loaded MakeHuman template, or null. `buildBody` uses it when it is there.
+ * @type {import('./template.js').Template|null}
+ */
+let TEMPLATE = null;
+
+/**
+ * Load the template mesh and warm its fit calibration. Called once from the boot's body stage.
+ *
+ * Failure is deliberately NOT fatal: if `assets/body/` is missing or unreachable, `buildBody` falls
+ * back to the analytic primitive body, which is a worse-looking mannequin but a working one. That
+ * matters because the assets are 17 MB and the app otherwise has no network dependency at all.
+ *
+ * @param {string} [baseUrl] @returns {Promise<{ok: boolean, ms: number, error?: string}>}
+ */
+export async function initTemplate(baseUrl) {
+  const t0 = now();
+  try {
+    TEMPLATE = await loadTemplateImpl(baseUrl || 'assets/body/');
+    calibrateFit(TEMPLATE);        // ~450 ms once, so the first body build is not the slow one
+    return { ok: true, ms: now() - t0 };
+  } catch (err) {
+    TEMPLATE = null;
+    return { ok: false, ms: now() - t0, error: String((err && err.message) || err) };
+  }
+}
+
+/** @returns {boolean} is the template body in use? */
+export function templateReady() {
+  return TEMPLATE !== null;
+}
+
+/** Drop the template and go back to the analytic body (tests). */
+export function clearTemplate() {
+  TEMPLATE = null;
+}
+
+/**
  * Build the whole model synchronously. cell 0.015 = full (default), 0.030 = coarse.
  * opts.reuseGeometry: a previous BodyModel.geometry to reuse when cell > 0.02 (skips the render mesh).
  * Throws Error{code:'BodyError'} only for non-finite results (out-of-range params are clamped).
  * @param {BodyParams} params @param {{cell?: number, reuseGeometry?: object}} [opts] @returns {BodyModel}
  */
 export function buildBody(params, opts) {
+  if (TEMPLATE) {
+    const o2 = opts || {};
+    const coarse = typeof o2.cell === 'number' && o2.cell > 0.02;
+    // A coarse build is what a slider DRAG asks for: it must feel immediate, and it is thrown away the
+    // moment the drag commits. Fewer solve rounds and a 30 mm grid put it near the analytic body's cost.
+    return buildTemplateBodyImpl(TEMPLATE, clampParams(params), {
+      cell: coarse ? 0.030 : 0.015,
+      rounds: coarse ? 3 : undefined,
+      reuseGeometry: o2.reuseGeometry,
+    });
+  }
+  return buildAnalyticBody(params, opts);
+}
+
+/**
+ * The original analytic body: nine lofted superellipse rings and blended ellipsoids. Kept as the
+ * fallback for when the template assets cannot be loaded.
+ * @param {BodyParams} params @param {{cell?: number, reuseGeometry?: object}} [opts] @returns {BodyModel}
+ */
+export function buildAnalyticBody(params, opts) {
   const t0 = now();
   const o = opts || {};
   const p = clampParams(params);

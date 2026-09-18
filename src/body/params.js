@@ -17,6 +17,7 @@ export const PARAM_DEFS = Object.freeze([
   Object.freeze({ key: 'weight_kg', label: 'Weight', min: 25, max: 200, step: 0.5, unit: 'kg' }),
   Object.freeze({ key: 'muscle', label: 'Build / exercise', min: 0, max: 1, step: 0.01, unit: '' }),
   Object.freeze({ key: 'age_y', label: 'Age', min: 8, max: 90, step: 1, unit: 'y' }),
+  Object.freeze({ key: 'sex', label: 'Sex (male → female)', min: 0, max: 1, step: 0.01, unit: '' }),
   Object.freeze({ key: 'shoulderWidth_cm', label: 'Shoulder width', min: 28, max: 56, step: 0.5, unit: 'cm' }),
   Object.freeze({ key: 'neck_cm', label: 'Neck', min: 26, max: 50, step: 0.5, unit: 'cm' }),
   Object.freeze({ key: 'upperArm_cm', label: 'Upper arm', min: 18, max: 50, step: 0.5, unit: 'cm' }),

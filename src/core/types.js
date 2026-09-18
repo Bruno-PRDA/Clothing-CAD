@@ -167,6 +167,10 @@ export {};
  * @property {number} weight_kg          body mass; with height_cm it gives the BMI that drives soft-tissue shape
  * @property {number} muscle             0..1 build / exercise level: broadens the shoulders and limbs, keeps the waist
  * @property {number} age_y              years; small posture and soft-tissue effects
+ * @property {number} sex                0 fully male .. 1 fully female. Drives the template body's
+ *                                      gender blend directly; bust fullness is a separate, purely
+ *                                      local shape control and is a poor proxy for it (a flat-chested
+ *                                      woman and a ten-year-old both read 0).
  * @property {number} bustFullness       0..1
  * @property {number} armAbduction_deg   A-pose angle of the upper arm from vertical
  * @property {number} legSpread_deg

@@ -366,9 +366,16 @@ async function runBoot(opts) {
   else {
     await stage(ctx, 'body', async () => {
       ctx.modules.body = await import('../body/index.js');
+      // The template mesh is fetched, so it has to be awaited here rather than inside buildBody, which
+      // is synchronous and called from everywhere. A failure is reported and then ignored: buildBody
+      // falls back to the analytic body, so a missing assets/body/ costs fidelity, not a working app.
+      const tpl = await ctx.modules.body.initTemplate();
+      if (!tpl.ok) {
+        status(ctx, 'warn', 'Template body unavailable (' + tpl.error + ') — using the primitive body', 'E_BODY_TEMPLATE');
+      }
       const model = wiring.buildBody('full');
       if (!model) throw new Error('body build returned no model');
-      return model;
+      return { template: tpl.ok, templateMs: Math.round(tpl.ms), buildMs: Math.round(model.buildMs || 0) };
     });
   }
 

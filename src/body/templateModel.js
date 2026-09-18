@@ -40,7 +40,7 @@ function bodyError(message, detail) {
 }
 
 /**
- * Put the feet back on y = 0.
+ * Put the feet back on y = 0 and the torso's mid-depth on z = 0.
  *
  * The template is normalised at load so the REST body stands on the floor, but every morph moves
  * vertices in y — the height targets most of all — so a fitted body ends up floating or sunk. Measured
@@ -50,17 +50,48 @@ function bodyError(message, detail) {
  * arrange cylinders, the floor plane and the shadow all take that literally, so a floating body hangs
  * its garment 13 cm too high.
  *
+ * Depth matters for the same reason. `buildAnchors` puts the torso and skirt cylinders on the axis
+ * x = 0, z = 0 and `arrange` ray-marches its wrap profile outward from there, so that axis has to run
+ * down the MIDDLE of the body. MakeHuman's own z origin does not: measured on the fitted female body,
+ * the torso sections sat 19 to 40 mm forward of it, leaving the waist section 40 mm from the axis at
+ * the back and 120 mm at the front and skewing how the fabric was distributed front to back.
+ *
+ * The centring sample is the mid-sagittal STRIP of the torso: |x| < 40 mm, 45 % to 80 % of stature.
+ * That strip is the sternum and the spine and can contain nothing else. A plain y-band fails, because at
+ * that height it also catches the arms, whose hands splay forward in the A-pose — measured, that dragged
+ * the body 115 mm backwards and blew the drape out to a 319 mm seam gap. Every vertex is worse still,
+ * because the toes reach further forward than the body is deep.
+ *
  * The joint cubes move with the surface, so the landmarks stay attached.
  * @param {Template} tpl @param {Float32Array} pos
  */
 function ground(tpl, pos) {
-  let minY = Infinity;
+  let minY = Infinity, maxY = -Infinity;
   for (let i = 0; i < tpl.nBodyVerts; i++) {
     const y = pos[i * 3 + 1];
     if (y < minY) minY = y;
+    if (y > maxY) maxY = y;
   }
-  if (!Number.isFinite(minY) || Math.abs(minY) < 1e-7) return;
-  for (let i = 0, n = pos.length; i < n; i += 3) pos[i + 1] -= minY;
+  if (!Number.isFinite(minY) || !Number.isFinite(maxY)) return;
+
+  const loY = minY + (maxY - minY) * 0.45;
+  const hiY = minY + (maxY - minY) * 0.80;
+  const halfStrip = 0.040 * ((maxY - minY) / 1.65);
+  let minZ = Infinity, maxZ = -Infinity;
+  for (let i = 0; i < tpl.nBodyVerts; i++) {
+    const y = pos[i * 3 + 1];
+    if (y < loY || y > hiY) continue;
+    if (Math.abs(pos[i * 3]) > halfStrip) continue;
+    const z = pos[i * 3 + 2];
+    if (z < minZ) minZ = z;
+    if (z > maxZ) maxZ = z;
+  }
+  const dz = Number.isFinite(minZ) && Number.isFinite(maxZ) ? (minZ + maxZ) / 2 : 0;
+  if (Math.abs(minY) < 1e-7 && Math.abs(dz) < 1e-7) return;
+  for (let i = 0, n = pos.length; i < n; i += 3) {
+    pos[i + 1] -= minY;
+    pos[i + 2] -= dz;
+  }
 }
 
 /** @param {number[]|null} v @param {Vec3} fallback @returns {Vec3} */
@@ -237,10 +268,18 @@ export function buildTemplateBody(tpl, params, opts = {}) {
     if (!Number.isFinite(sdf.data[i])) throw bodyError('non-finite SDF value', 'node ' + i);
   }
 
-  // Only the body surface is rendered; the joint cubes live past it in the same buffer.
+  // Only the body surface is rendered; the joint cubes live past it in the same buffer. A coarse build
+  // may reuse the caller's previous render mesh (same contract as the analytic body): during a slider
+  // DRAG the SDF has to keep up but the rendered surface can lag a frame.
   const nB = tpl.nBodyVerts;
-  const positions = pos.slice(0, nB * 3);
-  const normals = computeNormals(tpl, pos).slice(0, nB * 3);
+  const reuse = opts.reuseGeometry;
+  const canReuse = cell > 0.02 && reuse && reuse.positions instanceof Float32Array
+    && reuse.normals instanceof Float32Array && reuse.indices instanceof Uint32Array;
+  const geometry = canReuse ? reuse : {
+    positions: pos.slice(0, nB * 3),
+    normals: computeNormals(tpl, pos).slice(0, nB * 3),
+    indices: tpl.indices,
+  };
   lap('geometry');
 
   for (const name of Object.keys(anchors)) {
@@ -254,7 +293,7 @@ export function buildTemplateBody(tpl, params, opts = {}) {
     anchors,
     rings,
     sdf,
-    geometry: { positions, normals, indices: tpl.indices },
+    geometry,
     measured: {
       chest_cm: measured.chest_cm, waist_cm: measured.waist_cm, hips_cm: measured.hips_cm,
     },

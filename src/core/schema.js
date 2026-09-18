@@ -28,9 +28,9 @@ export const DEFAULT_BODY_PARAMS = Object.freeze({
   height_cm: 165, chest_cm: 88, underbust_cm: 76, waist_cm: 70, hips_cm: 96, shoulderWidth_cm: 38, neck_cm: 34,
   upperArm_cm: 27, forearm_cm: 23, wrist_cm: 15.5, thigh_cm: 54, calf_cm: 36, ankle_cm: 22, armLength_cm: 56,
   inseam_cm: 76, torsoLength_cm: 40, headHeight_cm: 22, bustFullness: 0.4, armAbduction_deg: 30, legSpread_deg: 6,
-  weight_kg: 58.5, muscle: 0.35, age_y: 30,
+  weight_kg: 58.5, muscle: 0.35, age_y: 30, sex: 1,
 });
-/** @type {ReadonlyArray<string>} the 23 keys, in the order above */
+/** @type {ReadonlyArray<string>} the 24 keys, in the order above */
 export const BODY_PARAM_KEYS = Object.freeze(Object.keys(DEFAULT_BODY_PARAMS));
 export const DEFAULT_SIZE_MEASUREMENTS = Object.freeze([
   'chest_cm', 'waist_cm', 'hips_cm', 'height_cm', 'torsoLength_cm', 'armLength_cm', 'shoulderWidth_cm',
@@ -566,6 +566,7 @@ const OVERRIDE_RANGES = {
 function bodyRange(key) {
   switch (key) {
     case 'height_cm': return [80, 230];
+    case 'sex': return [0, 1];
     case 'shoulderWidth_cm': return [20, 70];
     case 'armLength_cm': return [30, 100];
     case 'inseam_cm': return [30, 120];
@@ -960,7 +961,11 @@ const BODY_RENAMES = Object.freeze({
   armAbductionDeg: 'armAbduction_deg', armAbduction: 'armAbduction_deg', legSpreadDeg: 'legSpread_deg',
   legSpread: 'legSpread_deg',
 });
-const BODY_DROPS = Object.freeze(['masculinity', 'sex', 'chestDepthRatio', 'headCirc', 'kneeCirc']);
+// 'sex' used to be dropped here as a v0 leftover. It is a real parameter again (SPEC 6.1): the template
+// body needs a gender blend, and bust fullness cannot stand in for one — a flat-chested woman and a
+// ten-year-old both read 0. A v0 document carrying the old key now keeps it, which is the right outcome:
+// it meant the same thing then as it does now.
+const BODY_DROPS = Object.freeze(['masculinity', 'chestDepthRatio', 'headCirc', 'kneeCirc']);
 
 /** @param {any} params @returns {any} renamed measurement keys (body params and size rows) */
 function renameMeasurementKeys(params) {
