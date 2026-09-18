@@ -95,10 +95,18 @@ export function bakeMeshSdf(pos, indices, opts = {}) {
     if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
   }
 
-  // x origin snapped so the mid-sagittal plane x = 0 lands exactly on a node plane: the body is
-  // bilaterally symmetric, so the true field has a crease at x = 0 wherever the legs face each other,
-  // and a cell straddling a crease interpolates a gradient of almost nothing. Same reason as bake.js.
-  const ox = -Math.ceil((pad - minX) / cell) * cell;
+  // x origin placed so the node planes sit at x = ±cell/2, ±3cell/2, ... — deliberately NOT on x = 0.
+  // bake.js snaps x = 0 onto a node plane so the inter-leg crease of its analytic field lands on a node
+  // rather than mid-cell. Copying that here was a mistake: the body MESH is bilaterally symmetric with
+  // a vertex seam exactly on x = 0, so a node column at x = 0 sends its parity ray straight down the
+  // seam, through one shared edge after another. Measured: with node planes on x = 0 the whole column
+  // came back with the wrong sign (+55 mm at the waist centre against −56 mm one cell either side),
+  // and no tie-breaking rule made it reliable, because floating point decides which of the two seam
+  // triangles the ray "hits" per edge. Offsetting by half a cell makes a ray-seam coincidence measure
+  // zero; the half-open edge rule below remains as insurance for generic ties. The cost is that the
+  // crease at x = 0 now sits mid-cell, where the trilinear gradient averages the two sides — for cloth
+  // hanging exactly on the midline that is a push straight out rather than sideways, which is fine.
+  const ox = -Math.ceil((pad - minX) / cell) * cell - cell * 0.5;
   const oy = minY - pad;
   const oz = minZ - pad;
   const nx = Math.ceil((maxX + pad - ox) / cell) + 1;
@@ -145,11 +153,28 @@ export function bakeMeshSdf(pos, indices, opts = {}) {
     }
 
     // --- 2. z-ray crossings, for the sign -----------------------------------------------------------
-    // Project onto (x, y) and, for every grid line strictly inside the triangle, record where the ray
-    // pierces it. Barycentrics are computed in 2D; the pierce point's z follows from them.
+    // Project onto (x, y) and, for every grid line inside the triangle, record where the ray pierces it.
+    //
+    // Edge ownership is HALF-OPEN (the rasteriser's top-left rule), not "inside or on". A ray that runs
+    // exactly along an edge two triangles share must be counted by exactly one of them; inclusive tests
+    // count it twice and strict tests count it never, and either way the parity of that whole column
+    // flips and every node on it gets the wrong sign. This is not a measure-zero worry here: the body
+    // mesh is bilaterally symmetric with a vertex seam on x = 0, and x = 0 is snapped onto a node plane
+    // on purpose (see the origin above) — so an entire column of rays runs down that seam. Measured:
+    // sdf(waistCenter) on the mid-sagittal line came out with the wrong sign while chestCenter did not.
     const d = (by - cy) * (ax - cx) + (cx - bx) * (ay - cy);
     if (d !== 0) {
-      const inv = 1 / d;
+      // Orient so every edge function is >= 0 inside; swap b and c when the projection is clockwise.
+      let px0 = ax, py0 = ay, pz0 = az, px1 = bx, py1 = by, pz1 = bz, px2 = cx, py2 = cy, pz2 = cz;
+      if (d < 0) { px1 = cx; py1 = cy; pz1 = cz; px2 = bx; py2 = by; pz2 = bz; }
+      const area = Math.abs(d);
+      const invA = 1 / area;
+      // an edge p->q "owns" its boundary when it is a top edge (horizontal, pointing -x) or a left edge
+      // (pointing -y) in the CCW orientation; a point exactly on any other edge belongs to the neighbour
+      const owns = (qx, qy, rx, ry) => (ry === qy && rx < qx) || (ry < qy);
+      const own0 = owns(px1, py1, px2, py2);     // edge b->c, opposite a
+      const own1 = owns(px2, py2, px0, py0);     // edge c->a, opposite b
+      const own2 = owns(px0, py0, px1, py1);     // edge a->b, opposite c
       const gi0 = Math.max(0, Math.ceil((Math.min(ax, bx, cx) - ox) * invCell));
       const gi1 = Math.min(nx - 1, Math.floor((Math.max(ax, bx, cx) - ox) * invCell));
       const gj0 = Math.max(0, Math.ceil((Math.min(ay, by, cy) - oy) * invCell));
@@ -158,13 +183,15 @@ export function bakeMeshSdf(pos, indices, opts = {}) {
         const py = oy + j * cell;
         for (let i = gi0; i <= gi1; i++) {
           const px = ox + i * cell;
-          const l0 = ((by - cy) * (px - cx) + (cx - bx) * (py - cy)) * inv;
-          if (l0 < 0 || l0 > 1) continue;
-          const l1 = ((cy - ay) * (px - cx) + (ax - cx) * (py - cy)) * inv;
-          if (l1 < 0 || l1 > 1) continue;
-          const l2 = 1 - l0 - l1;
-          if (l2 < 0 || l2 > 1) continue;
-          const hitZ = l0 * az + l1 * bz + l2 * cz;
+          // edge functions (twice the signed sub-areas), CCW so inside is positive
+          const e0 = (px2 - px1) * (py - py1) - (py2 - py1) * (px - px1);
+          if (e0 < 0 || (e0 === 0 && !own0)) continue;
+          const e1 = (px0 - px2) * (py - py2) - (py0 - py2) * (px - px2);
+          if (e1 < 0 || (e1 === 0 && !own1)) continue;
+          const e2 = (px1 - px0) * (py - py0) - (py1 - py0) * (px - px0);
+          if (e2 < 0 || (e2 === 0 && !own2)) continue;
+          const l0 = e0 * invA, l1 = e1 * invA, l2 = e2 * invA;
+          const hitZ = l0 * pz0 + l1 * pz1 + l2 * pz2;
           let k = Math.ceil((hitZ - oz) * invCell);
           if (k < 0) k = 0;
           if (k < nz) crossings[nx * ny * k + nx * j + i]++;

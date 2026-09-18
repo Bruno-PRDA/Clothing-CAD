@@ -87,6 +87,21 @@ export const DIST_PASSES = 1;
  * amendment. Kept at 0 by default because each round costs about 2 ms a frame against a 16 ms budget.
  */
 export const CONTACT_ROUNDS = 0;
+/**
+ * Extra contact/seam negotiation rounds per substep WHILE THE SEAMS ARE STILL CLOSING (t < sewTime +
+ * MU_RELEASE_TIME); CONTACT_ROUNDS applies after that.
+ *
+ * Why it is gated rather than simply raised. On a convex ridge such as the back of the deltoid, the
+ * two vertices of a cap-seam pair have diverging outward normals: collision runs last in the substep
+ * and pushes them apart along the surface, and with no negotiation the seam can never win — measured
+ * on the template body as cap seams frozen open at 8.7 to 21.8 mm (plus_f/XL, male_l, athletic_m),
+ * against 0.2 to 4.0 mm on the flatter analytic shoulder. One round closes all of them to <= 3.1 mm.
+ * But a PERMANENT round re-presses the whole sheet onto the body every substep, which is a strain
+ * tax paid by garments that had no problem: the default body's p99 went 8.0 -> 10.1 % and the child's
+ * 10.7 -> 18.1 %, at +15-50 % frame time. The frozen-gap traces show the deadlock forms during the sew
+ * ramp and, once a seam has closed, collision cannot reopen it, so the round is only needed until then.
+ */
+export const CONTACT_ROUNDS_SEW = 1;
 
 /**
  * SEAM-CLOSURE RELEASE (the post-sewing settle of SPEC 7.7).
@@ -120,7 +135,7 @@ export const CONTACT_ROUNDS = 0;
  *
  * The window is deliberately NOT opened during sewing. Sweeping MU_SEW is a cliff: 0.75 and 0.5 are worth about
  * 0.1 points of p99, and 0.25 lets a sleeve-cap seam slip past its partner and never close (seam gap 68.8 mm).
- * Gravity during sewing already ramps from 0.15 in `step` and is left alone for the same reason.
+ * Gravity during sewing follows G_SEW_FLOOR / G_SEW_POWER in `step` (see there for why it is nearly off).
  */
 /** Friction scale while the seams are still closing (t < sewTime). 1 = untouched; see the cliff at 0.25 above. */
 export const MU_SEW = 1;
@@ -132,6 +147,20 @@ export const MU_RELEASE_TIME = 0.5;
 export const MU_RELEASE_RAMP = 1.5;
 /** Gravity scale over the release window, ramped back to 1 alongside the friction. */
 export const G_RELEASE = 0.05;
+/**
+ * Gravity while the seams are still closing: (t / sewTime) ^ G_SEW_POWER, floored at G_SEW_FLOOR.
+ *
+ * The old schedule was linear from a 0.15 floor, so a panel already carried half its weight halfway
+ * through sewing. On the analytic body that was harmless because its shoulder was a flat shelf with a
+ * 90-degree rim that held the panels' top edges up. On a real body the trapezius SLOPES from the neck
+ * base down to the shoulder tip, and under that weight the front panel slid down the front of it and
+ * the back panel down the back before the shoulder seam had closed. Once both are below the crest the
+ * seam is pulling them through the ridge, collision cancels it every substep, and the gap freezes —
+ * plus_f/XL sat at exactly 124.2 mm for nine seconds. A cubic ramp keeps the panels essentially
+ * weightless until the seam has drawn them together above the crest, and only then lets them settle.
+ */
+export const G_SEW_FLOOR = 0.02;
+export const G_SEW_POWER = 3;
 
 /** Frame-scoped copy of `state.mu` while the release window scales it; grown on demand, never inside a substep. */
 let muScratch = null;
@@ -205,8 +234,8 @@ export function step(state, sdf) {
   const sewing = p.sewTime > 0 && state.time < p.sewTime;
   let gScale = 1;
   if (sewing) {
-    gScale = state.time / p.sewTime;
-    if (gScale < 0.15) gScale = 0.15;
+    gScale = Math.pow(state.time / p.sewTime, G_SEW_POWER);
+    if (gScale < G_SEW_FLOOR) gScale = G_SEW_FLOOR;
     if (gScale > 1) gScale = 1;
   }
   const dampMul = sewing ? 5 : 1;
@@ -300,7 +329,9 @@ export function step(state, sdf) {
       // Let the fabric and the body contact negotiate instead of contact simply overriding the cloth: alternating the
       // two with the distance multiplier carried across the passes converges on a configuration that satisfies both,
       // rather than leaving the residual on whichever ran last.
-      for (let q = 0; q < CONTACT_ROUNDS; q++) {
+      const closing = hasSeams && p.sewTime > 0 && state.time < p.sewTime + MU_RELEASE_TIME;
+      const rounds = closing ? CONTACT_ROUNDS_SEW : CONTACT_ROUNDS;
+      for (let q = 0; q < rounds; q++) {
         solveDistance(pos, invMass, state.eIdx, state.eRest, state.eAlpha, invH2, eLambda);
         if (hasSeams) solveSeams(pos, invMass, state.sIdx, state.sRest0, state.sStart, invH2, state.time, p.sewTime);
         applyPins(pos, state.pIdx, state.pTarget);

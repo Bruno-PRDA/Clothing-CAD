@@ -877,12 +877,12 @@ async function checkExportCsv() {
   const csv = app().export.csv();
   const lines = csv.replace(/\s+$/, '').split(/\r?\n/);
   expect(lines.length === 5, `csv has ${lines.length} lines, expected 5`);
-  expect(lines[0] === 'size,chest_cm,waist_cm,hips_cm,height_cm,torsoLength_cm,armLength_cm',
+  expect(lines[0] === 'size,chest_cm,waist_cm,hips_cm,height_cm,torsoLength_cm,armLength_cm,shoulderWidth_cm',
     `csv header is "${lines[0]}"`);
   const rowM = lines.find((l) => l.startsWith('M,'));
   const rowXL = lines.find((l) => l.startsWith('XL,'));
-  expect(rowM === 'M,88,70,96,165,40,56', `row M is "${rowM}"`);
-  expect(rowXL === 'XL,96,78,104,175,42,58', `row XL is "${rowXL}"`);
+  expect(rowM === 'M,88,70,96,165,40,56,38', `row M is "${rowM}"`);
+  expect(rowXL === 'XL,96,78,104,175,42,58,40', `row XL is "${rowXL}"`);
   expect(csv.indexOf('"') < 0, 'the csv contains a double quote');
   return `5 lines, M and XL exact`;
 }

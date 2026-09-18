@@ -56,11 +56,20 @@ function bodyError(message, detail) {
  * the torso sections sat 19 to 40 mm forward of it, leaving the waist section 40 mm from the axis at
  * the back and 120 mm at the front and skewing how the fabric was distributed front to back.
  *
- * The centring sample is the mid-sagittal STRIP of the torso: |x| < 40 mm, 45 % to 80 % of stature.
- * That strip is the sternum and the spine and can contain nothing else. A plain y-band fails, because at
- * that height it also catches the arms, whose hands splay forward in the A-pose — measured, that dragged
- * the body 115 mm backwards and blew the drape out to a 319 mm seam gap. Every vertex is worse still,
- * because the toes reach further forward than the body is deep.
+ * The centring sample is the mid-sagittal STRIP of the LOWER torso: |x| < 40 mm, 45 % to 62 % of stature
+ * — the pelvis and lumbar spine, below the bust. That strip can contain nothing but torso. A plain
+ * y-band fails, because at that height it also catches the arms, whose hands splay forward in the
+ * A-pose — measured, that dragged the body 115 mm backwards and blew the drape out to a 319 mm seam
+ * gap. Every vertex is worse still, because the toes reach further forward than the body is deep.
+ *
+ * The band stops BELOW the bust on purpose. The reference frame should be stable across parameter
+ * changes, because a garment already draped stays where it is while the body under it rebuilds, and a
+ * band that includes the bust apex re-centres on it whenever the chest changes. Measured honestly: the
+ * translation from growing the chest 88 → 100 cm was only ~1 mm with either band (the waist FRONT moves
+ * 1 mm; the 9.5 mm the waist BACK moves is the bust target thickening the ribcage, not a shift), so
+ * this is a matter of keeping the frame anchored on the pelvis and lumbar region rather than a fix
+ * for anything. The 23 mm of live-change penetration first blamed on it was the SDF parity fault fixed
+ * in sdfMesh.js (a node column on the mesh's symmetry seam).
  *
  * The joint cubes move with the surface, so the landmarks stay attached.
  * @param {Template} tpl @param {Float32Array} pos
@@ -75,7 +84,7 @@ function ground(tpl, pos) {
   if (!Number.isFinite(minY) || !Number.isFinite(maxY)) return;
 
   const loY = minY + (maxY - minY) * 0.45;
-  const hiY = minY + (maxY - minY) * 0.80;
+  const hiY = minY + (maxY - minY) * 0.62;
   const halfStrip = 0.040 * ((maxY - minY) / 1.65);
   let minZ = Infinity, maxZ = -Infinity;
   for (let i = 0; i < tpl.nBodyVerts; i++) {

@@ -2097,6 +2097,30 @@ export function packRects(items, sheetWidth, opts)
 
 ## 6. Parametric body (`src/body/`) — agent A3
 
+> **Amendment (lead, 2026-09-18) — the template body's SDF grid is NOT aligned with x = 0, and the body is
+> grounded and centred after fitting.** Three facts about `templateModel.js` / `sdfMesh.js` that are invisible in a
+> render and each cost a failed check to find.
+>
+> **(a) No node column on the symmetry seam.** `bake.js` snaps x = 0 onto a node plane so its analytic field's crease
+> between the legs lands on a node. `sdfMesh.js` at first copied that — and the body MESH is bilaterally symmetric
+> with a vertex seam exactly on x = 0, so the x = 0 column's parity ray ran down that seam through one shared edge
+> after another. The entire column came back with the wrong sign (waist centre +55 mm against −56 mm one cell either
+> side, magnitudes right, sign flipped), no edge-ownership rule made it reliable, cloth on the centre line saw
+> "outside" inside the body, and `body_change_live` read 23 mm of penetration. Node planes now sit at ±cell/2: a
+> ray–seam coincidence is measure zero, the half-open (top-left) edge rule stays as insurance, and the same probes
+> read −46 / −71 mm on every column. Penetration in that check is 3.4 mm.
+>
+> **(b) Ground, then centre, then measure.** Every morph moves vertices in y and z, so a fitted body floats or sinks
+> (the male preset stood 13.1 cm in the air) and sits forward of the anchor axis (waist 40 mm from it at the back,
+> 120 mm at the front). Both are corrected after the fit: feet to y = 0, and the mid-sagittal strip of the LOWER
+> torso (|x| < 40 mm, 45–62 % of stature — pelvis and lumbar, below the bust) to mid-depth z = 0. The strip, not a
+> height band: a band catches the forward-splayed arms and dragged the body 115 mm backwards. Ring levels are read
+> from a measurement taken AFTER this, or every ring is sliced one offset too high.
+>
+> **(c) Known limit, left failing on purpose:** `body_estimate` wants a 103 cm waist on a 180 cm / 95 kg frame and the
+> template reaches 90.9 — `measure/waist-circ` is pinned at +1.00. More range means vendoring MakeHuman's
+> `stomach` / `torso` / `hip` detail targets (~2.4 MB of CC0 text); the check is not to be loosened.
+
 > **Amendment (A3 + lead, 2026-09-17) — weight and build reshape the body.** `src/body/build.js` turns the three new
 > parameters into dimensionless factors: `adiposity = tanh((BMI − 5*(muscle − 0.35) − 22)/10)`, a `tone` term from
 > muscle, and small age terms, all centred so the tuned presets sit near 0 and the sliders move away from them.
@@ -2383,6 +2407,33 @@ export function sampleBody(model, x, y, z, outGrad)   // = sampleSdf(model.sdf, 
 
 ## 7. Cloth simulation (`src/cloth/`) — agent A4
 
+> **Amendment (lead, 2026-09-18) — the shoulder seam on a real body: gravity during sewing, and contact rounds
+> gated to the sew window.** Two changes to `solver.js`, both measured on the eight preset × size drapes of the
+> template body (section 6), and both leaving the default body's drape untouched (gap 0.1 mm, p99 8.0 %, 13.5 ms/f).
+>
+> **(a) Gravity while seams close** is now `clamp((t / sewTime)^G_SEW_POWER, G_SEW_FLOOR, 1)` with power 3 and floor
+> 0.02, replacing the linear ramp from a 0.15 floor. Linear from 0.15 put half a panel's weight on it halfway through
+> sewing. The analytic body's shoulder was a flat shelf with a 90° rim that held the panels' top edges up regardless;
+> a real trapezius slopes 10 cm from the neck base to the shoulder tip, and under that weight the front panel slid
+> down the front of it and the back panel down the back before the shoulder seam had closed. Once both were below the
+> crest the seam was pulling them THROUGH the ridge — both vertices at the 5 mm clearance, the segment between them
+> reaching −28 mm inside the body — and collision cancelled it every substep, so the gap froze: plus_f/XL at exactly
+> 124.2 mm for nine seconds, child_10/S at 71.7 mm. Cubic from 0.02 keeps the panels weightless until the seam has
+> drawn them together above the crest: 0.3 mm and 10.8 mm.
+>
+> **(b) The residual 8.7–21.8 mm was a different failure: the sleeve-cap seam on the back of the deltoid**, the same
+> four-pair spot section 13 records on the analytic body (0.2–4.0 mm there; a real deltoid is rounder). Both vertices
+> at clearance, the gap TANGENTIAL along the surface, nothing between them: the two normals diverge on the ridge,
+> collision runs last and pushes the pair apart, and with `CONTACT_ROUNDS = 0` the seam can never win. One round
+> closes every case to ≤ 3.1 mm — but a PERMANENT round re-presses the whole sheet every substep, a strain tax on
+> garments that had no problem (default 8.0 → 10.1 %, child 10.7 → 18.1 %, +15–50 % frame time). The frozen-gap
+> traces show the deadlock forms during the sew ramp and a closed seam cannot be reopened by collision, so
+> `CONTACT_ROUNDS_SEW = 1` applies only while `t < sewTime + MU_RELEASE_TIME`; steady state keeps
+> `CONTACT_ROUNDS = 0`. Result, gap / p99, with the analytic body's gap for comparison: female_m/M 0.1 / 8.0 (0.0),
+> female_m/S 0.2 / 8.4 (0.1), child_10/S 0.5 / 12.8 (0.0), plus_f/XL 1.5 / 16.8 (0.1), plus_f/M 1.5 / 26.5 (2.6),
+> male_l/M 3.2 / 21.6 (3.7), male_l/XL 0.9 / 15.3 (0.2), athletic_m/M 3.3 / 21.5 (4.0). Every gap is inside the
+> acceptance suite's 8 mm; the tight-fit p99s are the garment being too small (section 10.4), not the solver.
+
 > **Amendment (A4 + lead, 2026-09-14) — what actually makes a garment drape.** Four changes beyond the section-7 text,
 > each kept because it was measured, not assumed. (1) `arrange()` maps pattern arc length onto the body's own SDF
 > cross-section at each height, radially scaled so the section's circumference equals the fabric available there, and the
@@ -2454,7 +2505,12 @@ Order inside a substep: distance → bending → seams → pins → body collisi
 
 ```
 g = params.gravity;  sewing = time < params.sewTime
-gScale  = sewing ? clamp(time / params.sewTime, 0.15, 1) : 1        // gravity ramp while seams close
+gScale  = sewing ? clamp((time / params.sewTime) ^ G_SEW_POWER, G_SEW_FLOOR, 1) : 1   // gravity ramp while seams close
+          // Amendment (lead, 2026-09-18): was clamp(time/sewTime, 0.15, 1). Linear from 0.15 put half a panel's weight on it
+          // halfway through sewing; on the real (template) body the front and back panels slid down either side of the
+          // sloping trapezius before the shoulder seam closed and the seam then pulled through the ridge - plus_f/XL froze at
+          // 124.2 mm, child_10/S at 71.7 mm. Cubic from a 0.02 floor keeps the panels weightless until the seam has drawn them
+          // together above the crest: 0.3 mm and 10.8 mm respectively, default body unchanged at p99 8.0 %.
 dampMul = sewing ? 5 : 1
 for s in 0 .. substeps-1:
   // integrate

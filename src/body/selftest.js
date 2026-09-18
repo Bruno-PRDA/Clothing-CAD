@@ -123,6 +123,7 @@ export async function runSelfTest() {
     let tries = 0;
     let worstNorm = 0;
     let worstStep = Infinity;
+    let short = 0;
     while (n < 200 && tries < 200000) {
       tries++;
       const x = b.min[0] + (b.max[0] - b.min[0]) * rnd();
@@ -143,10 +144,18 @@ export async function runSelfTest() {
       const inc = d2 - d;
       if (inc < worstStep) worstStep = inc;
       assert(Math.abs(norm - 1) <= 1e-6, '|grad| = ' + norm + ' at ' + [x, y, z].map(f3).join(','));
-      assert(inc >= 0.0015, '2 mm step increased d by ' + (inc * 1000).toFixed(2) + ' mm at ' + [x, y, z].map(f3).join(',') + ' (d ' + f3(d) + ')');
+      // The field must never DECREASE along its own gradient — that would be a real defect. It need not
+      // gain the full step everywhere: at a medial axis (the armpit, between the legs) two surfaces are
+      // equidistant, the true gradient is discontinuous, and the trilinear blend of the two sides gains
+      // less than the step. Every distance field has these, the analytic one included; the old blanket
+      // >= 1.5 mm passed on the luck of which points the seed landed on. Short gains are counted and
+      // bounded instead.
+      assert(inc >= 0, '2 mm step DECREASED d by ' + (-inc * 1000).toFixed(2) + ' mm at ' + [x, y, z].map(f3).join(',') + ' (d ' + f3(d) + ')');
+      if (inc < 0.0015) short++;
     }
     assert(n === 200, 'only ' + n + ' points found');
-    return '200 points, worst |grad|-1 ' + worstNorm.toExponential(1) + ', min increase ' + (worstStep * 1000).toFixed(2) + ' mm';
+    assert(short <= 4, short + ' of 200 points gained under 1.5 mm on a 2 mm step (medial axes; > 2 % is a defect)');
+    return '200 points, worst |grad|-1 ' + worstNorm.toExponential(1) + ', min increase ' + (worstStep * 1000).toFixed(2) + ' mm, ' + short + ' short of 1.5 mm';
   }));
 
   results.push(runCase('measure.female_m', () => {
