@@ -22,16 +22,33 @@ const M2CM = 100;
  * @returns {{y: number, girth: number, width: number, depth: number}}
  */
 function extremeGirth(ix, yLo, yHi, want, steps = 24) {
-  let best = null;
-  for (let i = 0; i <= steps; i++) {
-    const y = yLo + (yHi - yLo) * (i / steps);
-    const g = girthAt(ix, y, {});
-    if (!g) continue;
-    if (!best || (want === 'max' ? g.girth > best.girth : g.girth < best.girth)) {
-      best = { y, girth: g.girth, width: g.width, depth: g.depth };
+  // Coarse sweep, then refine inside the winning interval. Girth along a band is smooth and single-
+  // peaked, so a uniform 24-step scan spends most of its sections far from the answer; a 8 + 6 split
+  // lands within a millimetre of the same height for a little over half the sections. This matters
+  // because the fit loop calls the whole measurement once per round.
+  const coarse = Math.max(4, Math.round(steps / 3));
+  const better = (a, b) => (want === 'max' ? a.girth > b.girth : a.girth < b.girth);
+
+  /** @param {number} lo @param {number} hi @param {number} n */
+  const scan = (lo, hi, n) => {
+    let best = null;
+    for (let i = 0; i <= n; i++) {
+      const y = lo + (hi - lo) * (i / n);
+      const g = girthAt(ix, y, {});
+      if (!g) continue;
+      const cand = { y, girth: g.girth, width: g.width, depth: g.depth };
+      if (!best || better(cand, best)) best = cand;
     }
-  }
-  return best || { y: (yLo + yHi) / 2, girth: 0, width: 0, depth: 0 };
+    return best;
+  };
+
+  const first = scan(yLo, yHi, coarse);
+  if (!first) return { y: (yLo + yHi) / 2, girth: 0, width: 0, depth: 0 };
+  const step = (yHi - yLo) / coarse;
+  const lo = Math.max(yLo, first.y - step);
+  const hi = Math.min(yHi, first.y + step);
+  const second = hi > lo ? scan(lo, hi, Math.max(2, coarse - 2)) : null;
+  return (second && better(second, first)) ? second : first;
 }
 
 /**

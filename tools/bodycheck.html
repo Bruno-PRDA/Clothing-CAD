@@ -22,6 +22,10 @@ import * as Macro from '/src/body/macro.js';
 import { measureTemplate } from '/src/body/measureTemplate.js';
 import { buildIndex, horizontalSegments, components, girthAt } from '/src/body/section.js';
 import * as Fit from '/src/body/fit.js';
+import { bakeMeshSdf } from '/src/body/sdfMesh.js';
+import { sampleSdf, gridContains } from '/src/core/sdf.js';
+import { buildTemplateBody } from '/src/body/templateModel.js';
+import { BODY_PRESETS } from '/src/body/presets.js';
 
 const q = new URLSearchParams(location.search);
 const todo = (q.get('do') || 'macro').split(',').map(s => s.trim()).filter(Boolean);
@@ -134,6 +138,195 @@ if (todo.includes('measure')) {
     if (WANT[name]) say(('  want').padEnd(12) + WANT[name].map((v) => v.toFixed(1).padStart(8)).join(''));
   }
   say(`(${((performance.now() - tA) / CASES.length).toFixed(0)} ms per full measurement)`);
+}
+
+if (todo.includes('sdf')) {
+  head('mesh -> SDF bake');
+  const params = { height_cm: 165, weight_kg: 58.5, muscle: 0.35, age_y: 30, sex: 1, bustFullness: 0.40 };
+  const { pos } = bodyOf(params);
+  window.__sdfPos = pos;
+
+  for (const cell of [0.015, 0.030]) {
+    const t0 = performance.now();
+    const grid = bakeMeshSdf(pos, tpl.indices, { cell, nVerts: tpl.nBodyVerts });
+    const ms = performance.now() - t0;
+    const n = grid.nx * grid.ny * grid.nz;
+    let neg = 0, nan = 0;
+    for (let i = 0; i < n; i++) { const v = grid.data[i]; if (v < 0) neg++; if (!Number.isFinite(v)) nan++; }
+    say(`cell ${(cell * 1000).toFixed(0)}mm: ${grid.nx}x${grid.ny}x${grid.nz} = ${n.toLocaleString()} nodes in ${ms.toFixed(0)} ms` +
+        `  inside ${(100 * neg / n).toFixed(1)}%  ${nan ? `<bad>${nan} non-finite</bad>` : '<ok>all finite</ok>'}`);
+    if (cell !== 0.015) continue;
+
+    // --- accuracy: sample points just off the surface and compare with brute-force exact distance ---
+    // Surface points are triangle centroids pushed along their own normal, so we know the truth.
+    const idx = tpl.indices;
+    const exact = (px, py, pz) => {
+      let best = Infinity;
+      for (let t = 0; t < tpl.nTris; t++) {
+        const a = idx[t * 3] * 3, b = idx[t * 3 + 1] * 3, c = idx[t * 3 + 2] * 3;
+        const d2 = ptTri2(px, py, pz, pos, a, b, c);
+        if (d2 < best) best = d2;
+      }
+      return Math.sqrt(best);
+    };
+    // Split the probes by region. The garment only ever touches the torso and the limbs, and the SDF's
+    // trilinear error grows as cell^2 / (8 * feature radius) — 0.2 mm on a 150 mm torso but 2.8 mm on a
+    // 10 mm finger, which at a 15 mm cell cannot be represented at all. Judging the grid on fingers and
+    // noses would be judging it on geometry no cloth will ever reach.
+    const excl = [];
+    for (const name of Object.keys(tpl.joints)) {
+      if (!/finger|toe|eye|lid|jaw|tongue|teeth|head|mouth|ground/.test(name)) continue;
+      const j = jointAt(tpl, pos, name);
+      if (j) excl.push(j);
+    }
+    const neckY = (jointAt(tpl, pos, 'neck') || [0, 1.4, 0])[1];
+    const inGarmentRegion = (x, y, z) => {
+      if (y > neckY) return false;
+      for (const e of excl) {
+        const dx = x - e[0], dy = y - e[1], dz = z - e[2];
+        if (dx * dx + dy * dy + dz * dz < 0.06 * 0.06) return false;
+      }
+      return true;
+    };
+
+    let worstAbs = 0, sumAbs = 0, wrongSign = 0, gradSum = 0, gradWorst = 0, samples = 0;
+    let dWorst = 0, dSum = 0, dWrong = 0, dSamples = 0;
+    const fails = [];
+    const g = [0, 0, 0];
+    for (let t = 7; t < tpl.nTris; t += 811) {         // ~33 spread-out triangles
+      const a = idx[t * 3] * 3, b = idx[t * 3 + 1] * 3, c = idx[t * 3 + 2] * 3;
+      const cxp = (pos[a] + pos[b] + pos[c]) / 3;
+      const cyp = (pos[a + 1] + pos[b + 1] + pos[c + 1]) / 3;
+      const czp = (pos[a + 2] + pos[b + 2] + pos[c + 2]) / 3;
+      const ux = pos[b] - pos[a], uy = pos[b + 1] - pos[a + 1], uz = pos[b + 2] - pos[a + 2];
+      const vx = pos[c] - pos[a], vy = pos[c + 1] - pos[a + 1], vz = pos[c + 2] - pos[a + 2];
+      let nxx = uy * vz - uz * vy, nyy = uz * vx - ux * vz, nzz = ux * vy - uy * vx;
+      const L = Math.hypot(nxx, nyy, nzz) || 1; nxx /= L; nyy /= L; nzz /= L;
+      for (const off of [-0.01, -0.004, 0.004, 0.01]) {
+        const px = cxp + nxx * off, py = cyp + nyy * off, pz = czp + nzz * off;
+        if (!gridContains(grid, px, py, pz)) continue;
+        const got = sampleSdf(grid, px, py, pz, g);
+        const want = exact(px, py, pz);
+        const err = Math.abs(Math.abs(got) - want);
+        // Ground truth from an exact ray cast, NOT from the sign of `off`: 10 mm along a finger's
+        // outward normal is inside the next finger, so the offset's sign is not a reliable oracle.
+        const truthInside = rayInside(px, py, pz);
+        const bad = (got < 0) !== truthInside;
+        if (inGarmentRegion(px, py, pz)) {
+          worstAbs = Math.max(worstAbs, err); sumAbs += err; samples++;
+          if (bad) { wrongSign++; fails.push(`(${px.toFixed(3)}, ${py.toFixed(3)}, ${pz.toFixed(3)}) off ${(off * 1000).toFixed(0)}mm got ${(got * 1000).toFixed(1)} truth ${truthInside ? 'in' : 'out'}`); }
+          const gm = Math.hypot(g[0], g[1], g[2]);
+          gradSum += gm; gradWorst = Math.max(gradWorst, Math.abs(gm - 1));
+        } else {
+          dWorst = Math.max(dWorst, err); dSum += err; dSamples++;
+          if (bad) dWrong++;
+        }
+      }
+    }
+    say(`  torso and limbs — ${samples} probes within 10 mm of the surface:`);
+    say(`    |distance| error  mean ${(1000 * sumAbs / samples).toFixed(2)} mm   worst ${(1000 * worstAbs).toFixed(2)} mm`);
+    say(wrongSign === 0 ? '    <ok>sign correct on every probe</ok>' : `    <bad>${wrongSign}/${samples} wrong sign</bad>`);
+    for (const f of fails.slice(0, 6)) say('      ' + f);
+    say(`  head, hands and feet — ${dSamples} probes (cloth never reaches these):`);
+    say(`    |distance| error  mean ${(1000 * dSum / Math.max(1, dSamples)).toFixed(2)} mm   worst ${(1000 * dWorst).toFixed(2)} mm   wrong sign ${dWrong}/${dSamples}`);
+    // Trilinear error goes as cell^2 / (8 * feature radius): 0.2 mm on a 150 mm torso, ~2 mm in the
+    // crease of an armpit. The solver's own collision offset is 5 mm, so 3 mm of field error is inside
+    // the tolerance the contact already works to.
+    const tol = 0.003;
+    say(worstAbs < tol && wrongSign === 0
+      ? `    <ok>garment region within ${(tol * 1000).toFixed(1)} mm and correctly signed</ok>`
+      : `    <bad>garment region: worst ${(worstAbs * 1000).toFixed(2)} mm, ${wrongSign} wrong signs</bad>`);
+  }
+}
+
+/**
+ * Exact inside test by ray parity in double precision, against every triangle. Slow and obviously
+ * correct, which is what a reference is for.
+ */
+function rayInside(px, py, pz) {
+  const idx = tpl.indices, P = window.__sdfPos;
+  let hits = 0;
+  for (let t = 0; t < tpl.nTris; t++) {
+    const a = idx[t * 3] * 3, b = idx[t * 3 + 1] * 3, c = idx[t * 3 + 2] * 3;
+    const ax = P[a], ay = P[a + 1], az = P[a + 2];
+    const bx = P[b], by = P[b + 1], bz = P[b + 2];
+    const cx = P[c], cy = P[c + 1], cz = P[c + 2];
+    const d = (by - cy) * (ax - cx) + (cx - bx) * (ay - cy);
+    if (d === 0) continue;
+    const inv = 1 / d;
+    const l0 = ((by - cy) * (px - cx) + (cx - bx) * (py - cy)) * inv;
+    if (l0 < 0 || l0 > 1) continue;
+    const l1 = ((cy - ay) * (px - cx) + (ax - cx) * (py - cy)) * inv;
+    if (l1 < 0 || l1 > 1) continue;
+    const l2 = 1 - l0 - l1;
+    if (l2 < 0 || l2 > 1) continue;
+    if (l0 * az + l1 * bz + l2 * cz > pz) hits++;   // count crossings ABOVE the point
+  }
+  return (hits & 1) === 1;
+}
+
+/** Squared point-triangle distance against a flat position array — the reference for the check above. */
+function ptTri2(px, py, pz, P, a, b, c) {
+  const ax = P[a], ay = P[a + 1], az = P[a + 2];
+  const bx = P[b], by = P[b + 1], bz = P[b + 2];
+  const cx = P[c], cy = P[c + 1], cz = P[c + 2];
+  const abx = bx - ax, aby = by - ay, abz = bz - az;
+  const acx = cx - ax, acy = cy - ay, acz = cz - az;
+  const apx = px - ax, apy = py - ay, apz = pz - az;
+  const d1 = abx * apx + aby * apy + abz * apz, d2 = acx * apx + acy * apy + acz * apz;
+  if (d1 <= 0 && d2 <= 0) return apx * apx + apy * apy + apz * apz;
+  const bpx = px - bx, bpy = py - by, bpz = pz - bz;
+  const d3 = abx * bpx + aby * bpy + abz * bpz, d4 = acx * bpx + acy * bpy + acz * bpz;
+  if (d3 >= 0 && d4 <= d3) return bpx * bpx + bpy * bpy + bpz * bpz;
+  const cpx = px - cx, cpy = py - cy, cpz = pz - cz;
+  const d5 = abx * cpx + aby * cpy + abz * cpz, d6 = acx * cpx + acy * cpy + acz * cpz;
+  if (d6 >= 0 && d5 <= d6) return cpx * cpx + cpy * cpy + cpz * cpz;
+  const vc = d1 * d4 - d3 * d2;
+  if (vc <= 0 && d1 >= 0 && d3 <= 0) { const t = d1 / (d1 - d3); const qx = apx - abx * t, qy = apy - aby * t, qz = apz - abz * t; return qx * qx + qy * qy + qz * qz; }
+  const vb = d5 * d2 - d1 * d6;
+  if (vb <= 0 && d2 >= 0 && d6 <= 0) { const t = d2 / (d2 - d6); const qx = apx - acx * t, qy = apy - acy * t, qz = apz - acz * t; return qx * qx + qy * qy + qz * qz; }
+  const va = d3 * d6 - d5 * d4;
+  if (va <= 0 && (d4 - d3) >= 0 && (d5 - d6) >= 0) {
+    const t = (d4 - d3) / ((d4 - d3) + (d5 - d6));
+    const qx = apx - abx - (acx - abx) * t, qy = apy - aby - (acy - aby) * t, qz = apz - abz - (acz - abz) * t;
+    return qx * qx + qy * qy + qz * qz;
+  }
+  const den = 1 / (va + vb + vc), v = vb * den, w = vc * den;
+  const qx = apx - (abx * v + acx * w), qy = apy - (aby * v + acy * w), qz = apz - (abz * v + acz * w);
+  return qx * qx + qy * qy + qz * qz;
+}
+
+if (todo.includes('model')) {
+  head('full BodyModel from the template (real presets)');
+  const SEX = { female_s: 1, female_m: 1, female_l: 1, plus_f: 1, male_s: 0, male_m: 0, male_l: 0, athletic_m: 0, child_10: 0.5 };
+  for (const id of ['female_m', 'male_m', 'child_10', 'plus_f']) {
+    const params = { ...BODY_PRESETS[id], sex: SEX[id] };
+    let mdl = null, err = null;
+    try { mdl = buildTemplateBody(tpl, params); } catch (e) { err = String(e && e.stack || e); }
+    if (!mdl) { say(`${id.padEnd(11)} <bad>FAILED: ${err}</bad>`); continue; }
+    const missing = ['params', 'landmarks', 'anchors', 'rings', 'sdf', 'geometry', 'measured', 'buildMs']
+      .filter((k) => mdl[k] === undefined || mdl[k] === null);
+    const noAnchor = ['torso', 'armL', 'armR', 'legL', 'legR', 'skirt', 'head'].filter((k) => !mdl.anchors[k]);
+    const H = mdl.measuredFull.height_cm / 100;
+    let floor = Infinity, top = -Infinity;
+    for (let i = 0; i < tpl.nBodyVerts; i++) { const y = mdl.geometry.positions[i * 3 + 1]; if (y < floor) floor = y; if (y > top) top = y; }
+    say(`            floor y=${floor.toFixed(4)}  top y=${top.toFixed(4)}  inseam ${mdl.measuredFull.inseam_cm.toFixed(1)}cm ` +
+        `(${(100 * mdl.measuredFull.inseam_cm / (H * 100)).toFixed(0)}% of stature)`);
+    const want = `${params.chest_cm}/${params.waist_cm}/${params.hips_cm}`;
+    say(`${id.padEnd(11)} ${mdl.buildMs.toFixed(0).padStart(5)} ms  H ${H.toFixed(3)}m (want ${(params.height_cm / 100).toFixed(2)})  ` +
+        `measured ${mdl.measured.chest_cm.toFixed(1)}/${mdl.measured.waist_cm.toFixed(1)}/${mdl.measured.hips_cm.toFixed(1)} (want ${want})` +
+        (missing.length ? `  <bad>missing ${missing.join(',')}</bad>` : '') +
+        (noAnchor.length ? `  <bad>no anchor ${noAnchor.join(',')}</bad>` : ''));
+    const r = mdl.rings;
+    say('            ring heights as % of stature: ' + ['crotch', 'hip', 'waist', 'chest', 'armpit', 'shoulder', 'neckBase']
+      .map((k) => `${k} ${(100 * r[k].y / H).toFixed(0)}%`).join('  '));
+    say('            real adult:                   crotch 46%  hip 53%  waist 62%  chest 72%  armpit 76%  shoulder 82%  neckBase 86%');
+    say('            timing ' + Object.entries(mdl.timing).map(([k, v]) => `${k} ${v.toFixed(0)}ms`).join('  ') +
+        `  | fit ${mdl.fit.rounds} rounds, ${mdl.fit.ms.toFixed(0)}ms`);
+    const a = mdl.anchors;
+    say(`            torso r=${(a.torso.radius * 100).toFixed(1)}cm len=${(a.torso.length * 100).toFixed(1)}cm  ` +
+        `skirt r=${(a.skirt.radius * 100).toFixed(1)}cm  armL r=${(a.armL.radius * 100).toFixed(1)}cm len=${(a.armL.length * 100).toFixed(1)}cm`);
+  }
 }
 
 if (todo.includes('fit')) {

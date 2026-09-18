@@ -58,6 +58,8 @@ export const FIT_DEFAULTS = Object.freeze({
   // at 0.55 it settles.
   damping: 0.55,
   tolerance_cm: 0.25,
+  /** Give up when no slider moved more than this in a round (slider units, range -1..1). */
+  stallSlider: 0.004,
   heightTolerance_cm: 0.1,
 });
 
@@ -180,6 +182,7 @@ export function fitBody(tpl, params, opts = {}) {
     measured = measureTemplate(tpl, pos, { index: buildIndex(tpl, pos) });
 
     let worst = 0;
+    let moved = 0;
     residual = {};
     for (const key of Object.keys(MEASURE_TARGETS)) {
       const want = /** @type {any} */ (params)[key];
@@ -195,9 +198,21 @@ export function fitBody(tpl, params, opts = {}) {
       const scale = base[key] > 1e-6 ? Math.max(0.4, Math.min(2.5, measured[key] / base[key])) : 1;
       const next = sliders[key] + cfg.damping * err / (g * scale);
       if (next > 1 || next < -1) clamped.add(key);
+      const before = sliders[key];
       sliders[key] = Math.max(-1, Math.min(1, next));
+      moved = Math.max(moved, Math.abs(sliders[key] - before));
     }
+    // Stop when the fit is good enough, or when the SLIDERS have stopped moving.
+    //
+    // Residual is the wrong stall signal. Waiting for every residual to reach tolerance never happens,
+    // because whichever measurements ran out of morph range hold a fixed error for ever and the loop
+    // burns all ten rounds — most of the build's cost. But excluding those clamped dimensions is wrong
+    // too: clamping is not permanent. A slider can overshoot to -1 in round three and come back to -0.7
+    // by round six as the height solve settles, and quitting on round three left the male chest 3.7 cm
+    // out. How far the sliders actually moved this round says "the solver has stopped changing the
+    // body" directly, and is indifferent to which dimensions happen to be pinned right now.
     if (worst < cfg.tolerance_cm) { round++; break; }
+    if (moved < cfg.stallSlider) { round++; break; }
   }
 
   solveHeight();
