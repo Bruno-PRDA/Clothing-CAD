@@ -8,6 +8,9 @@ import { createStore } from '../core/store.js';
 import { normalizeDoc, serializeDoc, parseDoc } from '../core/schema.js';
 import { createUi } from './index.js';
 import { ALL_IDS, byId } from './ids.js';
+import { GUIDE_SECTIONS } from './guideContent.js';
+import { sanitizeGuideHtml, shortcutRows } from './guide.js';
+import { SHORTCUTS } from './shortcuts.js';
 import { SIZE_NAMES } from './panels/sizes.js';
 
 /** @typedef {import('../core/types.js').SelfTestResult} SelfTestResult */
@@ -56,7 +59,7 @@ function captureActions(bus, fn) {
 }
 
 /**
- * The UI self-test (SPEC 11.8.5). 16 named cases.
+ * The UI self-test (SPEC 11.8.5). 16 named cases, plus the guide.
  * @returns {Promise<SelfTestResult[]>}
  */
 export async function runSelfTest() {
@@ -135,7 +138,33 @@ export async function runSelfTest() {
     assert(getComputedStyle(hiddenSlot).display === 'none', '3D slot is still displayed');
     ui.layout.setLayout('split');
     assert(main.dataset.solo === undefined || main.dataset.solo === '', 'data-solo not cleared');
-    return '2d solos the 2D pane; split clears data-solo';
+    // Measure, don't just read flags: hiding a pane with display:none once slid the later grid items a column
+    // left, so the 3D-only layout showed a 0 px 3D pane and both solo layouts a 1 px dock — with every flag
+    // above correct. (Skipped when the page has no layout box, e.g. a hidden pane that never laid out.)
+    const mainW = main.getBoundingClientRect().width;
+    if (mainW > 400) {
+      const w = (/** @type {string} */ id) => byId(document, id).getBoundingClientRect().width;
+      const dockW = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--dock-w')) || 300;
+      const bad = [];
+      for (const swapped of [false, true]) {
+        if (ui.layout.isSwapped() !== swapped) ui.layout.swap();
+        for (const mode of ['split', '2d', '3d']) {
+          ui.layout.setLayout(/** @type {any} */ (mode));
+          const d = w('dock');
+          if (Math.abs(d - dockW) > 2) bad.push(mode + (swapped ? '/swapped' : '') + ': dock ' + d.toFixed(0) + ' px');
+          for (const pane of ['2d', '3d']) {
+            const shown = mode === 'split' || mode === pane;
+            const pw = w(ui.layout.slotOf(pane) === 'left' ? 'pane-left' : 'pane-right');
+            if (shown && pw < 100) bad.push(mode + (swapped ? '/swapped' : '') + ': ' + pane + ' pane ' + pw.toFixed(0) + ' px');
+          }
+        }
+      }
+      if (ui.layout.isSwapped()) ui.layout.swap();
+      ui.layout.setLayout('split');
+      assert(bad.length === 0, 'layout geometry: ' + bad.join('; '));
+      return '2d solos the 2D pane; split clears data-solo; every mode and swap measured';
+    }
+    return '2d solos the 2D pane; split clears data-solo (geometry not measured: no layout box)';
   });
 
   // 5 ------------------------------------------------------------------ dock
@@ -352,6 +381,55 @@ export async function runSelfTest() {
     if (press('v', { ctrlKey: true }).length !== 0) bad.push('Ctrl+V emitted');
     assert(bad.length === 0, bad.join('; '));
     return '13 bindings plus the two modifier guards';
+  });
+
+  // 17 ----------------------------------------------------------------- the user guide
+  await run('guide', () => {
+    const g = ui.guide;
+    assert(g && typeof g.open === 'function', 'createUi must expose the guide');
+    const overlay = /** @type {HTMLElement} */ (byId(document, 'guide'));
+    // every section renders once, ids are unique, and every cross-link and help button lands on a section
+    const ids = GUIDE_SECTIONS.map((x) => x.id);
+    assert(new Set(ids).size === ids.length, 'duplicate guide section ids');
+    assert(document.querySelectorAll('#guide-body .guide-section').length === ids.length, 'not every section rendered');
+    const dangling = [...document.querySelectorAll('[data-guide]')].map((el) => el.getAttribute('data-guide'))
+      .filter((id) => !ids.includes(/** @type {string} */ (id)));
+    assert(dangling.length === 0, 'help links to missing sections: ' + [...new Set(dangling)].join(', '));
+    assert(document.querySelectorAll('.guide-link[data-guide]').length >= 5, 'the dock panels and the fit banner should carry help buttons');
+    // the sanitizer keeps the contract and nothing else
+    const frag = sanitizeGuideHtml(document, '<p onclick="x()" style="color:red">a<script>bad()</script><img src=x onerror=y()>'
+      + '<a href="https://example.com" data-guide="body">b</a><iframe></iframe><u>d</u></p><div class="guide-tip evil">c</div>');
+    const box = document.createElement('div');
+    box.appendChild(frag);
+    const html = box.innerHTML;
+    assert(!/script|onclick|onerror|style=|iframe|img|example\.com|evil|<u>/.test(html), 'sanitizer let through: ' + html);
+    assert(/^<p>a<a data-guide="body"[^>]*>b<\/a>d<\/p><div class="guide-tip">c<\/div>$/.test(html), 'sanitizer dropped allowed content: ' + html);
+    // the shortcut table is the live table: every binding appears
+    const keys = shortcutRows().reduce((n, r) => n + r.keys.length, 0);
+    assert(keys === SHORTCUTS.length, 'shortcut rows cover ' + keys + ' of ' + SHORTCUTS.length + ' bindings');
+    // open / search / close, via the toolbar button and via the ? key
+    g.close();
+    let seen = captureActions(bus, () => /** @type {HTMLButtonElement} */ (byId(document, 'btn-guide')).click());
+    assert(seen.length === 1 && seen[0].action === 'guide', 'btn-guide emitted ' + JSON.stringify(seen));
+    seen = captureActions(bus, () => window.dispatchEvent(new KeyboardEvent('keydown', { key: '?', shiftKey: true, bubbles: true, cancelable: true })));
+    assert(seen.length === 1 && seen[0].action === 'guide', '? emitted ' + JSON.stringify(seen));
+    g.open('shortcuts');
+    assert(g.isOpen() && !overlay.hidden && g.current() === 'shortcuts', 'open(shortcuts) did not show that section');
+    const n = g.search('zzqxj-not-a-word');
+    assert(n === 0, 'a nonsense search matched ' + n + ' sections');
+    const m = g.search('undo');
+    assert(m >= 1 && document.querySelector('#guide-body mark'), 'searching "undo" should match and highlight');
+    g.search('');
+    assert(document.querySelectorAll('#guide-body .guide-section:not([hidden])').length === ids.length, 'clearing the search must show every section');
+    // while open, the app's shortcuts are muted (a D typed here must not drape)
+    const search = /** @type {HTMLInputElement} */ (byId(document, 'inp-guide-search'));
+    search.focus();
+    seen = captureActions(bus, () => search.dispatchEvent(new KeyboardEvent('keydown', { key: 'd', bubbles: true, cancelable: true })));
+    assert(seen.length === 0, 'a key typed in the guide reached the app: ' + JSON.stringify(seen));
+    search.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    assert(!g.isOpen() && overlay.hidden, 'Escape must close the guide');
+    assert(!overlay.contains(document.activeElement), 'focus left inside the closed guide');
+    return ids.length + ' sections, ' + keys + ' shortcut bindings, sanitizer, search, open/close';
   });
 
   // ------------------------------------------------------------------ restore

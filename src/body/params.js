@@ -35,7 +35,7 @@ export const PARAM_DEFS = Object.freeze([
   Object.freeze({ key: 'legSpread_deg', label: 'Leg spread', min: 0, max: 20, step: 1, unit: 'deg' }),
 ]);
 
-/** The 23 keys in table order. @type {ReadonlyArray<keyof BodyParams>} */
+/** The 24 keys in table order. @type {ReadonlyArray<keyof BodyParams>} */
 export const PARAM_KEYS = Object.freeze(PARAM_DEFS.map((d) => d.key));
 
 /**
@@ -120,12 +120,16 @@ export function estimateMeasurements(partial, opts) {
 export function clampParams(p) {
   const defaults = BODY_PRESETS[DEFAULT_PRESET_ID];
   const src = p && typeof p === 'object' ? p : {};
+  // A partial without `sex` takes it from bust fullness, not from the female_m default: the default
+  // turned estimateMeasurements({height 180, weight 95, bustFullness 0}) into a 95 kg woman.
+  const bust = /** @type {any} */ (src).bustFullness;
+  const sexFallback = typeof bust === 'number' && Number.isFinite(bust) && bust > 0.05 ? 1 : 0;
   /** @type {any} */
   const out = {};
   for (let i = 0; i < PARAM_DEFS.length; i++) {
     const def = PARAM_DEFS[i];
     let v = /** @type {any} */ (src)[def.key];
-    if (typeof v !== 'number' || !Number.isFinite(v)) v = defaults[def.key];
+    if (typeof v !== 'number' || !Number.isFinite(v)) v = def.key === 'sex' ? sexFallback : defaults[def.key];
     if (v < def.min) v = def.min;
     if (v > def.max) v = def.max;
     const n = Math.round((v - def.min) / def.step);

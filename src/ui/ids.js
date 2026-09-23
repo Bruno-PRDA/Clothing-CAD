@@ -1,11 +1,12 @@
 // src/ui/ids.js — the stable element-id table of SPEC 11.1.1/11.1.2 plus the DOM lookup helpers every
 // other file of src/ui/ uses. Data + tiny helpers only; no listeners, no store, no bus.
-// Imports: src/body/index.js (PARAM_KEYS, SPEC 6.1) — the 20 body rows are static in index.html.
+// Imports: src/body/index.js (PARAM_KEYS, SPEC 6.1) — the 24 body rows are static in index.html.
 
 import { PARAM_KEYS } from '../body/index.js';
 
 /**
- * Every STATIC id of SPEC 11.1.1, in document order (135 ids). The 40 generated body-parameter ids live in
+ * Every STATIC id of SPEC 11.1.1, in document order: the 135 of 11.1.1, the fit banner's 4 and the guide's 8.
+ * The 48 generated body-parameter ids live in
  * `BODY_PARAM_IDS`; `ALL_IDS` is the concatenation and is what `checkIds()` verifies.
  * @type {ReadonlyArray<string>}
  */
@@ -30,14 +31,15 @@ export const REQUIRED_IDS = Object.freeze([
   'btn-size-remove', 'sel-base-size', 'btn-size-from-body', 'list-size-issues', 'statusbar', 'status-tool', 'status-msg',
   'status-cursor', 'status-seam-ease', 'status-quality', 'status-sim',
   'fit-warning', 'fit-warning-text', 'btn-fit-use', 'btn-fit-dismiss',
+  'tb-help', 'btn-guide', 'guide', 'guide-title', 'inp-guide-search', 'btn-guide-close', 'guide-toc', 'guide-body',
 ]);
 
-/** `body-<key>` + `body-<key>-num` for the 20 keys of SPEC 6.1 (static in index.html; the panel BINDS them). */
+/** `body-<key>` + `body-<key>-num` for the 24 keys of SPEC 6.1 (static in index.html; the panel BINDS them). */
 export const BODY_PARAM_IDS = Object.freeze(
   PARAM_KEYS.reduce((acc, k) => { acc.push('body-' + k, 'body-' + k + '-num'); return acc; }, /** @type {string[]} */ ([])),
 );
 
-/** Every id the UI binds: the 135 static ids + the 40 body-parameter ids. @type {ReadonlyArray<string>} */
+/** Every id the UI binds: the static ids + the body-parameter ids. @type {ReadonlyArray<string>} */
 export const ALL_IDS = Object.freeze(REQUIRED_IDS.concat(BODY_PARAM_IDS));
 
 /**

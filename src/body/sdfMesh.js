@@ -20,7 +20,15 @@
 
 /** Padding around the mesh bounds, metres. Matches bake.js so anchors and arrange see the same room. */
 export const BAKE_PAD = 0.10;
-/** Exact-distance band, in cells, either side of a triangle. 2 cells at 15 mm is ±30 mm of exact field. */
+/**
+ * Exact-distance band either side of a triangle, in METRES. It is a physical quantity — how far from
+ * the surface the cloth samples the field — so it must not scale with the cell. Expressed in cells it
+ * made the 30 mm "coarse" bake visit a ±60 mm band and do 88 % of the full bake's point-triangle work,
+ * which is what a slider drag runs on every debounce tick. 30 mm is 2 cells at the full resolution and
+ * 1 cell at the coarse one.
+ */
+export const BAND_M = 0.030;
+/** The band at the full 15 mm cell, in cells (kept for callers that think in cells). */
 export const BAND_CELLS = 2;
 
 /** Squared distance from p to triangle abc, and nothing else — the inner loop of the whole bake. */
@@ -83,7 +91,7 @@ function pointTriDist2(px, py, pz, ax, ay, az, bx, by, bz, cx, cy, cz) {
 export function bakeMeshSdf(pos, indices, opts = {}) {
   const cell = Number.isFinite(opts.cell) && opts.cell > 0 ? Number(opts.cell) : 0.015;
   const pad = Number.isFinite(opts.pad) ? Number(opts.pad) : BAKE_PAD;
-  const band = Number.isFinite(opts.band) ? Math.max(1, Math.trunc(Number(opts.band))) : BAND_CELLS;
+  const band = Number.isFinite(opts.band) ? Math.max(1, Math.trunc(Number(opts.band))) : Math.max(1, Math.round(BAND_M / cell));
   const nV = Number.isFinite(opts.nVerts) ? Number(opts.nVerts) : pos.length / 3;
 
   let minX = Infinity, minY = Infinity, minZ = Infinity;

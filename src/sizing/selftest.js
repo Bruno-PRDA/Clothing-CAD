@@ -8,6 +8,8 @@ import {
   closestSize, rowFromBody, rowToBodyParams,
 } from './chart.js';
 import { gradePiece, gradePieceDetailed, gradeScale, gradeDoc, seamEaseDrift } from './grading.js';
+import { checkFit, EASE_LIMITS } from './fit.js';
+import { getSample } from '../samples/index.js';
 
 /** @typedef {import('../core/types.js').SelfTestResult} SelfTestResult */
 /** @typedef {import('../core/types.js').Piece} Piece */
@@ -263,6 +265,45 @@ export async function runSelfTest() {
     assert(r.sx === 1 && r.sy === 1, 'sx should fall back to 1');
     assert(r.issues.length === 1 && r.issues[0].code === 'GRADE_REF_MISSING' && r.issues[0].level === 'warn', 'expected GRADE_REF_MISSING: ' + JSON.stringify(r.issues));
     assert(throwsCode(() => gradePiece(makeSQ(), chart, 'ZZ'), 'SIZE_UNKNOWN'), 'unknown size should throw SIZE_UNKNOWN');
+  }));
+
+  out.push(runCase('grade.refRule', () => {
+    // A vertex rule with `ref` follows ITS measurement, not the piece's width reference: the shoulder tip
+    // of a bodice grades with shoulder width while the rest of the panel grades with the chest.
+    const chart = defaultChart();
+    const sqf = makeSQF();
+    sqf.grade.vertexRules = [{ vertex: 2, dx_mm: 0, dy_mm: 0, ref: 'shoulderWidth_cm', refAxis: 'x' }];
+    const l = gradePiece(sqf, chart, 'L');
+    assert(near(l.vertices[2][0], 100 * 39 / 38, 1e-3), 'tracked vertex x should be 100*39/38, got ' + l.vertices[2][0]);
+    assert(near(l.vertices[1][0], 100 * 92 / 88, 1e-3), 'other vertices follow the chest: ' + l.vertices[1][0]);
+    assert(near(l.vertices[2][1], 100, 1e-9), 'refAxis x must not move y');
+    // A chart without that column (every chart saved before shoulder width existed): the vertex keeps the
+    // piece's own scaling, as before the rule, and the user is told why.
+    const rows = chart.rows.map((r) => { const c = { ...r }; delete c.shoulderWidth_cm; return c; });
+    const r = gradePieceDetailed(sqf, { ...chart, rows, measurements: chart.measurements.filter((k) => k !== 'shoulderWidth_cm') }, 'L');
+    assert(near(r.piece.vertices[2][0], 100 * 92 / 88, 1e-3), 'without the column the vertex must follow the chest, got ' + r.piece.vertices[2][0]);
+    assert(r.issues.some((i) => i.code === 'GRADE_REF_MISSING'), 'expected a GRADE_REF_MISSING warning: ' + JSON.stringify(r.issues));
+    const base = gradePieceDetailed(sqf, { ...chart, rows }, 'M');
+    assert(base.issues.length === 0 && deepEqual(base.piece.vertices, sqf.vertices), 'the base size must be untouched and silent');
+    return 'L tip ' + l.vertices[2][0].toFixed(2) + ' mm, body ' + l.vertices[1][0].toFixed(2) + ' mm';
+  }));
+
+  out.push(runCase('fit.check', () => {
+    const doc = normalizeDoc(getSample('tshirt'));
+    const ok = checkFit(doc, 'M', female_m);
+    assert(ok.level === 'ok', 'the sample fits its own draft body at M: ' + ok.message);
+    const g = ok.garmentGirth_cm;
+    assert(g > female_m.chest_cm, 'garment girth ' + g + ' must exceed the chest it was drafted for');
+    // largest torso girth decides, not the chest
+    const hippy = checkFit(doc, 'M', { ...female_m, hips_cm: g + 5 });
+    assert(hippy.level === 'tight' && hippy.bodyGirthKey === 'hips_cm', 'hips past the garment must read tight on hips: ' + JSON.stringify(hippy));
+    assert(/tear/.test(hippy.message), 'tight message must say it tears: ' + hippy.message);
+    assert(hippy.better === null || hippy.better.ease_cm >= EASE_LIMITS.snug, 'a suggested size must actually clear the body');
+    const snug = checkFit(doc, 'M', { ...female_m, chest_cm: g - 2 });
+    assert(snug.level === 'snug', 'ease under ' + EASE_LIMITS.snug + ' cm must read snug: ' + snug.message);
+    const shoulders = checkFit(doc, 'M', { ...female_m, shoulderWidth_cm: 60 });
+    assert(shoulders.level === 'snug' && shoulders.shoulderShort_cm > 0, 'a 60 cm shoulder must be flagged: ' + shoulders.message);
+    return 'M girth ' + g + ' cm; ' + hippy.message;
   }));
 
   out.push(runCase('grade.easeDrift', () => {

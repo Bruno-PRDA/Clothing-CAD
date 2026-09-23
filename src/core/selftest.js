@@ -424,6 +424,24 @@ export async function runSelfTest() {
     return samples.note;
   });
 
+  await check('schema/sex-inference', () => {
+    // `sex` arrived with the template body. A document saved before it must not load as the female default.
+    const sexOf = (body) => normalizeDoc({ version: 1, body }).body.params.sex;
+    assert(sexOf({ preset: 'male_m', params: { height_cm: 178 } }) === 0, 'male_m without sex must load male');
+    assert(sexOf({ preset: 'athletic_m', params: {} }) === 0, 'athletic_m without sex must load male');
+    assert(sexOf({ preset: 'plus_f', params: {} }) === 1, 'plus_f without sex must load female');
+    assert(sexOf({ preset: 'child_10', params: {} }) === 0.5, 'child_10 without sex must load 0.5');
+    assert(sexOf({ preset: 'custom', params: { bustFullness: 0.4 } }) === 1, 'custom with a bust must load female');
+    assert(sexOf({ preset: 'custom', params: { bustFullness: 0 } }) === 0, 'custom, flat chest must load male');
+    assert(sexOf({ preset: 'male_m', params: { sex: 0.7 } }) === 0.7, 'an explicit sex must be kept');
+    assert(normalizeDoc({}).body.params.sex === DEFAULT_BODY_PARAMS.sex, 'an empty document keeps the default body');
+    // v0 layout: params directly on body, sex as a letter
+    const v0 = normalizeDoc({ body: { chest: 98, sex: 'm' } }).body.params;
+    assert(v0.sex === 0 && v0.chest_cm === 98, 'v0 sex "m" must migrate to 0, got ' + v0.sex);
+    assert(normalizeDoc({ body: { sex: 'f' } }).body.params.sex === 1, 'v0 sex "f" must migrate to 1');
+    return 'presets, bust fallback, explicit value and v0 letters';
+  });
+
   await check('schema/validate-codes', () => {
     const base = normalizeDoc(fixtureDoc());
     /** @type {[string, (d: any) => void][]} */

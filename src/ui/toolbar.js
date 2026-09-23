@@ -26,6 +26,7 @@ export const TOOLBAR_ACTIONS = Object.freeze([
   ['btn-swap', 'swap'],
   ['btn-popout', 'popout'],
   ['btn-popin', 'popin'],
+  ['btn-guide', 'guide'],
 ]);
 
 /** Export buttons: id → export kind. @type {ReadonlyArray<[string, string]>} */
@@ -222,7 +223,11 @@ export function createToolbar(store, bus, root = document) {
 
   refresh();
 
+  /** Open the project file picker (Ctrl+O; the Open button does the same). */
+  function openFile() { if (inputFile) inputFile.click(); }
+
   return {
+    openFile,
     setTool,
     getTool,
     setRunning,

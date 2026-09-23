@@ -7,6 +7,8 @@ export { createToolbar, TOOLBAR_ACTIONS, EXPORT_ACTIONS } from './toolbar.js';
 export { createDock, DOCK_TABS } from './dock.js';
 export { createStatusbar, LOG_LIMIT, TTL_MS } from './statusbar.js';
 export { createFitWarning, COALESCE_MS } from './fitWarning.js';
+export { createGuide, sanitizeGuideHtml, shortcutRows } from './guide.js';
+export { GUIDE_SECTIONS } from './guideContent.js';
 export { createShortcuts, SHORTCUTS } from './shortcuts.js';
 export { createPiecesPanel } from './panels/pieces.js';
 export { createBodyPanel } from './panels/body.js';
@@ -19,6 +21,7 @@ import { createToolbar } from './toolbar.js';
 import { createDock } from './dock.js';
 import { createStatusbar } from './statusbar.js';
 import { createFitWarning } from './fitWarning.js';
+import { createGuide } from './guide.js';
 import { createShortcuts } from './shortcuts.js';
 import { createPiecesPanel } from './panels/pieces.js';
 import { createBodyPanel } from './panels/body.js';
@@ -50,6 +53,7 @@ export function createUi({ store, bus, root = document }) {
   const body = createBodyPanel(store, bus, root);
   const fabric = createFabricPanel(store, bus, root);
   const sizes = createSizesPanel(store, bus, root);
+  const guide = createGuide(store, bus, root);
   const shortcuts = createShortcuts(bus, typeof window !== 'undefined' ? window : undefined);
 
   const panels = { pieces, body, fabric, sizes };
@@ -81,10 +85,10 @@ export function createUi({ store, bus, root = document }) {
   }
 
   return {
-    layout, toolbar, dock, statusbar, fitWarning, shortcuts, panels,
+    layout, toolbar, dock, statusbar, fitWarning, guide, shortcuts, panels,
     setSelection, elements, refresh, root,
     destroy() {
-      for (const part of [shortcuts, sizes, fabric, body, pieces, fitWarning, statusbar, dock, toolbar, layout]) {
+      for (const part of [shortcuts, guide, sizes, fabric, body, pieces, fitWarning, statusbar, dock, toolbar, layout]) {
         try { part.destroy(); } catch { /* ignore */ }
       }
     },

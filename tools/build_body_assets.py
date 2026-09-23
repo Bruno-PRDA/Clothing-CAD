@@ -66,7 +66,7 @@ Contents
 | file | what |
 |---|---|
 | `base.bin` | template mesh: 14 380 vertices (13 380 body + joint landmark cubes), 26 756 triangles |
-| `targets.bin` | 220 morph targets as quantised sparse vertex deltas |
+| `targets.bin` | morph targets as quantised sparse vertex deltas: macro, height, measure and the detail families |
 | `index.json` | target directory, joint landmark vertex ranges, mesh metadata |
 """
 
@@ -88,10 +88,36 @@ def parse_obj(text):
     return positions, quads, groups
 
 
+# Detail families that extend MEASUREMENT range past what the 40 `measure/` targets reach. Chosen by what a
+# garment is cut from: the waist (stomach), chest and back (torso), hips and seat (hip, buttocks), the neck,
+# the limb girths and leg length (armslegs). Hands, feet, fingers, valgus and the 200-file breast cup/firmness
+# matrix are not in a pattern's measurements and are left out; the four simple breast sliders are kept.
+DETAIL_FAMILIES = {
+    'stomach': None,                       # None = every target in the family
+    'torso': None,
+    'hip': None,
+    'buttocks': None,
+    'neck': None,
+    'pelvis': None,
+    'breast': ('breast-dist-', 'breast-point-', 'breast-trans-', 'breast-volume-vert-'),
+    'armslegs': ('upperlegs-height-', 'lowerlegs-height-',
+                 'l-upperleg-', 'r-upperleg-', 'l-lowerleg-', 'r-lowerleg-',
+                 'l-upperarm-', 'r-upperarm-', 'l-lowerarm-', 'r-lowerarm-'),
+}
+
+
 def wanted_target(rel):
-    """rel is a path under data/targets/. Keep the macro/height/measure families we drive."""
+    """rel is a path under data/targets/. Keep the macro/height/measure families we drive, plus the
+    detail families above."""
+    if not rel.endswith('.target'):
+        return False                      # the folders also carry .png slider thumbnails
     if rel.startswith('measure/'):
         return True
+    top = rel.split('/')[0]
+    if top in DETAIL_FAMILIES:
+        prefixes = DETAIL_FAMILIES[top]
+        name = os.path.basename(rel)
+        return prefixes is None or any(name.startswith(pre) for pre in prefixes)
     if not rel.startswith('macrodetails/'):
         return False
     sub = rel[len('macrodetails/'):]
@@ -110,6 +136,9 @@ def target_name(rel):
         return 'macro/' + os.path.basename(rel)
     if rel.startswith('measure/'):
         return 'measure/' + os.path.basename(rel)[len('measure-'):]
+    top = rel.split('/')[0]
+    if top in DETAIL_FAMILIES:
+        return top + '/' + os.path.basename(rel)
     return rel
 
 

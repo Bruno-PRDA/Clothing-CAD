@@ -155,12 +155,32 @@ export function defaultGrading() {
 // ---------------------------------------------------------------------------------------------------------
 
 /** @param {*} v @returns {BodyParams} */
-function normalizeBodyParams(v) {
+function normalizeBodyParams(v, presetId) {
   const src = isObj(v) ? v : {};
   /** @type {any} */
   const out = {};
   for (const key of BODY_PARAM_KEYS) out[key] = num(src[key], DEFAULT_BODY_PARAMS[key]);
+  // `sex` did not exist before 2026-09-18, so every document saved earlier lacks it, and filling it
+  // from DEFAULT_BODY_PARAMS (female_m, sex 1) silently loaded every saved MALE body as a fully
+  // female template blend — chest, waist and hips then solved to the right numbers on the wrong
+  // frame, so nothing looked broken. Infer it instead.
+  if (!(typeof src.sex === 'number' && Number.isFinite(src.sex))) out.sex = inferSex(src, presetId);
   return out;
+}
+
+/**
+ * Sex for a body that never recorded one. The preset name is decisive when it names a sex; otherwise
+ * bust fullness is the only clue the old model carried (its macro layer used exactly this test), and a
+ * flat-chested woman saved without a preset loads male — the least-wrong reading of no information.
+ * @param {any} src @param {string} [presetId] @returns {number}
+ */
+function inferSex(src, presetId) {
+  const p = typeof presetId === 'string' ? presetId : '';
+  if (/^(female|plus)/.test(p)) return 1;
+  if (/^(male|athletic)/.test(p)) return 0;
+  if (/^child/.test(p)) return 0.5;
+  const bust = isObj(src) ? num(src.bustFullness, NaN) : NaN;
+  return Number.isFinite(bust) && bust > 0.05 ? 1 : 0;
 }
 
 /**
@@ -433,7 +453,7 @@ export function normalizeDoc(partial) {
   const bodySrc = isObj(p.body) ? p.body : {};
   const body = {
     preset: str(bodySrc.preset, DEFAULT_BODY_PRESET),
-    params: normalizeBodyParams(bodySrc.params),
+    params: normalizeBodyParams(bodySrc.params, str(bodySrc.preset, DEFAULT_BODY_PRESET)),
   };
 
   /** @type {FabricInstance[]} */
@@ -760,6 +780,9 @@ function validatePiece(issues, pc, fabricIds, measurements) {
     if (!isInt(r.vertex) || r.vertex < 0 || r.vertex >= nv) {
       push(issues, 'error', 'GradeRuleVertex', 'Piece ' + show(pid) + ' grade rule ' + k + ' vertex ' + show(r.vertex) + ' outside 0..' + (nv - 1), { pieceId: pid });
     }
+    if (r.ref !== null && r.ref !== undefined && !measurements.includes(r.ref)) {
+      push(issues, 'warn', 'GradeRef', 'Piece ' + show(pid) + ' grade rule ' + k + ' tracks ' + show(r.ref) + ', which is not in sizes.measurements', { pieceId: pid });
+    }
   }
 }
 
@@ -1046,6 +1069,12 @@ function migrateBody(doc) {
   }
   const params = body.params;
   for (const key of BODY_DROPS) delete params[key];
+  // The pre-freeze design stored sex as 'm' | 'f' | 'n'. The body now has a 0 (male) .. 1 (female) blend,
+  // so the letter converts; anything else is deleted and normalizeBodyParams infers it from the preset.
+  if (typeof params.sex === 'string') {
+    const s = { m: 0, f: 1, n: 0.5 }[params.sex.trim().charAt(0).toLowerCase()];
+    if (s === undefined) delete params.sex; else params.sex = s;
+  }
   renameMeasurementKeys(params);
   for (const key of Object.keys(params)) {
     if (key.endsWith('_cm')) {

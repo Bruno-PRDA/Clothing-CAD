@@ -132,15 +132,20 @@ Store: writes only with `store.update(fn, label)` / `store.batch(label)` on poin
 ## src/body (A3) — `index.js` exports (SPEC 6); pure except `mesh.js` (three)
 
 ```js
-PARAM_DEFS   // [{key, label, min, max, step, unit:'cm'|'deg'|''}] × 20, panel order (real values in the stub)
-PARAM_KEYS   // the 20 keys
+PARAM_DEFS   // [{key, label, min, max, step, unit:'cm'|'deg'|'kg'|'y'|''}] × 24, panel order (real values in the stub)
+PARAM_KEYS   // the 24 keys (the 20 of SPEC 6.1 + weight_kg, muscle, age_y, sex)
 clampParams(p) → BodyParams        paramsEqual(a, b) → boolean
 DEFAULT_PRESET_ID = 'female_m'     BODY_PRESETS /* Record<id, BodyParams>, 9 presets, real values in the stub */
 PRESET_LABELS                      listPresets() → {id, label}[]
 buildBody(params, {cell? = 0.015 | 0.030 coarse, reuseGeometry?}) → BodyModel   // throws code 'BodyError' only on non-finite
 sampleBody(model, x, y, z, outGrad?) → metres
+initTemplate(baseUrl? = 'assets/body/') → Promise<{ok, ms, error?}>   // loads the MakeHuman template; failure falls back to the analytic body
+templateReady() → boolean          clearTemplate()          buildAnalyticBody(params, opts?) → BodyModel
+fitBodyLS(tpl, params, opts?) / calibrateLS(tpl) / FITLS_MEASURES / FITLS_CONTROLS / FITLS_DEFAULTS   // the joint fit the template uses
+fitBody / calibrate / MEASURE_TARGETS / UNSTEERABLE / FIT_DEFAULTS   // the older one-slider-per-measurement fit, kept for comparison
+measureTemplate(tpl, pos, {index?}) → TemplateMeasurements        bakeMeshSdf(pos, indices, opts) · BAND_M · BAND_CELLS
 ```
-`BodyModel = {params, landmarks, anchors{torso, armL, armR, legL, legR, skirt, head}, rings, sdf, geometry{positions, normals, indices}, measured{chest_cm, waist_cm, hips_cm}, buildMs}`; `schema.DEFAULT_BODY_PARAMS` must equal `BODY_PRESETS.female_m`. Emits/listens: nothing. Element ids: none. `selftest.js`: 12 cases (6.9).
+`BodyModel = {params, landmarks, anchors{torso, armL, armR, legL, legR, skirt, head}, rings, sdf, geometry{positions, normals, indices}, measured{chest_cm, waist_cm, hips_cm}, buildMs}`, plus on the template body `source: 'template'`, `fit`, `measuredFull`, `skeleton`, `timing`; `schema.DEFAULT_BODY_PARAMS` must equal `BODY_PRESETS.female_m`. Emits/listens: nothing. Element ids: none. `selftest.js`: 17 cases (the 12 of 6.9, three build cases, `template.fit`, `template.tapeVsSdf`).
 
 ---
 
@@ -233,8 +238,10 @@ createDock(store, bus, root?) → {setTab(name), getTab(), destroy()}
 createStatusbar(bus, root?) → {setMessage(text, level?, ttl_ms?), setToolHint(text), setCursor(x_mm|null, y_mm?), setSeamEase(text|null, warn?), setQuality(text|null, level?), setSim(stats|null), getLog(), destroy()}
 createShortcuts(bus, root?) → {enable(), disable(), isEnabled(), destroy()}   SHORTCUTS   // Tab never handled; 1/2/3 layouts, F1–F4 dock tabs
 createPiecesPanel / createBodyPanel / createFabricPanel / createSizesPanel (store, bus, root?) → {refresh(), destroy()}
-REQUIRED_IDS   // the 135 ids of 11.1.1 (kept in src/ui/ids.js)
-createUi({store, bus, root?}) → {layout, toolbar, dock, statusbar, shortcuts, panels:{pieces, body, fabric, sizes}, destroy()}
+REQUIRED_IDS   // the 148 static ids (135 of 11.1.1 + fit banner 4 + guide 8 + … kept in src/ui/ids.js)
+createFitWarning(store, bus, root?) → {refresh(), report(), destroy()}
+createGuide(store, bus, root?) → {open(section?), close(), toggle(section?), isOpen(), search(q), current(), sections(), refresh(), destroy()}   GUIDE_SECTIONS   sanitizeGuideHtml(doc, html)   shortcutRows()
+createUi({store, bus, root?}) → {layout, toolbar, dock, statusbar, fitWarning, guide, shortcuts, panels:{pieces, body, fabric, sizes}, setSelection, elements, refresh, destroy()}
 runSelfTest()
 ```
 Store: `store.update(fn, label)` with the 11.12.2 labels (`body:*`, `fabric:*`, `sim:*`, `sizes:*`, `ui:*`, `piece:*`, `seam:*`); the fabric colour/texture/scale sliders and bend/stretch sliders use `store.batch` (input = step, change = commit); the Body panel does NOT write during a drag (emits `body:params:drag`, one `store.update` on release then `body:params:commit`). Emits: `ui:action` (all intents), `ui:layout`, `ui:dock`, `ui:status`, `body:params:drag`, `body:params:commit`. Listens: `doc:changed` (via `store.subscribe`), `selection:changed`, `tool:changed`, `hover:changed`, `seam:preview`, `view2d:changed`, `pattern:issues`, `body:built`, `mesh:built`, `sim:built`, `sim:stats`, `sim:phase`, `sim:nan`, `fabric:changed`, `size:active`, `ui:layout`, `ui:dock`, `ui:status`, `popout:open/close`, `app:ready`. Element ids owned (by file): layout → `app`(data-*), `main`, `pane-left`, `pane-right`, `pane-2d`, `pane-3d`, `resizer`, `msg-3d-popout`; toolbar → every `btn-*`/`tool-*`/`sel-*`/`chk-selfcollision`/`input-file` in `#toolbar` + `btn-popin`; dock → `dock-tabs`, `tab-*`, `panel-*` visibility; statusbar → `status-tool`, `status-msg`, `status-cursor`, `status-seam-ease`, `status-quality`, `status-sim`; panels/pieces → `list-pieces`, `btn-piece-*`, `piece-props`, `piece-fold`, `inp-piece-name`, `num-piece-*`, `sel-piece-fabric`, `chk-piece-*`, `piece-placement`, `sel-placement-*`, `num-placement-*`, `range-placement-wrap(-val)`, `chk-placement-flip`, `piece-grade`, `sel-grade-*`, `edge-props`, `edge-index`, `inp-edge-label`, `edge-labels`, `num-edge-allowance`, `chk-edge-pinned`, `list-seams`, `seam-ease`, `btn-seam-*`, `list-issues`; panels/body → `sel-body-preset`, `body-params` (generated `body-<key>`, `body-<key>-num`), `body-measured`, `body-closest-size`, `btn-body-fit-size`, `body-build-ms`; panels/fabric → `sel-fabric-piece`, `fabric-id`, `sel-fabric-preset`, `input-color`, `sel-texture`, `input-color2`, `range-texture-scale(-val)`, `range-bend-scale(-val)`, `range-stretch-scale(-val)`, `fabric-physics`; panels/sizes → `table-sizes`, `btn-size-*`, `sel-base-size`, `list-size-issues`. `styles/app.css` is A7's; `styles/shell.css` is frozen.
@@ -246,6 +253,6 @@ Store: `store.update(fn, label)` with the 11.12.2 labels (`body:*`, `fabric:*`, 
 - `main.js`: `APP_VERSION`, `BUILD_INFO`, `boot(opts?) → Promise<BootResult>`; stages `params, store, api, ui, editor, viewer, body, remesh, cloth, arrange, drape, wire`; `viewer3d` (and `body`, via `mesh.js`) are loaded with `await import()` inside their stages; installs `window.__app` before any stage; `?sample=`, `?nosim=1`, `?size=`, `?acceptance=1`.
 - `wiring.js`: `createWiring(ctx) → Wiring {start, stop, flush, pending, rebuildAll, remesh, rebuildCloth, arrange, drape, play, pause, reset, buildBody, applyFabric, applySimSettings, setActiveSize, stepFrames, tick(dtMs, frame), computeKeys}`; the only listener of `ui:action`; emits `body:built, mesh:built, sim:built, sim:phase, sim:stats, sim:nan, fabric:changed, size:active, popout:open/close, ui:status`.
 - `debugApi.js`: `installDebugApi(ctx, wiring)`, `class ApiError {code, detail}`, `ERROR_CODES`. `window.__app` = `{version, ready, bus, ctx, log(), doc(), update(), undo(), redo(), load(), loadSample(), idle(), save(), pattern{pieces, addPiece, setVertices, addSeam, removeSeam, deletePiece, movePiece, seamEase(id, size?), validate, fit, worldToScreen, screenToWorld, setTool, click, drag, select, selection}, mesh{stats, remesh, get, all}, body{params, setParam, setParams, setPreset, presets, model, modelLive, measured, sdf → {d, n}, landmark}, sim{state, step, play, pause, reset, arrange, drape, stats, phase ('empty'|'arranged'|'sewing'|'draping'|'paused'|'error'), running, setSetting, snapshot, restore, centerOfMass, pin, unpin}, fabric{presets, list, resolved, setPreset, setColor, setTexture, setOverride, setScale, addFabric}, sizes{chart, setActive, active, grade, closest, setCell, addRow, removeRow, fitBody}, export{svg, sheetSvg, printHtml, pageCount, csv, pieceCsv, cutLine, json, obj}, ui{click, setValue, layout, dock, swap, setSplit, state, elements, key}, selftest{list, run}, acceptance{run, list}, viewer{screenshotDataUrl, frame, fps, resize, materialOf}}`.
-- `tests/acceptance.js`: `CHECKS`, `runAcceptance(filter?, opts?) → AcceptanceSummary {pass, passed, failed, total, ms, results[{id, name, pass, ms, details}], errors}`; 27 checks of 13.3 (T-shirt = **10 seam records**; `IDS.play = 'btn-play'`, `IDS.pause = 'btn-pause'`).
+- `tests/acceptance.js`: `CHECKS`, `runAcceptance(filter?, opts?) → AcceptanceSummary {pass, passed, failed, total, ms, results[{id, name, pass, ms, details}], errors}`; 30 checks: the 27 of 13.3 plus later additions (26b `size_drapes`, 26c `body_estimate`, 26d `body_template`, …) (T-shirt = **10 seam records**; `IDS.play = 'btn-play'`, `IDS.pause = 'btn-pause'`).
 
 Phase-0 `window.__app` (until A8 lands): `{version:'phase0', ready: Promise.resolve(true), stubs:true, doc(), store, bus, modules:{geometry, pattern, body, cloth, viewer3d, sizing, exportMod, ui}, core:{…}}`.

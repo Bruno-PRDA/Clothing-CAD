@@ -174,7 +174,6 @@ export function fitBody(tpl, params, opts = {}) {
   /** @type {Record<string, number>} */
   let residual = {};
   let round = 0;
-  const clamped = new Set();
 
   for (; round < cfg.rounds; round++) {
     solveHeight();
@@ -197,7 +196,6 @@ export function fitBody(tpl, params, opts = {}) {
       // that has itself been scaled up by the macro layer.
       const scale = base[key] > 1e-6 ? Math.max(0.4, Math.min(2.5, measured[key] / base[key])) : 1;
       const next = sliders[key] + cfg.damping * err / (g * scale);
-      if (next > 1 || next < -1) clamped.add(key);
       const before = sliders[key];
       sliders[key] = Math.max(-1, Math.min(1, next));
       moved = Math.max(moved, Math.abs(sliders[key] - before));
@@ -225,9 +223,13 @@ export function fitBody(tpl, params, opts = {}) {
   }
   residual.height_cm = params.height_cm - measured.height_cm;
 
+  // Pinned at the END. A slider that overshot in round three and came back by round six (see above) is
+  // not out of range, and listing it as such was the contract bug the review found.
+  const clamped = Object.keys(sliders).filter((k) => Math.abs(sliders[k]) >= 1 - 1e-9);
+
   return {
     pos, weights, sliders, heightSlider, measured, residual,
-    clamped: [...clamped], rounds: round,
+    clamped, rounds: round,
     ms: (typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0,
   };
 }

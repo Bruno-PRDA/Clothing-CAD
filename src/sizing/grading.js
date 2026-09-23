@@ -170,11 +170,20 @@ export function gradePieceDetailed(piece, chart, sizeName) {
     // offset from the pivot is re-derived from the base outline, so the correction is exact rather
     // than an increment on top of a scale that already moved it.
     if (rule.ref) {
-      const rs = axisScale(piece, rule.ref, base, row, issues);
-      const axis = rule.refAxis === 'y' || rule.refAxis === 'both' ? rule.refAxis : 'x';
-      const src = piece.vertices[v];
-      if (axis === 'x' || axis === 'both') dx += (px + (src[0] - px) * rs) - out.vertices[v][0];
-      if (axis === 'y' || axis === 'both') dy += (py + (src[1] - py) * rs) - out.vertices[v][1];
+      // When the chart has no such column the vertex must keep the piece's OWN scaling — the state
+      // before the rule existed. Letting axisScale's "missing -> 1" through here instead subtracted the
+      // whole chest scaling from the shoulder tip, so a six-column chart from before this session
+      // graded the shoulder to size M at every size.
+      if (positiveFinite(base[rule.ref]) && positiveFinite(row[rule.ref])) {
+        const rs = /** @type {number} */ (row[rule.ref]) / /** @type {number} */ (base[rule.ref]);
+        const axis = rule.refAxis === 'y' || rule.refAxis === 'both' ? rule.refAxis : 'x';
+        const src = piece.vertices[v];
+        if (axis === 'x' || axis === 'both') dx += (px + (src[0] - px) * rs) - out.vertices[v][0];
+        if (axis === 'y' || axis === 'both') dy += (py + (src[1] - py) * rs) - out.vertices[v][1];
+      } else if (step !== 0) {
+        issues.push({ level: 'warn', code: 'GRADE_REF_MISSING', pieceId: piece.id,
+          message: `Piece ${piece.name}: vertex ${v} tracks ${rule.ref}, which is not in the size chart; following ${grade.widthRef || 'the piece'} instead` });
+      }
     }
     if (dx === 0 && dy === 0) continue;
 

@@ -8,7 +8,7 @@
 // the underbust", a waist is "the smallest girth between the underbust and the hip". That is what a
 // tailor does, and it keeps working when a morph moves the anatomy up or down.
 
-import { buildIndex, girthAt, limbGirth, components, horizontalSegments } from './section.js';
+import { buildIndex, girthAt, limbGirth } from './section.js';
 import { jointAt } from './template.js';
 
 /** @typedef {import('./template.js').Template} Template */
@@ -16,59 +16,71 @@ import { jointAt } from './template.js';
 const M2CM = 100;
 
 /**
- * Scan a height band and return the extreme girth in it.
+ * Girth of a band at its extreme, as a SOFT extremum: every sample within about a centimetre of the
+ * best one contributes, weighted by exp(-|g - g_ext| / SOFT_TAU).
+ *
+ * A hard argmin is not a continuous function of the body. Move a slider a hundredth and the waist's
+ * narrowest level can switch from one local minimum to another a few centimetres away — the girth
+ * barely changes, but every measurement DEFINED off that level (back length is nape-to-waist) jumps
+ * by the distance between them. Measured while fitting: back length swinging +1.8 → −10.7 cm between
+ * rounds whose sliders moved by hundredths, and a Jacobian solver dutifully learning the cliff as a
+ * derivative. The soft blend sits within SOFT_TAU of the true extremum and is continuous in the
+ * morphs, so both the number and the level it was taken at move smoothly under the sliders.
+ *
  * @param {import('./section.js').SectionIndex} ix
  * @param {number} yLo @param {number} yHi @param {'max'|'min'} want @param {number} [steps]
  * @returns {{y: number, girth: number, width: number, depth: number}}
  */
-function extremeGirth(ix, yLo, yHi, want, steps = 24) {
-  // Coarse sweep, then refine inside the winning interval. Girth along a band is smooth and single-
-  // peaked, so a uniform 24-step scan spends most of its sections far from the answer; a 8 + 6 split
-  // lands within a millimetre of the same height for a little over half the sections. This matters
-  // because the fit loop calls the whole measurement once per round.
-  const coarse = Math.max(4, Math.round(steps / 3));
-  const better = (a, b) => (want === 'max' ? a.girth > b.girth : a.girth < b.girth);
-
-  /** @param {number} lo @param {number} hi @param {number} n */
-  const scan = (lo, hi, n) => {
-    let best = null;
-    for (let i = 0; i <= n; i++) {
-      const y = lo + (hi - lo) * (i / n);
-      const g = girthAt(ix, y, {});
-      if (!g) continue;
-      const cand = { y, girth: g.girth, width: g.width, depth: g.depth };
-      if (!best || better(cand, best)) best = cand;
-    }
-    return best;
-  };
-
-  const first = scan(yLo, yHi, coarse);
-  if (!first) return { y: (yLo + yHi) / 2, girth: 0, width: 0, depth: 0 };
-  const step = (yHi - yLo) / coarse;
-  const lo = Math.max(yLo, first.y - step);
-  const hi = Math.min(yHi, first.y + step);
-  const second = hi > lo ? scan(lo, hi, Math.max(2, coarse - 2)) : null;
-  return (second && better(second, first)) ? second : first;
+function extremeGirth(ix, yLo, yHi, want, steps = 16) {
+  const ys = [], gs = [], ws = [], ds = [];
+  let ext = want === 'max' ? -Infinity : Infinity;
+  for (let i = 0; i <= steps; i++) {
+    const y = yLo + (yHi - yLo) * (i / steps);
+    const g = girthAt(ix, y, {});
+    if (!g) continue;
+    ys.push(y); gs.push(g.girth); ws.push(g.width); ds.push(g.depth);
+    if (want === 'max' ? g.girth > ext : g.girth < ext) ext = g.girth;
+  }
+  if (!gs.length) return { y: (yLo + yHi) / 2, girth: 0, width: 0, depth: 0 };
+  let W = 0, y = 0, girth = 0, width = 0, depth = 0;
+  for (let i = 0; i < gs.length; i++) {
+    const w = Math.exp(-Math.abs(gs[i] - ext) / SOFT_TAU);
+    W += w; y += w * ys[i]; girth += w * gs[i]; width += w * ws[i]; depth += w * ds[i];
+  }
+  return { y: y / W, girth: girth / W, width: width / W, depth: depth / W };
 }
+/** Girth scale of the soft extremum, metres. 4 mm: a sample 1.2 cm off the extremum weighs 5 %. */
+const SOFT_TAU = 0.004;
 
 /**
- * The crotch: the lowest height at which the body is still ONE piece. Below it the section splits
- * into two legs, which is exactly the anatomical definition of the crotch and gives the inseam.
- * @param {import('./section.js').SectionIndex} ix @param {number} yPelvis @param {number} yKnee
- * @returns {number}
+ * The crotch vertex: found ONCE on the rest mesh and then tracked by index, so the inseam is a
+ * continuous function of the morphs.
+ *
+ * The previous definition — bisect for the lowest height at which the section is still one loop —
+ * is anatomically right and numerically treacherous: wherever the inner thighs touch below the true
+ * crotch the "one loop" region extends downward, and as a slider moves them a millimetre apart or
+ * together the detected crotch jumps by the whole overlap. Measured while fitting: the inseam error
+ * alternating −9.8, +1.0, −8.7, +0.7 cm on consecutive rounds. On the mid-sagittal plane the body's
+ * lowest point IS the crotch (the legs are off-axis at |x| ≈ 9 cm), and on the rest mesh the legs
+ * stand apart, so the lowest rest vertex near x = 0 in the pelvic band identifies it unambiguously.
+ * The mesh topology never changes, so the same index is the crotch on every morphed body.
+ *
+ * @param {Template} tpl @returns {number} vertex index
  */
-function crotchY(ix, yPelvis, yKnee) {
-  // Count loops, don't measure width. Judging "still one piece" by the section being wider than
-  // 16 cm fails on any adult thigh, which is itself 17 cm across — the test then reads "one piece"
-  // all the way down the leg and puts the crotch at the knee, costing ~8 cm of inseam.
-  const single = (y) => components(horizontalSegments(ix, y)).filter((c) => c.n >= 8).length <= 1;
-  let lo = yKnee, hi = yPelvis;                  // invariant: two loops at lo, one at hi
-  if (!single(hi)) return hi;
-  for (let i = 0; i < 20; i++) {
-    const mid = (lo + hi) / 2;
-    if (single(mid)) hi = mid; else lo = mid;
+function crotchVertex(tpl) {
+  if (typeof tpl.__crotchVertex === 'number') return tpl.__crotchVertex;
+  const r = tpl.rest;
+  let top = -Infinity, floor = Infinity;
+  for (let i = 0; i < tpl.nBodyVerts; i++) { const y = r[i * 3 + 1]; if (y > top) top = y; if (y < floor) floor = y; }
+  const H = top - floor;
+  let best = -1, bestY = Infinity;
+  for (let i = 0; i < tpl.nBodyVerts; i++) {
+    const x = r[i * 3], y = r[i * 3 + 1];
+    if (Math.abs(x) > 0.012 || y < floor + 0.30 * H || y > floor + 0.60 * H) continue;
+    if (y < bestY) { bestY = y; best = i; }
   }
-  return hi;
+  Object.defineProperty(tpl, '__crotchVertex', { value: best, enumerable: false });
+  return best;
 }
 
 /**
@@ -119,7 +131,8 @@ export function measureTemplate(tpl, pos, opts = {}) {
   // waist: tightest between the underbust and the hip bones
   const waist = extremeGirth(ix, underbust.y - height * 0.11, underbust.y - height * 0.015, 'min');
   // hips: fullest between the crotch and the waist
-  const yCrotch = crotchY(ix, pelvisJ[1], kneeL[1]);
+  const cv = crotchVertex(tpl);
+  const yCrotch = cv >= 0 ? pos[cv * 3 + 1] : pelvisJ[1] - height * 0.07;
   const hips = extremeGirth(ix, yCrotch + height * 0.005, waist.y - height * 0.02, 'max');
   // Neck: tightest slice of the neck column. MakeHuman's `neck` joint marks the BASE of the neck (the
   // nape), not the top — anchoring the band between the shoulder and the neck joint collapses it to a

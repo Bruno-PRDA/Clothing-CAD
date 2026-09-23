@@ -26,6 +26,13 @@ td.n{white-space:nowrap} td.d{color:#aaa}
 // Runs every module's runSelfTest() in the browser. Results also land in window.__selftest.
 const MODULES = ['core', 'geometry', 'pattern', 'body', 'cloth', 'viewer3d', 'sizing', 'export', 'ui'];
 const only = new URLSearchParams(location.search).get('m');
+// ?template=1 loads the scanned body first, so the body module's template.* cases run instead of skipping
+// (the app itself always loads it; this runner otherwise tests the analytic fallback).
+if (new URLSearchParams(location.search).get('template') === '1') {
+  const b = await import('../src/body/index.js');
+  const r = await b.initTemplate('../assets/body/');
+  if (!r.ok) console.error('template failed to load: ' + r.error);
+}
 const list = only ? only.split(',').map(s => s.trim()).filter(Boolean) : MODULES;
 const out = document.getElementById('out');
 const sum = document.getElementById('sum');

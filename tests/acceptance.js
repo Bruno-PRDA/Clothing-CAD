@@ -1126,6 +1126,28 @@ async function checkBodyEstimate() {
   return `180 cm 95 kg -> chest ${fmt(p.chest_cm)} waist ${fmt(p.waist_cm)} hips ${fmt(p.hips_cm)} cm, measured back within 3 cm; at 62 kg waist ${fmt(lean.waist_cm)} cm`;
 }
 
+/**
+ * The app must be running on the scanned template body, not the analytic fallback. Every other body
+ * check passes on either — the fallback measures its own rings just as honestly — so without this one a
+ * broken assets/body/ folder would ship green.
+ * @returns {Promise<string>}
+ */
+async function checkBodyTemplate() {
+  await reloadSample('tshirt');
+  await app().idle();
+  const model = /** @type {any} */ (app().body.modelLive());
+  expect(model && model.source === 'template',
+    `the body was built by the ${(model && model.source) || 'analytic fallback'}, not the scanned template — did assets/body/ fail to load?`);
+  const r = (model.fit && model.fit.residual) || {};
+  let ss = 0, n = 0;
+  for (const k of Object.keys(r)) if (k !== 'height_cm' && Number.isFinite(r[k])) { ss += r[k] * r[k]; n++; }
+  const rms = Math.sqrt(ss / Math.max(1, n));
+  expect(n >= 14 && rms < 1.0, `the fitted body misses its ${n} measurements by ${rms.toFixed(2)} cm rms`);
+  const pose = document.getElementById('body-armAbduction_deg');
+  expect(!!pose && /** @type {HTMLInputElement} */ (pose).disabled, 'the Arm angle slider is enabled on the scanned body, where it has no effect');
+  return `template body, ${n} measurements within ${rms.toFixed(2)} cm rms, pose sliders disabled`;
+}
+
 /** How long the runner waits for a timed-out check's abandoned work to settle before starting the next one. */
 const SETTLE_AFTER_TIMEOUT_MS = 30000;
 
@@ -1161,6 +1183,7 @@ export const CHECKS = Object.freeze([
   { id: '26', name: 'ui_clicks', timeoutMs: 20000, fn: checkUiClicks },
   { id: '26b', name: 'size_drapes', timeoutMs: 30000, fn: checkSizeDrapes },
   { id: '26c', name: 'body_estimate', timeoutMs: 20000, fn: checkBodyEstimate },
+  { id: '26d', name: 'body_template', timeoutMs: 20000, fn: checkBodyTemplate },
   { id: '27', name: 'runtime', timeoutMs: 5000, fn: checkRuntime },
 ]);
 

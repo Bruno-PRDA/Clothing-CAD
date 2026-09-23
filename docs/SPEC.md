@@ -681,8 +681,8 @@ Payload typedefs (all live in `events.js`; other modules import them with `@type
 | `ui:dock` | `ui/dock.js` | dock tab switched (click, shortcut F1–F4, debugApi) — after `store.update` of `ui.dockTab` | per interaction | `ui/panels/*.js` (lazy first render) |
 | `ui:status` | any DOM-touching module, wiring.js (for caught module errors), the bus itself | as needed | as needed | `ui/statusbar.js`, `app/debugApi.js` (`__app.log`, last 200 entries) |
 | `ui:action` | `ui/toolbar.js`, `ui/shortcuts.js`, `ui/panels/*.js` | a button click, shortcut or panel intent (`{action, ...}` tables in 11.1.2 / 11.7) | per interaction | wiring.js only (dispatches to the module APIs) |
-| `popout:open` | `app/wiring.js` (bridge `onOpened` callback) | the pop-out window answered `hello` | rare | wiring.js (switch layout to `'2d'`, pause the in-page loop), `ui/toolbar.js` |
-| `popout:close` | `app/wiring.js` (bridge `onClosed` callback / `open()` returned false) | `closed` message, `beforeunload`, 3 s heartbeat timeout, or `window.open` returned null | rare | wiring.js (restore layout, resume loop), `ui/toolbar.js`, `ui/statusbar.js` |
+| `popout:open` | `app/wiring.js` (bridge `onOpened` callback) | the pop-out window answered `hello` | rare | wiring.js (`layout.setPopout(true)`; the loop KEEPS running — it is the simulation that feeds the pop-out; amended 2026-09-23), `ui/toolbar.js` |
+| `popout:close` | `app/wiring.js` (bridge `onClosed` callback / `open()` returned false) | `closed` message, `beforeunload`, 3 s heartbeat timeout, or `window.open` returned null | rare | wiring.js (`layout.setPopout(false)`; the resulting `ui:layout` decides whether the loop runs — it stops only when no 3D view is visible anywhere), `ui/toolbar.js`, `ui/statusbar.js` |
 | `app:ready` | `app/main.js` | once, after first mesh + body + sim build + first rendered frame | once | `app/debugApi.js` (resolves `__app.ready`), `ui/statusbar.js` |
 
 Pure modules (`cloth/`, `geometry/`, `body/` except `mesh.js`, `sizing/`, `export/`) never import `events.js`; they return values and throw coded errors, and wiring.js turns those into events. `samples/` imports nothing.
@@ -1007,7 +1007,7 @@ Issue objects carry `pieceId`, `seamId` and `edge` whenever they apply. Issues a
 * `version` missing, non-numeric or `< 1` → treated as **v0**, the pre-freeze layout of the design documents. Applied in order, on a deep copy:
   1. Top-level: `schemaVersion` → `version`; `sizeChart` → `sizes`; `sizes.sizes` (array) → `sizes.rows`; `sizes.table` (object) → `rows` in key order with `name` = key; `sizes.base` → `baseSize`; `sizes.measures` → `measurements`.
   2. Key renames anywhere in pieces/sim/placement: `seamAllowanceMm`→`seamAllowance_mm`, `meshSpacingMm`→`meshSpacing_mm`, `offsetMm`→`offset_mm`, `quantity`→`cutQty`, `sewTimeS`/`sewDurationS`→`sewTime_s`, `collisionOffsetMm`→`collisionOffset_mm`, `gravity`→`gravity_ms2` (absolute value), `grade.x`→`grade.widthRef`, `grade.y`→`grade.lengthRef`, `grade.xAnchor`→`anchorX`, `grade.yAnchor`→`anchorY`, rule `dx`/`dy`→`dx_mm`/`dy_mm`, `grading`→`grade`, `internalLines[].kind` missing → `'mark'`.
-  3. Body params: unsuffixed keys get `_cm` (`chest`→`chest_cm`, `hips`/`hip`→`hips_cm`, `neckCirc`→`neck_cm`, `upperArmCirc`→`upperArm_cm`, `wristCirc`→`wrist_cm`, `thighCirc`→`thigh_cm`, `calfCirc`→`calf_cm`, `ankleCirc`→`ankle_cm`, `backLength`→`torsoLength_cm`, `bust`→`bustFullness`, `armAbductionDeg`→`armAbduction_deg`, `legSpreadDeg`→`legSpread_deg`); any value `< 3` on a `_cm` key is assumed to be metres and multiplied by 100; `masculinity`, `sex`, `chestDepthRatio`, `headCirc`, `kneeCirc` are dropped.
+  3. Body params: unsuffixed keys get `_cm` (`chest`→`chest_cm`, `hips`/`hip`→`hips_cm`, `neckCirc`→`neck_cm`, `upperArmCirc`→`upperArm_cm`, `wristCirc`→`wrist_cm`, `thighCirc`→`thigh_cm`, `calfCirc`→`calf_cm`, `ankleCirc`→`ankle_cm`, `backLength`→`torsoLength_cm`, `bust`→`bustFullness`, `armAbductionDeg`→`armAbduction_deg`, `legSpreadDeg`→`legSpread_deg`); any value `< 3` on a `_cm` key is assumed to be metres and multiplied by 100; `masculinity`, `chestDepthRatio`, `headCirc`, `kneeCirc` are dropped. *(Amended 2026-09-23.)* `sex` is no longer dropped: v0 stored it as `'m' | 'f' | 'n'`, which converts to 0 / 1 / 0.5 (any other value is deleted). A document of any version whose body has no numeric `sex` gets one from `normalizeDoc`: the preset name decides (`female*`/`plus*` 1, `male*`/`athletic*` 0, `child*` 0.5), otherwise `bustFullness > 0.05` means 1, else 0. Filling it from the female default instead loaded every male body saved before 2026-09-18 as a woman fitted to a man's numbers.
   4. Size rows: if every numeric value of the base row is `> 300`, the chart is assumed to be in mm and every value is divided by 10; measurement keys renamed as in step 3.
   5. Seam sides: `piece`→`pieceId`; `edges:[e]` (single-element chain) → `edge: e`; a chain with more than one edge → keep `edges[0]` and add an `Issue`-style entry to `migrate.warnings` (module-level array cleared at each call) — the user is told the seam was truncated via `ui:status`.
   6. Fabrics: `piece.color` + `piece.fabricId` naming a preset (v0 had no fabric instances) → one `FabricInstance` per distinct `(preset, color)` pair with id `fab_<preset>_<n>`, pieces re-pointed. `fabricOverrides` (object keyed by preset) → `overrides` of the matching instances.
@@ -2097,6 +2097,54 @@ export function packRects(items, sheetWidth, opts)
 
 ## 6. Parametric body (`src/body/`) — agent A3
 
+> **Amendment (lead, 2026-09-23) — continuous measurements, a joint fit, and what the review found.**
+>
+> **(a) Measurements are continuous in the morphs.** `measureTemplate.js` took each band's girth as a hard argmin /
+> argmax over sampled heights and found the crotch by bisecting on "one loop or two". Both are discontinuous: a
+> slider moving by hundredths switched the waist between two local minima centimetres apart (back length, which is
+> nape-to-waist, jumped with it) and moved the detected crotch by the whole thigh-contact overlap. Measured while
+> fitting: inseam error −9.8, +1.0, −8.7, +0.7 cm on consecutive rounds. Bands now use a SOFT extremum (every sample
+> weighted exp(−|g − g_ext| / 4 mm), 16 samples) and the crotch is a VERTEX, found once on the rest mesh (lowest
+> vertex with |x| < 12 mm in 30–60 % of stature) and tracked by index. A full measurement dropped from ~40 to 12 ms.
+>
+> **(b) The fit is a joint regularised least squares** (`fitLS.js`, now what `templateModel.js` calls) over 47
+> controls: the 16 `measure/` pairs plus 31 detail pairs (torso, stomach, hip, buttocks, pelvis, neck,
+> limb fat/muscle/scale; left and right limb targets as ONE control, because every limb is measured on the left).
+> Direction-dependent gains are calibrated once per page load (~0.8 s, in `initTemplate`); each round linearises,
+> solves `min |W(J·ds − err)|² + Σ λ_c (s_c + ds_c)² + μ|ds|²` with λ = 1 for `measure/` and 100 for detail controls,
+> clamps to [−1, 1] with an active set, and corrects J by a Broyden rank-one update from the step actually taken.
+> Chest, waist and hips carry row weight 2 (they are what the size chart, the fit warning and the Body panel read),
+> and the best round seen is returned, not the last. Stature is re-solved each round by one Newton step from the
+> previous round's value (a bracketed secant only on the first round or if that fails): 2 morph builds per round
+> instead of 6-7. A full build (`fitBodyLSBest`) keeps the Broyden solve when its rms is ≤ 0.8 cm and otherwise
+> also solves without Broyden and keeps the lower weighted cost — neither variant dominates. rms residual over 15
+> measurements: female_m 0.66 cm, male_m 0.62, child_10 0.34, male_l 0.50, athletic_m 1.04, plus_f 1.31, a 180 cm
+> / 95 kg estimate 0.83 (waist 102 of 103), a 170 cm / 120 kg woman 2.88; mean 1.02 over the eight (Broyden alone
+> 1.30). Chest / waist / hips land within 0.5 cm on every preset. Full builds 370-410 ms on the presets that keep
+> one solve, ~650 ms on those that take two. `fit.js` stays exported for comparison (`tools/bodycheck.html?do=fitls`,
+> `?do=fitlsgrid` for the solver settings).
+>
+> **(e) Limb girths no longer clip.** `limbGirth` took vertices within a FIXED radius of the limb axis (12 cm for
+> the thigh) and measured the hull of what was left, so on heavy thighs it measured an arc: plus_f 68.5 cm against
+> a full loop of 73.4, a 130 kg body 67.0 against 75.8 — and the fit then built thighs 5-9 cm too big while
+> reporting them on target. The radius is now a starting guess that grows ×1.3 (to 40 cm) until the section's
+> farthest point sits inside 97 % of it, and only vertices on the limb's own side of x = 0 are taken, so a wide
+> radius cannot join the two thighs (`?do=limbradius` shows the girth is now independent of the start radius).
+>
+> **(c) `body_estimate` is expected to pass now.** The 2026-09-18 amendment below (c) left it failing because
+> `measure/waist-circ` pinned at +1.00; the detail targets it asked for are vendored (372 targets, 17.75 MB) and
+> the joint fit spends them.
+>
+> **(d) Review fixes.** `FitResult.clamped` lists controls pinned at the END (it accumulated every transient
+> overshoot); `reuseGeometry` must match the template's vertex and index counts; the SDF's exact band is 30 mm
+> in METRES, not 2 cells (the coarse bake was doing 88 % of the full bake's work); `ground()` returns its
+> translation and the fit's own measurement is reused with its levels shifted, instead of measuring twice;
+> section loops key endpoints by integer. `armAbduction_deg` and `legSpread_deg` have no effect on the template
+> (a fixed A-pose scan): `BodyModel.source === 'template'` and the Body panel disables those two rows.
+> Self-tests `template.fit` (rms < 1 cm, worst < 3 cm on three presets) and `template.tapeVsSdf` (the tape
+> measurement against a ray cast of the baked SDF — an independent path, so not circular) run when the template
+> is loaded: always in the app, and in `tools/selftest.html?template=1`.
+
 > **Amendment (lead, 2026-09-18) — the template body's SDF grid is NOT aligned with x = 0, and the body is
 > grounded and centred after fitting.** Three facts about `templateModel.js` / `sdfMesh.js` that are invisible in a
 > render and each cost a failed check to find.
@@ -2120,6 +2168,7 @@ export function packRects(items, sheetWidth, opts)
 > **(c) Known limit, left failing on purpose:** `body_estimate` wants a 103 cm waist on a 180 cm / 95 kg frame and the
 > template reaches 90.9 — `measure/waist-circ` is pinned at +1.00. More range means vendoring MakeHuman's
 > `stomach` / `torso` / `hip` detail targets (~2.4 MB of CC0 text); the check is not to be loosened.
+> *(Resolved 2026-09-23 — see the amendment above: 102.1 of 103.)*
 
 > **Amendment (A3 + lead, 2026-09-17) — weight and build reshape the body.** `src/body/build.js` turns the three new
 > parameters into dimensionless factors: `adiposity = tanh((BMI − 5*(muscle − 0.35) − 22)/10)`, a `tone` term from
@@ -2398,6 +2447,10 @@ export function sampleBody(model, x, y, z, outGrad)   // = sampleSdf(model.sdf, 
 10. `mesh.valid` — `indices.length % 3 === 0`, every index `< positions.length/3`, no NaN, ≥ 10 000 vertices.
 11. `perf.full` — full build `buildMs < 400`; `perf.coarse` — coarse build `< 80` (details: ms).
 12. `stability.range` — building with every parameter at its min and then at its max produces finite grids and `measured` values.
+13. *(2026-09-23)* `template.fit` — when the template is loaded: female_m, male_m and child_10 are built from it (`source === 'template'`), fit ≥ 14 measurements with rms < 1 cm and worst < 3 cm, height within 0.5 cm. Reports `skipped` on the analytic body.
+14. *(2026-09-23)* `template.tapeVsSdf` — female_m's tape chest / waist / hips against a ray cast of its baked SDF at the same rings: the SDF may read up to 4 / 2.5 / 3 cm longer (it follows the hollows a tape bridges) and at most 1.5 cm shorter (grid rounding).
+
+Budgets on the template body (amended 2026-09-18): `perf.full` < 1400 ms full, < 350 ms coarse with a reused mesh.
 
 ---
 
@@ -3729,6 +3782,20 @@ Acceptance hooks (section 13) built on these: sheet SVG parses, `width` ends in 
 
 ## 11. App shell, UI, and the 2D pattern editor
 
+> **Amendment (lead, 2026-09-23) — the user guide.** A written guide is part of the app. `src/ui/guide.js`
+> (`createGuide(store, bus, root)` → `{open(section?), close(), toggle(section?), isOpen(), search(q), current(),
+> sections(), refresh(), destroy()}`, created by `createUi` as `ui.guide`) renders `src/ui/guideContent.js`
+> (`GUIDE_SECTIONS: {id, title, keywords, html}[]`, pure data) into a modal overlay: contents list, one scrolling
+> article, search with highlighting, cross-links. It opens from a `? Guide` button at the right end of the toolbar
+> (`#tb-help` / `#btn-guide`, action `guide`), the <kbd>?</kbd> key (produced character, any Shift state, so it works
+> on US and French layouts), and any element carrying `data-guide="<section id>"` — the small `?` buttons
+> (`.guide-link`, no ids) on the Pieces, Seams, Body, Simulation and Sizes panels and in the fit banner. Static ids
+> added to 11.1.1: `tb-help, btn-guide, guide, guide-title, inp-guide-search, btn-guide-close, guide-toc,
+> guide-body` (148 in `REQUIRED_IDS`). While open the guide owns the keyboard (Escape closes, Tab is trapped, no key
+> reaches the shortcut layer) and on close it blurs its search box, so the shortcuts work again at once. Content is
+> rendered through an allow-list sanitizer (`sanitizeGuideHtml`); the shortcut table is generated from `SHORTCUTS`.
+> The UI self-test `guide` checks every `data-guide` target exists, the sanitizer, search, and open/close.
+
 This section owns `index.html` and `styles/shell.css` (Lead, Phase 0), `src/ui/` (A7) and `src/pattern/` (A2). The pattern editor *is* the left window, so it is specified here as 11.9–11.12.
 
 **Contracts this section consumes (names must match the owning sections; where a name differs, the owning section's name wins and the semantics written here stay):**
@@ -4930,6 +4997,22 @@ The suite leaves the page store untouched (it uses its own store instance) and r
 
 ## 12. Application layer — `src/app/` (agent A8)
 
+> **Amendment (lead, 2026-09-23) — six defects found while fact-checking the user guide against the code.**
+> (1) The body stage called an undefined `status()`; in a browser that is the legacy `window.status` STRING, so a
+> failed template load threw and the fallback mannequin was never built. It calls `showStatus`; `?bodyassets=<url>`
+> points the loader elsewhere (a bad value exercises the fallback), and the Body panel notes when the fallback is in
+> use. (2) Boot warnings and errors were replaced by the "Ready" line (and `app:ready`'s own info line) within a
+> second; `announce` now shows the first warning, and `app:ready` carries `{errors, warnings}` so the status bar only
+> says "Ready" after a clean boot. (3) The loop stopped when the pop-out opened, freezing the garment in the pop-out
+> window, and restarted on close even in the 2D layout; the loop now runs whenever a 3D view is visible anywhere.
+> (4) Ctrl+O emitted `open` without file text and did nothing; wiring now calls `toolbar.openFile()`. (5) The 2D
+> ghost of the active size (`editor.setGhost`, drawn by render2d step 7) was never fed; wiring's `updateGhost()` sets
+> it to `gradeDoc(doc, activeSize)` except at the base size. (6) Duplicate moved the outline but not the grainline or
+> internal lines. And one found while checking the guide's screenshots: shell.css hid the solo layout's other pane
+> with `display: none`, which removes it from grid auto-placement, so the 3D-only layout showed a 0 px 3D pane and
+> both solo layouts a 1 px dock. The four main-area items now have fixed grid columns, and the UI self-test
+> `layout-modes` measures pane and dock widths in every mode, swapped and not.
+
 `src/app/` is the composition root. It owns three files and nothing else:
 
 | File | Role |
@@ -5578,6 +5661,14 @@ Store contract (section 3.3, authoritative): `update(mutator, label)` emits `doc
 ---
 
 ## 13. Acceptance suite (`tests/acceptance.js`)
+
+> **Amendment (lead, 2026-09-23) — check 26d `body_template`.** Every other body check passes on the analytic fallback
+> too (it measures its own rings just as honestly), so a broken `assets/body/` folder shipped green. 26d asserts the
+> app's body has `source === 'template'`, that its fit misses the ≥ 14 steered measurements by < 1 cm rms, and that
+> the Arm angle slider is disabled on it. The suite has 30 checks. Check 26c `body_estimate` is expected to pass since
+> the joint fit (section 6 amendment of the same date). Timing checks 03, 11, 15 and 27 are only meaningful with the
+> browser pane VISIBLE and the machine otherwise idle: a hidden pane throttles timers, and one run with the pane
+> hidden and a background agent busy took 108 s and failed all four.
 
 > **Known flake (lead, 2026-09-17) — check 14 `color_change` intermittently reports 76-79 s.** The suite has run
 > clean end to end in 58.8 s with every check but 10 passing; on other runs of the identical build this one check

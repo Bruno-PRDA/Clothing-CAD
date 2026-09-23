@@ -240,6 +240,16 @@ export function createPiecesPanel(store, bus, root = document) {
           if (e.c1) e.c1[0] += dx;
           if (e.c2) e.c2[0] += dx;
         }
+        // Everything drawn ON the piece moves with it; the grainline and internal lines used to stay over
+        // the original, so the copy was exported and cut with the original's grain. Notches are stored as
+        // edge + t and follow on their own.
+        if (copy.grainline) {
+          if (Array.isArray(copy.grainline.a)) copy.grainline.a[0] += dx;
+          if (Array.isArray(copy.grainline.b)) copy.grainline.b[0] += dx;
+        }
+        for (const line of copy.internalLines || []) {
+          for (const pt of line.points || []) pt[0] += dx;
+        }
         d.pieces.push(copy);
       }
     }, 'piece:duplicate');

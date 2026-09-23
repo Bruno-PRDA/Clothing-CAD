@@ -106,8 +106,12 @@ export function horizontalSegments(ix, y) {
 export function components(seg, tol = 1e-4) {
   const n = seg.length / 4;
   if (n === 0) return [];
-  const key = (x, z) => `${Math.round(x / tol)},${Math.round(z / tol)}`;
-  /** @type {Map<string, number[]>} */
+  // Integer keys: string keys cost a template literal and a string hash per endpoint, twice per segment,
+  // on the hottest path of every measurement. |coord| / tol stays well under 2^26 for any body (a 1e-4 m
+  // grid over +-3 m is 6e4), so the pair packs exactly into a safe integer.
+  const OFF = 1 << 26;
+  const key = (x, z) => (Math.round(x / tol) + OFF) * (2 * OFF) + (Math.round(z / tol) + OFF);
+  /** @type {Map<number, number[]>} */
   const at = new Map();
   for (let i = 0; i < n; i++) {
     for (const j of [0, 1]) {
@@ -215,17 +219,17 @@ export function girthAt(ix, y, opts = {}) {
   // from the knee-ankle axis by the muscle belly, so a small neighbouring sliver can have the nearer
   // centroid and get measured instead — a 36 cm calf reported as 12 cm. Among enclosing loops (there
   // is normally exactly one) take the largest; if none encloses, fall back to the nearest centroid.
-  let best = null, bestScore = -Infinity, fallback = comps[0], fallbackD = Infinity;
+  let best = null, bestHull = null, bestScore = -Infinity, fallback = comps[0], fallbackD = Infinity;
   for (const c of comps) {
     const d = (c.cx - nx) ** 2 + (c.cz - nz) ** 2;
     if (d < fallbackD) { fallbackD = d; fallback = c; }
     if (c.n < 8) continue;                       // stray slivers
     const h = convexHull(c.pts);
     if (!hullContains(h, nx, nz)) continue;
-    if (c.n > bestScore) { bestScore = c.n; best = c; }
+    if (c.n > bestScore) { bestScore = c.n; best = c; bestHull = h; }
   }
   const chosen = best || fallback;
-  const hull = convexHull(chosen.pts);
+  const hull = bestHull || convexHull(chosen.pts);
   let xmin = Infinity, xmax = -Infinity, zmin = Infinity, zmax = -Infinity;
   for (let i = 0; i < hull.length; i += 2) {
     if (hull[i] < xmin) xmin = hull[i];
@@ -258,6 +262,39 @@ export function girthAt(ix, y, opts = {}) {
  * @returns {{girth: number, width: number, depth: number}|null}
  */
 export function limbGirth(tpl, pos, a, b, t, radius = 0.12, band = 0.035) {
+  // The radius is a STARTING guess, not a bound. A fixed 12 cm thigh radius cut the far side of a heavy
+  // thigh off the loop, and the tape read the hull of what was left: measured on fitted bodies, plus_f
+  // 68.5 cm against a full loop of 73.4, a 130 kg body 67.0 against 75.8 — so the fit built thighs 5-9 cm
+  // too big while reporting them on target. A loop that lies wholly inside the search cylinder was not
+  // clipped; one that reaches its wall was, so the radius grows until the loop stops touching it.
+  const R_MAX = 0.40;
+  let r = radius;
+  for (let i = 0; i < 8; i++) {
+    const g = limbGirthAt(tpl, pos, a, b, t, r, band);
+    if (r >= R_MAX) return g ? { girth: g.girth, width: g.width, depth: g.depth } : null;
+    // no loop at all (the radius missed the limb entirely) or a clipped one: widen and try again
+    if (g && g.reach < r * CLIP_FRACTION) return { girth: g.girth, width: g.width, depth: g.depth };
+    r = Math.min(R_MAX, r * 1.3);
+  }
+  return null;
+}
+
+/**
+ * A loop whose farthest point is within this fraction of the search radius did not reach the wall of the
+ * search cylinder. Kept triangles overhang the radius by up to one edge (they only need ONE seed vertex), so
+ * a clipped loop always reaches past the radius; a complete one sits inside it.
+ */
+const CLIP_FRACTION = 0.97;
+
+/**
+ * One attempt at a fixed radius. Also returns `reach`, the largest distance of the section hull from the
+ * limb axis, which says whether the search cylinder clipped it.
+ * @param {Template} tpl @param {Float32Array} pos
+ * @param {[number,number,number]} a @param {[number,number,number]} b @param {number} t
+ * @param {number} radius @param {number} band
+ * @returns {{girth: number, width: number, depth: number, reach: number}|null}
+ */
+function limbGirthAt(tpl, pos, a, b, t, radius, band) {
   const ax = b[0] - a[0], ay = b[1] - a[1], az = b[2] - a[2];
   const len = Math.hypot(ax, ay, az) || 1;
   const ux = ax / len, uy = ay / len, uz = az / len;
@@ -281,9 +318,14 @@ export function limbGirth(tpl, pos, a, b, t, radius = 0.12, band = 0.035) {
   }
   const px = a[0] + ax * t, py = a[1] + ay * t, pz = a[2] + az * t;
 
-  // Seed vertices: inside the band and within `radius` of the axis.
+  // Seed vertices: inside the band and within `radius` of the axis, and on the limb's own side of the
+  // mid-sagittal plane (the mesh is centred on x = 0). Without the side test a grown radius reaches the
+  // other thigh, and where heavy thighs touch the two sections join into one loop around both legs; with
+  // it, a thigh pressed against its neighbour is closed along the contact, which is where a tape runs.
+  const side = Math.abs(px) > 0.03 ? Math.sign(px) : 0;
   const seed = new Uint8Array(tpl.nBodyVerts);
   for (let i = 0; i < tpl.nBodyVerts; i++) {
+    if (side !== 0 && pos[i * 3] * side < 0) continue;
     const dx = pos[i * 3] - px, dy = pos[i * 3 + 1] - py, dz = pos[i * 3 + 2] - pz;
     const along = dx * ux + dy * uy + dz * uz;
     if (Math.abs(along) > band) continue;
@@ -317,5 +359,9 @@ export function limbGirth(tpl, pos, a, b, t, radius = 0.12, band = 0.035) {
   });
   const ix = buildIndex(sub, rp);
   const g = girthAt(ix, 0, {});
-  return g ? { girth: g.girth, width: g.width, depth: g.depth } : null;
+  if (!g) return null;
+  // The axis passes through the origin of the rotated frame, so reach is the largest hull radius.
+  let reach = 0;
+  for (let i = 0; i < g.hull.length; i += 2) reach = Math.max(reach, Math.hypot(g.hull[i], g.hull[i + 1]));
+  return { girth: g.girth, width: g.width, depth: g.depth, reach };
 }

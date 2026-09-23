@@ -16,7 +16,7 @@
 // So the analytic body's whole contract survives as a thin adapter, and `arrange`, the anchors gizmo,
 // the exports and the acceptance suite never learn that the body changed.
 
-import { fitBody } from './fit.js';
+import { fitBodyLSBest } from './fitLS.js';
 import { measureTemplate } from './measureTemplate.js';
 import { buildIndex, girthAt } from './section.js';
 import { computeNormals, jointAt } from './template.js';
@@ -73,6 +73,7 @@ function bodyError(message, detail) {
  *
  * The joint cubes move with the surface, so the landmarks stay attached.
  * @param {Template} tpl @param {Float32Array} pos
+ * @returns {{dy: number, dz: number}} the translation applied
  */
 function ground(tpl, pos) {
   let minY = Infinity, maxY = -Infinity;
@@ -81,7 +82,7 @@ function ground(tpl, pos) {
     if (y < minY) minY = y;
     if (y > maxY) maxY = y;
   }
-  if (!Number.isFinite(minY) || !Number.isFinite(maxY)) return;
+  if (!Number.isFinite(minY) || !Number.isFinite(maxY)) return { dy: 0, dz: 0 };
 
   const loY = minY + (maxY - minY) * 0.45;
   const hiY = minY + (maxY - minY) * 0.62;
@@ -96,11 +97,27 @@ function ground(tpl, pos) {
     if (z > maxZ) maxZ = z;
   }
   const dz = Number.isFinite(minZ) && Number.isFinite(maxZ) ? (minZ + maxZ) / 2 : 0;
-  if (Math.abs(minY) < 1e-7 && Math.abs(dz) < 1e-7) return;
+  if (Math.abs(minY) < 1e-7 && Math.abs(dz) < 1e-7) return { dy: 0, dz: 0 };
   for (let i = 0, n = pos.length; i < n; i += 3) {
     pos[i + 1] -= minY;
     pos[i + 2] -= dz;
   }
+  return { dy: -minY, dz: -dz };
+}
+
+/**
+ * The fit's own measurement of the final mesh, moved with it. Grounding is a pure translation, so every
+ * girth and length is unchanged and only the absolute LEVELS move — by exactly dy. Re-measuring the
+ * grounded mesh gave the same numbers for one more full measurement per build (about a fifth of a coarse
+ * drag build). Reusing `fit.measured` UNSHIFTED is what sliced every ring one offset too high, and is the
+ * mistake this avoids.
+ * @param {any} measured @param {number} dy @returns {any}
+ */
+function shiftLevels(measured, dy) {
+  /** @type {Record<string, number>} */
+  const levels = {};
+  for (const k of Object.keys(measured.levels || {})) levels[k] = measured.levels[k] + dy;
+  return { ...measured, levels };
 }
 
 /** @param {number[]|null} v @param {Vec3} fallback @returns {Vec3} */
@@ -254,17 +271,21 @@ export function buildTemplateBody(tpl, params, opts = {}) {
   let tk = now();
   const lap = (k) => { timing[k] = now() - tk; tk = now(); };
 
-  const fit = fitBody(tpl, params, Number.isFinite(opts.rounds) ? { rounds: opts.rounds } : undefined);
+  // The joint least-squares fit (fitLS.js), not the one-slider-per-measurement fit.js: it can spend the
+  // detail targets once a designed slider is pinned, and a full build takes the better of two solves
+  // (SPEC section 6, amendment 2026-09-23). fit.js stays exported for comparison tools.
+  const fit = fitBodyLSBest(tpl, params, Number.isFinite(opts.rounds) ? { rounds: opts.rounds } : undefined);
   const pos = fit.pos;
-  ground(tpl, pos);
+  const shift = ground(tpl, pos);
   lap('fit');
 
-  // Measured AFTER grounding, never reusing `fit.measured`. The girths and the height are relative to
-  // the body's own extremes and so survive the translation, but `levels` are absolute heights — reusing
-  // them left every ring sliced one ground-offset too high, which on the male body meant the "hip" ring
-  // was cut across the waist and the skirt anchor came out half the radius it should be.
+  // `levels` are absolute heights, so they must follow the grounding translation: reusing them unshifted
+  // left every ring sliced one ground-offset too high (on the male body the "hip" ring was cut across the
+  // waist and the skirt anchor came out half the radius it should be). The girths and lengths are
+  // translation-invariant and are reused as measured on the final fitted mesh.
   const ix = buildIndex(tpl, pos);
-  const measured = measureTemplate(tpl, pos, { index: ix });
+  const measured = fit.measured && fit.measured.levels ? shiftLevels(fit.measured, shift.dy)
+    : measureTemplate(tpl, pos, { index: ix });
   lap('measure');
   const sk = skeletonFromTemplate(tpl, pos, measured, params);
   const rings = ringsFromMesh(ix, ringHeights(measured, sk.H));
@@ -283,7 +304,9 @@ export function buildTemplateBody(tpl, params, opts = {}) {
   const nB = tpl.nBodyVerts;
   const reuse = opts.reuseGeometry;
   const canReuse = cell > 0.02 && reuse && reuse.positions instanceof Float32Array
-    && reuse.normals instanceof Float32Array && reuse.indices instanceof Uint32Array;
+    && reuse.normals instanceof Float32Array && reuse.indices instanceof Uint32Array
+    && reuse.positions.length === nB * 3 && reuse.normals.length === reuse.positions.length
+    && reuse.indices.length === tpl.indices.length;
   const geometry = canReuse ? reuse : {
     positions: pos.slice(0, nB * 3),
     normals: computeNormals(tpl, pos).slice(0, nB * 3),
@@ -309,6 +332,7 @@ export function buildTemplateBody(tpl, params, opts = {}) {
     buildMs: now() - t0,
     timing,
     // extras the analytic model never had; harmless to carry and useful to the panels
+    source: 'template',
     fit,
     measuredFull: measured,
     skeleton: sk,

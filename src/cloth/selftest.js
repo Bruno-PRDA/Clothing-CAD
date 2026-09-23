@@ -6,6 +6,7 @@ import {
   buildCloth, arrange, step, stats, setFabricParams, snapshot, restore, selfMaskedPairCount,
   bendingCoefficients, bendingC, solveDistance, solveBending,
   makeHangingSheet, makeSphereDrape, makeSeamFixture, makeSlopeFixture, makeLatticeMesh,
+  findTears, TEAR_STRAIN, TEAR_GAP_M, CLUSTER_M,
 } from './index.js';
 
 /** @typedef {import('../core/types.js').SelfTestResult} SelfTestResult */
@@ -281,5 +282,34 @@ export async function runSelfTest() {
     return 'front z=' + f(fr.pos[3 * 2 + 2], 3) + ' back z=' + f(bk.pos[3 * 2 + 2], 3) + ' left x=' + f(lf.pos[3 * 2], 3);
   });
 
+
+  check('tears.find', () => {
+    // Four vertices: an edge stretched to twice its rest length, an edge at rest, and a seam pair 20 mm apart.
+    const pos = new Float32Array([0, 0, 0, 0.10, 0, 0, 0, 0.5, 0, 0.02, 0.5, 0]);
+    const state = /** @type {any} */ ({
+      pos, eIdx: new Uint32Array([0, 1, 2, 3]), eRest: new Float32Array([0.05, 0.02]), sIdx: new Uint32Array([2, 3]),
+    });
+    const r = findTears(state);
+    assert(r.strainCount === 1 && r.seamCount === 1, 'expected one strain and one seam, got ' + r.strainCount + '/' + r.seamCount);
+    assert(r.marks.length === 2, 'two separate marks expected, got ' + r.marks.length);
+    assert(Math.abs(r.worstStrain - 1) < 1e-6 && Math.abs(r.worstGap_mm - 20) < 1e-3, 'worst ' + r.worstStrain + ' / ' + r.worstGap_mm + ' mm');
+    const kinds = r.marks.map((m) => m.kind).sort().join(',');
+    assert(kinds === 'seam,strain', 'kinds ' + kinds);
+    for (const m of r.marks) assert(m.severity > 0 && m.severity <= 1, 'severity out of range: ' + m.severity);
+    // below both limits: nothing to show
+    pos[3] = 0.05 * (1 + TEAR_STRAIN * 0.5);
+    pos[9] = TEAR_GAP_M * 0.5;
+    const calm = findTears(state);
+    assert(calm.marks.length === 0, 'a relaxed state must have no marks, got ' + calm.marks.length);
+    // marks closer than CLUSTER_M merge into the worst one
+    const near = /** @type {any} */ ({
+      pos: new Float32Array([0, 0, 0, 0.10, 0, 0, 0, 0.01, 0, 0.08, 0.01, 0]),
+      eIdx: new Uint32Array([0, 1, 2, 3]), eRest: new Float32Array([0.05, 0.08 / 1.4]), sIdx: null,
+    });
+    const merged = findTears(near);
+    assert(CLUSTER_M > 0.02 && merged.strainCount === 2 && merged.marks.length === 1, 'two nearby strains must merge into one mark, got ' + merged.marks.length);
+    assert(Math.abs(merged.marks[0].value - 1) < 1e-6, 'the merged mark must keep the worse strain, got ' + merged.marks[0].value);
+    return 'strain + seam found, relaxed state clean, nearby marks merged';
+  });
   return results;
 }

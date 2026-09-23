@@ -52,6 +52,9 @@ export const SHORTCUTS = Object.freeze([
   { key: 'f2', ctrl: false, shift: false, action: 'dockTab', payload: { action: 'dockTab', tab: 'body' } },
   { key: 'f3', ctrl: false, shift: false, action: 'dockTab', payload: { action: 'dockTab', tab: 'fabric' } },
   { key: 'f4', ctrl: false, shift: false, action: 'dockTab', payload: { action: 'dockTab', tab: 'sizes' } },
+  // `?` is Shift+/ on a US keyboard and Shift+, on a French one; matching the produced character with any
+  // Shift state finds it on both.
+  { key: '?', ctrl: false, shift: false, shiftAny: true, action: 'guide', payload: { action: 'guide' } },
 ]);
 
 const ARROWS = new Set(['arrowleft', 'arrowright', 'arrowup', 'arrowdown']);

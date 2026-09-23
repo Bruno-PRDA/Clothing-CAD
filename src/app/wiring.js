@@ -794,6 +794,7 @@ export function createWiring(ctx) {
     ctx.lastActiveSize = name;
     ctx.keys.sizes = keyOf(d.sizes);
     emit(EVENT.SIZE_ACTIVE, { size: name, prev, row });
+    updateGhost();
     // Re-grade the simulated pieces when the size changed OR the chart itself was edited. Keying only
     // on the NAME meant that editing a cell re-graded the 2D ghost and the exports while the 3D
     // garment kept its old mesh — the model quietly went on wearing a size that no longer existed.
@@ -1049,7 +1050,24 @@ export function createWiring(ctx) {
 
     if ((groups.has('sizes') && keys.sizes !== ctx.keys.sizes) || d.ui.activeSize !== ctx.lastActiveSize) {
       setActiveSize(d.ui.activeSize);
+    } else if (!drag && groups.has('pieces')) {
+      updateGhost();
     }
+  }
+
+  /**
+   * The 2D editor's dashed outline of the ACTIVE size, over the pattern as drawn (the base size). The
+   * renderer and `editor.setGhost` existed from the start and the Size selector's tooltip promised the
+   * outline, but nothing ever called setGhost, so picking a size changed nothing in 2D. At the base size
+   * there is nothing to show.
+   */
+  function updateGhost() {
+    const e = editor();
+    if (!e || typeof e.setGhost !== 'function') return;
+    const d = doc();
+    const size = d && d.ui ? d.ui.activeSize : null;
+    if (!d || !size || !d.sizes || size === d.sizes.baseSize) { e.setGhost(null); return; }
+    try { e.setGhost(sizingMod.gradeDoc(d, size)); } catch (_) { e.setGhost(null); }
   }
 
   /** The load path: `doc:changed` with origin 'replace' (12.2.1). @param {ProjectDoc} d */
@@ -1149,7 +1167,11 @@ export function createWiring(ctx) {
     if (!v) return;
     try {
       if (v.viewer && typeof v.viewer.resize === 'function') v.viewer.resize();
-      const hidden = !!payload && (payload.layout === '2d' || payload.popout === true);
+      // The loop is the simulation, not just the in-pane render. While the 3D view is popped out the main
+      // window stays the only simulation owner (SPEC 8, pop-out design) and streams positions to it from
+      // this loop, so it keeps running then; it stops only when no 3D view is visible anywhere. Stopping it
+      // on pop-out, as before, froze the garment in the pop-out window.
+      const hidden = !!payload && payload.layout === '2d' && payload.popout !== true;
       if (v.loop) {
         if (hidden) v.loop.stop(); else v.loop.start();
       }
@@ -1176,16 +1198,16 @@ export function createWiring(ctx) {
         v.popout.onOpened(() => {
           emit(EVENT.POPOUT_OPEN, { at: Date.now() });
           const u = ui();
+          // setPopout emits ui:layout, and onLayout decides whether the loop runs.
           if (u && u.layout && typeof u.layout.setPopout === 'function') u.layout.setPopout(true);
-          if (v.loop) v.loop.stop();
         });
       }
       if (typeof v.popout.onClosed === 'function') {
         v.popout.onClosed((reason) => {
           emit(EVENT.POPOUT_CLOSE, { reason: reason || 'user', at: Date.now() });
           const u = ui();
+          // Not loop.start(): in the 2D-only layout that restarted a drape nobody could see. onLayout decides.
           if (u && u.layout && typeof u.layout.setPopout === 'function') u.layout.setPopout(false);
-          if (v.loop) v.loop.start();
         });
       }
     } catch (err) { handleError('popout bind', err); }
@@ -1254,6 +1276,8 @@ export function createWiring(ctx) {
         }
         break;
       case 'open':
+        // Ctrl+O arrives without file text: open the picker, whose change event comes back with the text.
+        if (typeof a.text !== 'string') { if (u && u.toolbar && typeof u.toolbar.openFile === 'function') u.toolbar.openFile(); break; }
         if (store && typeof a.text === 'string') {
           store.replace(exportMod.parseProjectText(a.text), 'Open ' + (a.filename || 'project'));
           flush();
@@ -1307,6 +1331,9 @@ export function createWiring(ctx) {
         break;
       case 'export':
         runExport(a);
+        break;
+      case 'guide':
+        if (u && u.guide) u.guide.toggle(typeof a.section === 'string' ? a.section : undefined);
         break;
       default:
         // Unknown intents are ignored on purpose (forward compatibility with the UI).

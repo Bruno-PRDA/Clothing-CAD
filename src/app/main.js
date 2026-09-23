@@ -125,7 +125,7 @@ function showStatus(ctx, level, text, code) {
 
 /**
  * @param {any} ctx @param {string} search
- * @returns {{sample:string|null, nosim:boolean, size:string|null, acceptance:boolean}}
+ * @returns {{sample:string|null, nosim:boolean, size:string|null, acceptance:boolean, bodyAssets:string|null}}
  */
 function parseParams(ctx, search) {
   const q = new URLSearchParams(search || '');
@@ -144,6 +144,7 @@ function parseParams(ctx, search) {
     nosim: q.get('nosim') === '1',
     size: q.get('size'),
     acceptance: q.get('acceptance') === '1',
+    bodyAssets: q.get('bodyassets'),
   };
 }
 
@@ -369,9 +370,13 @@ async function runBoot(opts) {
       // The template mesh is fetched, so it has to be awaited here rather than inside buildBody, which
       // is synchronous and called from everywhere. A failure is reported and then ignored: buildBody
       // falls back to the analytic body, so a missing assets/body/ costs fidelity, not a working app.
-      const tpl = await ctx.modules.body.initTemplate();
+      // `?bodyassets=<url>` points the loader elsewhere (a bad value exercises the fallback below).
+      const tpl = await ctx.modules.body.initTemplate(ctx.params.bodyAssets || undefined);
       if (!tpl.ok) {
-        status(ctx, 'warn', 'Template body unavailable (' + tpl.error + ') — using the primitive body', 'E_BODY_TEMPLATE');
+        // showStatus, not `status`: an undefined `status` resolves to the browser's legacy window.status
+        // STRING, so this line threw a TypeError and a missing assets/body/ failed the whole body stage —
+        // the fallback mannequin it announces was never built.
+        showStatus(ctx, 'warn', 'Scanned body unavailable (' + tpl.error + ') — using the simpler mannequin', 'E_BODY_TEMPLATE');
       }
       const model = wiring.buildBody('full');
       if (!model) throw new Error('body build returned no model');
@@ -492,15 +497,22 @@ function announce(ctx, result) {
       document.documentElement.dataset.appReady = result.ok ? 'true' : 'error';
     }
   } catch (_) { /* ignore */ }
-  if (result.ok) {
+  // A warning raised while booting (the scanned body failed to load, an unknown ?sample=) must survive the
+  // boot: the "Ready" line used to replace it a moment later, so the user never learned the body was the
+  // fallback mannequin.
+  const warnings = (ctx.log || []).filter((e) => e && e.level === 'warn');
+  if (result.ok && warnings.length === 0) {
     showStatus(ctx, 'info',
       'Ready — ' + sample + ' · ' + verts + ' verts · ' + Math.round(result.ms) + ' ms', null);
+  } else if (result.ok) {
+    showStatus(ctx, 'warn', warnings[0].message
+      + (warnings.length > 1 ? ' (+' + (warnings.length - 1) + ' more warning' + (warnings.length > 2 ? 's' : '') + ')' : ''), warnings[0].code);
   } else {
     const first = result.errors[0];
     showStatus(ctx, 'error', first.stage + ': ' + first.message, first.code);
   }
   try {
-    ctx.bus.emit(EVENT.APP_READY, { version: APP_VERSION, ms: result.ms, sample });
+    ctx.bus.emit(EVENT.APP_READY, { version: APP_VERSION, ms: result.ms, sample, errors: result.errors.length, warnings: warnings.length });
   } catch (_) { /* ignore */ }
 }
 

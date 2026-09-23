@@ -9,7 +9,7 @@ import { buildSkeleton } from './skeleton.js';
 import { describeBuild } from './build.js';
 import { analyticBody } from './primitives.js';
 import { unitPerimeter, RING_TUNING } from './loft.js';
-import { buildBody, sampleBody } from './index.js';
+import { buildBody, sampleBody, templateReady, measureBody, FITLS_MEASURES } from './index.js';
 import { CELL_FULL, CELL_COARSE } from './bake.js';
 
 /** @typedef {import('../core/types.js').SelfTestResult} SelfTestResult */
@@ -51,6 +51,10 @@ export async function runSelfTest() {
     }
     const c = clampParams({ height_cm: 999, chest_cm: 88.26, extra: 5 });
     assert(c.height_cm === 210 && c.chest_cm === 88.5 && !('extra' in c) && c.waist_cm === 70, 'clamp/round/default/drop');
+    // a partial without `sex` reads it from bust fullness, never from the female default
+    assert(clampParams({ height_cm: 180, weight_kg: 95, bustFullness: 0 }).sex === 0, 'flat-chested partial must default to sex 0');
+    assert(clampParams({ bustFullness: 0.4 }).sex === 1, 'a partial with a bust must default to sex 1');
+    assert(clampParams({ bustFullness: 0, sex: 0.6 }).sex === 0.6, 'an explicit sex must be kept');
     return Object.keys(BODY_PRESETS).length + ' presets';
   }));
 
@@ -328,6 +332,55 @@ export async function runSelfTest() {
     assert(coarse.geometry === m.geometry, 'coarse build must reuse the geometry');
     return 'full ' + m.buildMs.toFixed(0) + ' ms (' + m.sdf.nx + 'x' + m.sdf.ny + 'x' + m.sdf.nz + ' = ' + nodes + ' nodes), coarse '
       + coarse.buildMs.toFixed(0) + ' ms (reused mesh), coarse+mesh ' + coarseNoReuse.buildMs.toFixed(0) + ' ms';
+  }));
+
+  // ---- the scanned template (only when it is loaded: under node and in tools/selftest.html the analytic
+  // body is in use, and these cases say so rather than pass silently on the wrong body)
+
+  results.push(runCase('template.fit', () => {
+    if (!templateReady()) return 'skipped: template not loaded (analytic body in use)';
+    const parts = [];
+    for (const id of ['female_m', 'male_m', 'child_10']) {
+      /** @type {any} */
+      const m = id === 'female_m' && femaleM ? femaleM : id === 'male_m' && maleM ? maleM : buildBody(BODY_PRESETS[id], { cell: CELL_FULL });
+      assert(m.source === 'template', id + ': the template is loaded but buildBody returned a ' + (m.source || 'analytic') + ' body');
+      const r = m.fit && m.fit.residual;
+      assert(r, id + ': no fit residual on the model');
+      let ss = 0, n = 0, worst = 0, worstKey = '';
+      for (const k of FITLS_MEASURES) {
+        if (typeof r[k] !== 'number') continue;
+        ss += r[k] * r[k]; n++;
+        if (Math.abs(r[k]) > worst) { worst = Math.abs(r[k]); worstKey = k; }
+      }
+      const rms = Math.sqrt(ss / Math.max(1, n));
+      // Measured 2026-09-23 with the joint solver: female_m 0.65 / 1.93, male_m 0.64 / 1.54, child 0.33 / 1.27
+      // (worst is the forearm, which only detail targets reach). The limits leave room, not slack.
+      assert(n >= 14, id + ': only ' + n + ' measurements steered');
+      assert(rms < 1.0, id + ': rms residual ' + rms.toFixed(2) + ' cm over ' + n + ' measurements');
+      assert(worst < 3.0, id + ': ' + worstKey + ' is ' + worst.toFixed(2) + ' cm off');
+      assert(Math.abs(r.height_cm) < 0.5, id + ': height off by ' + r.height_cm.toFixed(2) + ' cm');
+      parts.push(id + ' rms ' + rms.toFixed(2) + ' worst ' + worstKey.replace('_cm', '') + ' ' + worst.toFixed(2));
+    }
+    return parts.join('; ');
+  }));
+
+  results.push(runCase('template.tapeVsSdf', () => {
+    if (!templateReady()) return 'skipped: template not loaded (analytic body in use)';
+    // The fit steers the body to the numbers measureTemplate reports, so a test that reads those same
+    // numbers back is circular. This one measures the SAME rings a second, independent way: by ray-casting
+    // the baked SDF (the analytic body's measuring tape). A tape bridges hollows and the ray cast follows
+    // them, so the SDF reading can only be LONGER than the hull, by the concavity it walks into (the
+    // cleavage at the bust) — and the 15 mm grid rounds corners off, which can make it a little shorter.
+    const m = /** @type {any} */ (femaleM);
+    assert(m, 'needs female_m');
+    const sdf = measureBody(m.sdf, m.rings);
+    const parts = [];
+    for (const [k, over] of [['chest_cm', 4.0], ['waist_cm', 2.5], ['hips_cm', 3.0]]) {
+      const d = sdf[k] - m.measured[k];
+      assert(d > -1.5 && d < over, k + ': tape ' + m.measured[k].toFixed(1) + ' cm, SDF ray cast ' + sdf[k].toFixed(1) + ' cm');
+      parts.push(k.replace('_cm', '') + ' tape ' + m.measured[k].toFixed(1) + ' sdf ' + sdf[k].toFixed(1));
+    }
+    return parts.join(', ');
   }));
 
   results.push(runCase('stability.range', () => {

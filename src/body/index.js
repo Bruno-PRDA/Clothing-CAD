@@ -9,7 +9,7 @@ import { measureBody } from './measure.js';
 import { buildAnchors } from './anchors.js';
 import { buildRenderMesh } from './mesh.js';
 import { loadTemplate as loadTemplateImpl } from './template.js';
-import { calibrate as calibrateFit } from './fit.js';
+import { calibrateLS } from './fitLS.js';
 import { buildTemplateBody as buildTemplateBodyImpl } from './templateModel.js';
 import { RING_NAMES } from './loft.js';
 
@@ -28,7 +28,8 @@ export { macroSliders, macroWeights, macroWeightsFor, ETHNICITY } from './macro.
 export { measureTemplate } from './measureTemplate.js';
 export { buildIndex, girthAt, limbGirth } from './section.js';
 export { fitBody, calibrate, MEASURE_TARGETS, UNSTEERABLE, FIT_DEFAULTS } from './fit.js';
-export { bakeMeshSdf, BAND_CELLS } from './sdfMesh.js';
+export { fitBodyLS, fitBodyLSBest, calibrateLS, MEASURES as FITLS_MEASURES, CONTROLS as FITLS_CONTROLS, FITLS_DEFAULTS } from './fitLS.js';
+export { bakeMeshSdf, BAND_CELLS, BAND_M } from './sdfMesh.js';
 export { buildTemplateBody } from './templateModel.js';
 
 /** @typedef {import('../core/types.js').BodyParams} BodyParams */
@@ -73,7 +74,7 @@ export async function initTemplate(baseUrl) {
   const t0 = now();
   try {
     TEMPLATE = await loadTemplateImpl(baseUrl || 'assets/body/');
-    calibrateFit(TEMPLATE);        // ~450 ms once, so the first body build is not the slow one
+    calibrateLS(TEMPLATE);         // ~0.8 s once (47 controls x 2 directions), so the first build is not the slow one
     return { ok: true, ms: now() - t0 };
   } catch (err) {
     TEMPLATE = null;

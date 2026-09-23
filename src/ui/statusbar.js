@@ -214,7 +214,12 @@ export function createStatusbar(bus, root = document) {
     setMessage('Body built in ' + Math.round((p && p.ms) || 0) + ' ms', 'info');
   }));
   offs.push(bus.on(EVENT.SIZE_ACTIVE, (p) => setMessage('Active size: ' + (p && p.size), 'info')));
-  offs.push(bus.on(EVENT.APP_READY, (p) => setMessage('Ready (' + (p && p.version) + ') in ' + Math.round((p && p.ms) || 0) + ' ms', 'info')));
+  // Only a clean boot says "Ready": after an error or a warning the app has already put that message up, and
+  // replacing it with an info line (which then fades) hid every boot problem from the user.
+  offs.push(bus.on(EVENT.APP_READY, (p) => {
+    if (p && ((p.errors || 0) > 0 || (p.warnings || 0) > 0)) return;
+    setMessage('Ready (' + (p && p.version) + ') in ' + Math.round((p && p.ms) || 0) + ' ms', 'info');
+  }));
   offs.push(bus.on(EVENT.POPOUT_CLOSE, (p) => setMessage('Pop-out closed (' + ((p && p.reason) || 'user') + ')', p && p.reason === 'blocked' ? 'warn' : 'info')));
 
   return {

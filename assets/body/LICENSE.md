@@ -20,5 +20,5 @@ Contents
 | file | what |
 |---|---|
 | `base.bin` | template mesh: 14 380 vertices (13 380 body + joint landmark cubes), 26 756 triangles |
-| `targets.bin` | 220 morph targets as quantised sparse vertex deltas |
+| `targets.bin` | morph targets as quantised sparse vertex deltas: macro, height, measure and the detail families |
 | `index.json` | target directory, joint landmark vertex ranges, mesh metadata |

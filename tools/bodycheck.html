@@ -20,8 +20,10 @@ pre{white-space:pre-wrap} .ok{color:#7c6} .bad{color:#f77} h3{margin:14px 0 4px;
 import { loadTemplate, applyTargets, computeNormals, jointAt } from '/src/body/template.js';
 import * as Macro from '/src/body/macro.js';
 import { measureTemplate } from '/src/body/measureTemplate.js';
-import { buildIndex, horizontalSegments, components, girthAt } from '/src/body/section.js';
+import { buildIndex, horizontalSegments, components, girthAt, limbGirth } from '/src/body/section.js';
 import * as Fit from '/src/body/fit.js';
+import * as FitLS from '/src/body/fitLS.js';
+import { estimateMeasurements } from '/src/body/params.js';
 import { bakeMeshSdf } from '/src/body/sdfMesh.js';
 import { sampleSdf, gridContains } from '/src/core/sdf.js';
 import { buildTemplateBody } from '/src/body/templateModel.js';
@@ -371,6 +373,128 @@ if (todo.includes('neckprofile')) {
     const g = girthAt(ix, y, {});
     const comps = components(horizontalSegments(ix, y)).filter((c) => c.n >= 8).length;
     say(`   y=${y.toFixed(3)}  girth ${g ? (g.girth * 100).toFixed(1).padStart(6) : '     -'} cm  w=${g ? (g.width * 100).toFixed(1) : '-'}  loops=${comps}`);
+  }
+}
+
+if (todo.includes('gains')) {
+  head('gain of every non-macro target: cm moved per unit weight, on the neutral template');
+  // Which target moves which measurement, and by how much. This is the calibration that decides
+  // which detail targets are worth wiring into fit.js as secondary controls when a measure/ target
+  // runs out of range. `?fam=stomach,torso` restricts the families; default is everything but macro/height.
+  const KEYS = ['chest_cm', 'underbust_cm', 'waist_cm', 'hips_cm', 'neck_cm', 'shoulderWidth_cm', 'upperArm_cm',
+    'forearm_cm', 'wrist_cm', 'thigh_cm', 'calf_cm', 'ankle_cm', 'armLength_cm', 'inseam_cm', 'torsoLength_cm', 'height_cm'];
+  const fams = (q.get('fam') || '').split(',').map((s) => s.trim()).filter(Boolean);
+  const names = [...tpl.targets.keys()].filter((n) => !n.startsWith('macro/') && !n.startsWith('height/'))
+    .filter((n) => !fams.length || fams.includes(n.split('/')[0])).sort();
+  const base = measureTemplate(tpl, tpl.rest);
+  const buf = new Float32Array(tpl.rest.length);
+  say(`${names.length} targets; columns are cm moved at weight +1 (only |delta| >= 0.3 cm shown)`);
+  const tA = performance.now();
+  const rows = [];
+  for (const n of names) {
+    const pos = applyTargets(tpl, [[n, 1]], buf);
+    const m = measureTemplate(tpl, pos);
+    const parts = [];
+    let biggest = 0;
+    for (const k of KEYS) {
+      const d = m[k] - base[k];
+      if (Math.abs(d) >= 0.3) parts.push(`${k.replace('_cm', '')} ${d > 0 ? '+' : ''}${d.toFixed(1)}`);
+      biggest = Math.max(biggest, Math.abs(d));
+    }
+    rows.push({ n, biggest, text: `${n.padEnd(40)} ${parts.join('  ') || '(nothing >= 0.3 cm)'}` });
+  }
+  rows.sort((a, b) => b.biggest - a.biggest);
+  for (const r of rows) say('  ' + r.text);
+  say(`(${((performance.now() - tA) / Math.max(1, names.length)).toFixed(0)} ms per target)`);
+  window.__gains = rows;
+}
+
+if (todo.includes('fitls')) {
+  head('diagonal fit (fit.js) vs joint least-squares fit (fitLS.js), same cases');
+  const tC = performance.now();
+  FitLS.calibrateLS(tpl);
+  say(`fitLS calibration ${(performance.now() - tC).toFixed(0)} ms once (${FitLS.CONTROLS.length} controls x 2 directions)`);
+  const SEX = { female_s: 1, female_m: 1, female_l: 1, plus_f: 1, male_s: 0, male_m: 0, male_l: 0, athletic_m: 0, child_10: 0.5 };
+  const cases = ['female_m', 'male_m', 'child_10', 'plus_f', 'athletic_m'].map((id) => [id, { ...BODY_PRESETS[id], sex: SEX[id] }]);
+  // the acceptance case that fails today: estimate everything from 180 cm / 95 kg
+  cases.push(['est 180/95', estimateMeasurements({ height_cm: 180, weight_kg: 95, muscle: 0.4, bustFullness: 0, sex: 0, age_y: 30 }, { overwrite: true })]);
+  const KEYS = FitLS.MEASURES;
+  for (const [name, params] of cases) {
+    const a = Fit.fitBody(tpl, params);
+    const b = FitLS.fitBodyLS(tpl, params, { trace: true });
+    const stats = (r) => {
+      const errs = KEYS.filter((k) => Number.isFinite(params[k]) && Number.isFinite(r.residual[k])).map((k) => Math.abs(r.residual[k]));
+      const worst = Math.max(...errs); const wk = KEYS.filter((k) => Number.isFinite(params[k]))[errs.indexOf(worst)];
+      return { worst, wk, rms: Math.sqrt(errs.reduce((s, e) => s + e * e, 0) / errs.length) };
+    };
+    const sa = stats(a), sb = stats(b);
+    const tag = (x) => (x.worst < 1 ? 'ok' : x.worst < 3 ? 'warn' : 'bad');
+    say(`\n${name}`);
+    say(`  diagonal  ${String(a.rounds).padStart(2)} rounds ${String(a.ms.toFixed(0)).padStart(4)} ms  <${tag(sa)}>worst ${sa.worst.toFixed(2)} cm (${sa.wk}) rms ${sa.rms.toFixed(2)}</${tag(sa)}>  clamped ${a.clamped.length}`);
+    say(`  joint LS  ${String(b.rounds).padStart(2)} rounds ${String(b.ms.toFixed(0)).padStart(4)} ms  <${tag(sb)}>worst ${sb.worst.toFixed(2)} cm (${sb.wk}) rms ${sb.rms.toFixed(2)}</${tag(sb)}>  clamped ${b.clamped.length}${b.clamped.length ? ': ' + b.clamped.map((k) => k.replace(/^[a-z]+\//, '')).join(',') : ''}`);
+    say('    ' + KEYS.filter((k) => Number.isFinite(params[k])).map((k) => `${k.replace('_cm', '')} ${b.measured[k].toFixed(1)}/${params[k]}`).join('  '));
+    const spent = Object.entries(b.sliders).filter(([, v]) => Math.abs(v) > 0.05).sort((p, q) => Math.abs(q[1]) - Math.abs(p[1]));
+    say('    detail sliders used: ' + (spent.filter(([k]) => !k.startsWith('measure/')).map(([k, v]) => `${k.replace(/^[a-z]+\//, '')} ${v.toFixed(2)}`).join('  ') || 'none'));
+    say('    pinned: ' + (b.clamped.map((k) => `${k.replace(/^[a-z]+\//, '')}=${b.sliders[k] > 0 ? '+1' : '-1'}`).join('  ') || 'none'));
+    if (q.get('trace') && (name === 'child_10' || name.startsWith('est'))) {
+      for (const t of b.trace) say(`      r${t.round} worst ${t.worst} h=${t.heightSlider} err ${t.err.map(([k, v]) => k + (v > 0 ? '+' : '') + v).join(' ')}` +
+        (t.s ? '  | step ' + t.s.map(([k, a, z]) => `${k} ${a}->${z}`).join(' ') : ''));
+    }
+  }
+}
+
+if (todo.includes('fitlsgrid')) {
+  // Solver settings against the eight cases: rms (cm) per case and the mean, for each variant.
+  head('fitLS settings grid (rms cm per case)');
+  const est = estimateMeasurements({ height_cm: 180, weight_kg: 95, muscle: 0.4, age_y: 30, bustFullness: 0 });
+  const heavy = estimateMeasurements({ height_cm: 170, weight_kg: 120, muscle: 0.3, age_y: 45, bustFullness: 0.6, sex: 1 });
+  const cases = [['female_m', BODY_PRESETS.female_m], ['male_m', BODY_PRESETS.male_m], ['child_10', BODY_PRESETS.child_10],
+    ['plus_f', BODY_PRESETS.plus_f], ['athletic_m', BODY_PRESETS.athletic_m], ['male_l', BODY_PRESETS.male_l], ['est180/95', est], ['120kg f', heavy]];
+  const variants = (q.get('v') || 'base;broyden=0;broyden=0.5;damping=0.5;mu=20;damping=0.5,broyden=0.5;rounds=16').split(';');
+  say('variant'.padEnd(26) + cases.map(([n]) => n.padStart(10)).join('') + '      mean   worst-any');
+  for (const v of variants) {
+    const o = {};
+    if (v !== 'base') for (const kv of v.split(',')) { const [k, x] = kv.split('='); o[k] = Number(x); }
+    const rms = [];
+    let worstAny = 0;
+    const tv0 = performance.now();
+    for (const [, p] of cases) {
+      let r;
+      if (o.portfolio) {
+        const a = FitLS.fitBodyLS(tpl, p, { broyden: 1 });
+        const b = FitLS.fitBodyLS(tpl, p, { broyden: 0 });
+        r = a.cost <= b.cost ? a : b;
+      } else if (o.best) r = FitLS.fitBodyLSBest(tpl, p);
+      else r = FitLS.fitBodyLS(tpl, p, o);
+      let ss = 0, n = 0;
+      for (const k of FitLS.MEASURES) if (typeof r.residual[k] === 'number') { ss += r.residual[k] ** 2; n++; worstAny = Math.max(worstAny, Math.abs(r.residual[k])); }
+      rms.push(Math.sqrt(ss / n));
+    }
+    const mean = rms.reduce((a, b) => a + b, 0) / rms.length;
+    say(v.padEnd(26) + rms.map((x) => x.toFixed(2).padStart(10)).join('') + mean.toFixed(3).padStart(10) + worstAny.toFixed(2).padStart(10)
+      + ((performance.now() - tv0) / cases.length).toFixed(0).padStart(8) + ' ms/case');
+  }
+}
+
+if (todo.includes('limbradius')) {
+  // Does a limb station's search radius clip the loop on big bodies? If the girth keeps growing as the
+  // radius widens past the default, the default was cutting part of the limb off.
+  head('limb girth vs search radius (fitted bodies)');
+  const big = {}; for (const d of (await import('/src/body/params.js')).PARAM_DEFS) big[d.key] = d.max;
+  const heavy = estimateMeasurements({ height_cm: 170, weight_kg: 130, muscle: 0.3, age_y: 45, bustFullness: 0.6, sex: 1 });
+  for (const [name, p] of [['female_m', BODY_PRESETS.female_m], ['plus_f', BODY_PRESETS.plus_f], ['130 kg', heavy], ['all max', big]]) {
+    const m = buildTemplateBody(tpl, (await import('/src/body/params.js')).clampParams(p), {});
+    const pos = new Float32Array(m.fit.pos);
+    const J = (n) => jointAt(tpl, pos, n);
+    const st = [
+      ['thigh', J('l-upper-leg'), J('l-knee'), 0.20, 0.12, 0.030, [0.10, 0.12, 0.14, 0.16, 0.20]],
+      ['upperArm', J('l-shoulder'), J('l-elbow'), 0.30, 0.09, 0.030, [0.07, 0.09, 0.11, 0.13, 0.15]],
+      ['calf', J('l-knee'), J('l-ankle'), 0.28, 0.10, 0.030, [0.08, 0.10, 0.12, 0.14, 0.16]],
+    ];
+    for (const [k, a, b, t, r0, band, radii] of st) {
+      const row = radii.map((r) => { const g = limbGirth(tpl, pos, a, b, t, r, band); return (r === r0 ? '*' : '') + r.toFixed(2) + ':' + (g ? (g.girth * 100).toFixed(1) : '-'); });
+      say(`  ${name.padEnd(9)} ${k.padEnd(9)} ${row.join('  ')}`);
+    }
   }
 }
 

@@ -76,6 +76,9 @@
       <button id="btn-export-json"  type="button" title="Download size chart JSON">JSON</button>
       <button id="btn-export-obj"   type="button" title="Download the draped garment as OBJ">OBJ</button>
     </div>
+    <div class="tb-group" id="tb-help">
+      <button id="btn-guide" type="button" title="User guide (?)" aria-haspopup="dialog" aria-expanded="false" aria-controls="guide">? Guide</button>
+    </div>
   </header>
 
   <main id="main">
@@ -83,6 +86,7 @@
       <span id="fit-warning-icon" aria-hidden="true"></span>
       <span id="fit-warning-text" data-testid="fit-warning-text"></span>
       <button id="btn-fit-use" type="button" title="Switch to the size that fits" hidden></button>
+      <button class="guide-link" type="button" data-guide="fit-warnings" title="Help: fit warnings and tear markers" aria-label="Help: fit warnings and tear markers">?</button>
       <button id="btn-fit-dismiss" type="button" title="Dismiss" aria-label="Dismiss">×</button>
     </div>
     <section id="pane-left" class="pane" data-slot="left">
@@ -110,7 +114,7 @@
       </nav>
 
       <section id="panel-pieces" class="dock-panel" role="tabpanel" data-panel="pieces">
-        <h3>Pieces</h3>
+        <h3>Pieces <button class="guide-link" type="button" data-guide="pieces-panel" title="Help: the Pieces tab" aria-label="Help: the Pieces tab">?</button></h3>
         <ul id="list-pieces" class="list"></ul>
         <div class="row">
           <button id="btn-piece-duplicate" type="button" disabled>Duplicate</button>
@@ -161,7 +165,7 @@
           <label>Allowance (mm) <input id="num-edge-allowance" type="number" min="0" max="60" step="0.5" placeholder="piece default"></label>
           <label><input id="chk-edge-pinned" type="checkbox"> Pin to body</label>
         </fieldset>
-        <h3>Seams</h3>
+        <h3>Seams <button class="guide-link" type="button" data-guide="seams" title="Help: seams" aria-label="Help: seams">?</button></h3>
         <ul id="list-seams" class="list"></ul>
         <div class="row">
           <span id="seam-ease" data-testid="seam-ease" data-warn="false"></span>
@@ -173,6 +177,7 @@
       </section>
 
       <section id="panel-body" class="dock-panel" role="tabpanel" data-panel="body" hidden>
+        <div class="panel-help"><button class="guide-link" type="button" data-guide="body" title="Help: the Body tab" aria-label="Help: the Body tab">?</button></div>
         <label>Preset <select id="sel-body-preset"></select></label>
         <div id="body-params">
           <div class="param-row" data-param="height_cm">
@@ -313,13 +318,14 @@
         <label>Texture <select id="sel-texture"></select></label>
         <label>Colour 2 <input id="input-color2" type="color"></label>
         <label>Texture scale (mm) <input id="range-texture-scale" type="range" min="2" max="100" step="1"> <output id="range-texture-scale-val"></output></label>
-        <h3>Simulation</h3>
+        <h3>Simulation <button class="guide-link" type="button" data-guide="fabric" title="Help: fabric and simulation settings" aria-label="Help: fabric and simulation settings">?</button></h3>
         <label>Bend scale <input id="range-bend-scale" type="range" min="-1" max="1" step="0.05"> <output id="range-bend-scale-val"></output></label>
         <label>Stretch scale <input id="range-stretch-scale" type="range" min="-1" max="1" step="0.05"> <output id="range-stretch-scale-val"></output></label>
         <table id="fabric-physics" data-testid="fabric-physics"></table>
       </section>
 
       <section id="panel-sizes" class="dock-panel" role="tabpanel" data-panel="sizes" hidden>
+        <div class="panel-help"><button class="guide-link" type="button" data-guide="sizes-grading" title="Help: sizes and grading" aria-label="Help: sizes and grading">?</button></div>
         <table id="table-sizes"></table>
         <div class="row">
           <button id="btn-size-add" type="button">Add size</button>
@@ -340,6 +346,18 @@
     <span id="status-quality" data-level="info"></span>
     <span id="status-sim"></span>
   </footer>
+
+  <div id="guide" role="dialog" aria-modal="true" aria-labelledby="guide-title" hidden>
+    <div id="guide-panel">
+      <header id="guide-head">
+        <h2 id="guide-title">User guide</h2>
+        <input id="inp-guide-search" type="search" placeholder="Search the guide" aria-label="Search the guide" autocomplete="off" spellcheck="false">
+        <button id="btn-guide-close" type="button" title="Close (Esc)" aria-label="Close the guide">&times;</button>
+      </header>
+      <nav id="guide-toc" aria-label="Guide contents"></nav>
+      <article id="guide-body" tabindex="-1"></article>
+    </div>
+  </div>
 </div>
 <script type="module" src="./src/app/main.js"></script>
 </body>

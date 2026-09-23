@@ -1,5 +1,5 @@
 // src/ui/panels/body.js — the Body dock panel (SPEC 11.8.2).
-// The 20 parameter rows are STATIC in index.html (ids `body-<key>` and `body-<key>-num`): this panel BINDS them,
+// The 24 parameter rows are STATIC in index.html (ids `body-<key>` and `body-<key>-num`): this panel BINDS them,
 // it never rebuilds them (duplicate ids would break automation).
 // Drag coalescing: `input` emits EVENT.BODY_PARAMS_DRAG (no store write, at most one per animation frame);
 // `change` performs ONE store.update then emits EVENT.BODY_PARAMS_COMMIT.
@@ -17,6 +17,13 @@ import { byId } from '../ids.js';
 export const MEASURED_KEYS = Object.freeze(['chest_cm', 'waist_cm', 'hips_cm']);
 /** |target − measured| above this is flagged. */
 export const MEASURED_WARN_CM = 1.5;
+/**
+ * Parameters the scanned template body cannot honour: it is a fixed A-pose scan, and arm angle and leg
+ * spread only ever shaped the analytic mannequin. Left enabled they looked broken — the slider moved, the
+ * body rebuilt, nothing changed.
+ */
+export const POSE_KEYS = Object.freeze(['armAbduction_deg', 'legSpread_deg']);
+const POSE_NOTE = 'The scanned body keeps its own A-pose; this only shapes the fallback mannequin.';
 
 /**
  * @param {Store} store @param {EventBus} bus @param {Document|HTMLElement} [root=document]
@@ -228,6 +235,35 @@ export function createBodyPanel(store, bus, root = document) {
     }
     if (elBuildMs) elBuildMs.textContent = 'build ' + Number(model.buildMs || 0).toFixed(0) + ' ms';
     setClosest(closestOf(store.get(), model.params || store.get().body.params));
+    const scanned = /** @type {any} */ (model).source === 'template';
+    setPoseInert(scanned);
+    // Say so where the body is, not only in the status bar: a boot warning there is replaced by the next
+    // routine message within a second, and nothing else tells the user the scanned body failed to load.
+    if (elMeasured && !scanned) {
+      const note = doc0.createElement('span');
+      note.dataset.testid = 'body-fallback';
+      note.dataset.warn = 'true';
+      note.textContent = 'Using the simpler mannequin: the scanned body could not be loaded.';
+      elMeasured.appendChild(note);
+    }
+  }
+
+  /** @param {boolean} inert */
+  function setPoseInert(inert) {
+    for (const key of POSE_KEYS) {
+      const row = rows.get(key);
+      if (!row) continue;
+      for (const el of [row.range, row.num]) {
+        if (!el) continue;
+        el.disabled = inert;
+        el.title = inert ? POSE_NOTE : '';
+      }
+      const wrap = row.range && row.range.closest ? row.range.closest('.param-row') : null;
+      if (wrap) {
+        if (inert) { wrap.setAttribute('data-inert', 'true'); wrap.setAttribute('title', POSE_NOTE); }
+        else { wrap.removeAttribute('data-inert'); wrap.removeAttribute('title'); }
+      }
+    }
   }
 
   /**

@@ -266,8 +266,9 @@ export {};
  * @property {Record<string, {y:number, a:number, b:number, n:number, cz:number}>} rings   crotch, hip, waist, underbust, chest, armpit, shoulder, neckBase
  * @property {SdfGrid} sdf
  * @property {{positions:Float32Array, normals:Float32Array, indices:Uint32Array}} geometry  render mesh, metres
- * @property {{chest_cm:number, waist_cm:number, hips_cm:number}} measured   ray-cast from the baked SDF
+ * @property {{chest_cm:number, waist_cm:number, hips_cm:number}} measured   template body: convex-hull girths of the fitted mesh; analytic body: ray-cast from the baked SDF
  * @property {number} buildMs
+ * @property {'template'} [source]   set when the scanned template built the body; absent on the analytic fallback
  */
 
 /**
