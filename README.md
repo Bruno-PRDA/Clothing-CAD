@@ -1,5 +1,7 @@
 # Clothing App
 
+[![Tests](https://github.com/Bruno-PRDA/Clothing-CAD/actions/workflows/tests.yml/badge.svg)](https://github.com/Bruno-PRDA/Clothing-CAD/actions/workflows/tests.yml)
+
 A self-contained web application for designing clothing: draw pattern pieces in 2D, sew them
 together, and drape them on a 3D human body fitted to your measurements, with a real cloth simulation
 (XPBD). Export size charts and print-ready sewing patterns.
