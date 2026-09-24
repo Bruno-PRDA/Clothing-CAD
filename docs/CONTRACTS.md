@@ -236,6 +236,18 @@ SVG: 1 unit = 1 mm, single y flip in `toSheet`; `g.piece[data-piece-id][data-siz
 
 ---
 
+## src/dxf (lead) — `index.js` exports (SPEC 10, amendment 2026-09-24 "DXF-AAMA"); pure, mm; imports geometry, sizing
+
+```js
+parseDxf(text) → {header, blocks: Map<name, {name, base, entities}>, entities, skipped: {[type]: count}}
+placeBlock(block, insert) → entities   unbulge(points, closed, stepDeg?) → Vec2[]   createWriter() → {pair, entity, point, text}   fnum(v, decimals?)
+fitCubics(pts, tol, t0?, t1?) → [p0, c1, c2, p1][]   ringToEdges(ring, isTurn, tol) → {vertices, edges}   guessTurns(ring, cornerDeg?, longSeg?) → boolean[]
+LAYER   NOTCH_SHAPE_LAYERS   TEXT_KEY   FIT_TOL_MM (0.25)   FLATTEN_TOL_MM (0.1)   DEFAULT_AUTHOR   layerNo(layer) → '1'…
+exportAama(doc, {sizes?, sampleSize?, units?: 'mm'|'in', fold?: 'whole'|'mirror', date?, author?}) → string
+importAama(text, {units?: 'mm'|'in'|'cm', size?}) → {pieces: draft[], report: {units, unitsFrom, sizes, size, style, author, pieces[{name, vertices, notches, fold, allowance_mm, from}], warnings, skipped}}
+runSelfTest()
+```
+
 ## src/ui (A7) — `index.js` exports (SPEC 11.3–11.8); owns index.html except `#canvas-2d` / `#view-3d` internals
 
 ```js
@@ -245,7 +257,7 @@ createDock(store, bus, root?) → {setTab(name), getTab(), destroy()}
 createStatusbar(bus, root?) → {setMessage(text, level?, ttl_ms?), setToolHint(text), setCursor(x_mm|null, y_mm?), setSeamEase(text|null, warn?), setQuality(text|null, level?), setSim(stats|null), getLog(), destroy()}
 createShortcuts(bus, root?) → {enable(), disable(), isEnabled(), destroy()}   SHORTCUTS   // Tab never handled; 1/2/3 layouts, F1–F4 dock tabs
 createPiecesPanel / createBodyPanel / createFabricPanel / createSizesPanel (store, bus, root?) → {refresh(), destroy()}
-REQUIRED_IDS   // the 156 static ids (135 of 11.1.1 + fit banner 4 + guide 8 + scene control 4 + recovery banner 4, kept in src/ui/ids.js)
+REQUIRED_IDS   // the 160 static ids (135 of 11.1.1 + fit banner 4 + guide 8 + scene control 4 + recovery banner 4 + DXF 4, kept in src/ui/ids.js)
 createRecoveryBanner(store, bus, root?) → {show({name, savedAt}), hide(), isShown(), destroy()}   // emits ui:action recoverRestore / recoverDiscard
 createSceneControls(store, bus, root?) → {refresh(), setPresetBackground(hex), destroy()}   // writes doc.ui.scene
 createFitWarning(store, bus, root?) → {refresh(), report(), destroy()}
@@ -262,7 +274,7 @@ Store: `store.update(fn, label)` with the 11.12.2 labels (`body:*`, `fabric:*`, 
 - `main.js`: `APP_VERSION`, `BUILD_INFO`, `boot(opts?) → Promise<BootResult>`; stages `params, store, api, ui, editor, viewer, body, remesh, cloth, arrange, drape, wire`; `viewer3d` (and `body`, via `mesh.js`) are loaded with `await import()` inside their stages; installs `window.__app` before any stage; `?sample=`, `?nosim=1`, `?size=`, `?acceptance=1`.
 - `wiring.js`: `createWiring(ctx) → Wiring {start, stop, flush, pending, rebuildAll, remesh, rebuildCloth, arrange, drape, play, pause, reset, buildBody, applyFabric, applySimSettings, setActiveSize, stepFrames, tick(dtMs, frame), computeKeys}`; the only listener of `ui:action`; emits `body:built, mesh:built, sim:built, sim:phase, sim:stats, sim:nan, fabric:changed, size:active, popout:open/close, ui:status`.
 - `autosave.js`: `createAutosave(opts)`, `indexedDbStorage()`, `localStorageAdapter()`, `memoryStorage()`, `defaultStorage()`, `shouldOffer(record, currentText)`, `AUTOSAVE_KEY`, `AUTOSAVE_DEBOUNCE_MS` (SPEC 12 amendment 2026-09-24).
-- `debugApi.js`: `installDebugApi(ctx, wiring)`, `class ApiError {code, detail}`, `ERROR_CODES`. `window.__app` = `{version, ready, bus, ctx, log(), doc(), update(), undo(), redo(), load(), loadSample(), idle(), save(), pattern{pieces, addPiece, setVertices, addSeam, removeSeam, deletePiece, movePiece, seamEase(id, size?), validate, fit, worldToScreen, screenToWorld, setTool, click, drag, select, selection}, mesh{stats, remesh, get, all}, body{params, setParam, setParams, setPreset, presets, model, modelLive, measured, sdf → {d, n}, landmark}, sim{state, step, play, pause, reset, arrange, drape, stats, phase ('empty'|'arranged'|'sewing'|'draping'|'paused'|'error'), running, setSetting, snapshot, restore, centerOfMass, pin, unpin}, fabric{presets, list, resolved, setPreset, setColor, setTexture, setOverride, setScale, addFabric}, sizes{chart, setActive, active, grade, closest, setCell, addRow, removeRow, fitBody}, export{svg, sheetSvg, printHtml, pageCount, csv, pieceCsv, cutLine, json, obj}, ui{click, setValue, layout, dock, swap, setSplit, state, elements, key}, selftest{list, run}, acceptance{run, list}, viewer{screenshotDataUrl, frame, fps, resize, materialOf, scene(preset?, background?), scenes}, autosave{status, flush, read, offer, offering}}`.
-- `tests/acceptance.js`: `CHECKS`, `runAcceptance(filter?, opts?) → AcceptanceSummary {pass, passed, failed, total, ms, results[{id, name, pass, ms, details}], errors}`; 30 checks: the 27 of 13.3 plus later additions (26b `size_drapes`, 26c `body_estimate`, 26d `body_template`, …) (T-shirt = **10 seam records**; `IDS.play = 'btn-play'`, `IDS.pause = 'btn-pause'`).
+- `debugApi.js`: `installDebugApi(ctx, wiring)`, `class ApiError {code, detail}`, `ERROR_CODES`. `window.__app` = `{version, ready, bus, ctx, log(), doc(), update(), undo(), redo(), load(), loadSample(), idle(), save(), pattern{pieces, addPiece, setVertices, addSeam, removeSeam, deletePiece, movePiece, seamEase(id, size?), validate, fit, worldToScreen, screenToWorld, setTool, click, drag, select, selection}, mesh{stats, remesh, get, all}, body{params, setParam, setParams, setPreset, presets, model, modelLive, measured, sdf → {d, n}, landmark}, sim{state, step, play, pause, reset, arrange, drape, stats, phase ('empty'|'arranged'|'sewing'|'draping'|'paused'|'error'), running, setSetting, snapshot, restore, centerOfMass, pin, unpin}, fabric{presets, list, resolved, setPreset, setColor, setTexture, setOverride, setScale, addFabric}, sizes{chart, setActive, active, grade, closest, setCell, addRow, removeRow, fitBody}, export{svg, sheetSvg, printHtml, pageCount, csv, pieceCsv, cutLine, json, obj}, dxf{export(size?, opts?), import(text, filename?, opts?), parse(text, opts?)}, ui{click, setValue, layout, dock, swap, setSplit, state, elements, key}, selftest{list, run}, acceptance{run, list}, viewer{screenshotDataUrl, frame, fps, resize, materialOf, scene(preset?, background?), scenes}, autosave{status, flush, read, offer, offering}}`.
+- `tests/acceptance.js`: `CHECKS`, `runAcceptance(filter?, opts?) → AcceptanceSummary {pass, passed, failed, total, ms, results[{id, name, pass, ms, details}], errors}`; 31 checks: the 27 of 13.3 plus later additions (26b `size_drapes`, 26c `body_estimate`, 26d `body_template`, 26e `autosave`, 26f `dxf`) (T-shirt = **10 seam records**; `IDS.play = 'btn-play'`, `IDS.pause = 'btn-pause'`).
 
 Phase-0 `window.__app` (until A8 lands): `{version:'phase0', ready: Promise.resolve(true), stubs:true, doc(), store, bus, modules:{geometry, pattern, body, cloth, viewer3d, sizing, exportMod, ui}, core:{…}}`.

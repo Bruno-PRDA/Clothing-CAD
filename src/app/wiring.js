@@ -4,7 +4,7 @@
 
 import { EVENT } from '../core/events.js';
 import { hashString } from '../core/ids.js';
-import { normalizeDoc, serializeDoc, parseDoc } from '../core/schema.js';
+import { normalizeDoc, serializeDoc, parseDoc, normalizePiece } from '../core/schema.js';
 import { shouldOffer } from './autosave.js';
 import { resolveFabric, resolveAll, diffResolved } from '../core/fabrics.js';
 
@@ -16,6 +16,7 @@ import * as patternMod from '../pattern/index.js';
 import * as sizingMod from '../sizing/index.js';
 import * as exportMod from '../export/index.js';
 import * as samplesMod from '../samples/index.js';
+import * as dxfMod from '../dxf/index.js';
 
 /** @typedef {import('../core/types.js').ProjectDoc} ProjectDoc */
 /** @typedef {import('../core/types.js').Piece} Piece */
@@ -1059,6 +1060,89 @@ export function createWiring(ctx) {
     }
   }
 
+  // ---------------------------------------------------------------- DXF import (src/dxf)
+
+  /**
+   * Add the pieces of a DXF-AAMA file to the project, as ONE undo step, beside the existing pattern: pieces cut
+   * on the fold keep their fold on x = 0 (the app requires it) and stack below, the others line up to the right.
+   * They arrive with Simulate off: a DXF carries no seams and no placement, and an unsewn piece would just fall.
+   * A piece the validator rejects is skipped and named, rather than failing the whole import.
+   * @param {string} text @param {string} [filename] @param {{units?: 'mm'|'in'|'cm', size?: string}} [opts]
+   * @returns {any} the import report, or null
+   */
+  function importDxf(text, filename, opts) {
+    const store = ctx.store;
+    const d = doc();
+    if (!store || !d) return null;
+    const fname = filename || 'the DXF file';
+    let res;
+    try { res = dxfMod.importAama(String(text), opts || {}); }
+    catch (err) { showStatus('error', 'Could not read ' + fname + ': ' + String((err && err.message) || err), 'E_DXF'); return null; }
+    const report = res.report;
+    if (!res.pieces.length) {
+      showStatus('warn', 'No pattern pieces found in ' + fname + '. ' + (report.warnings[0] || ''), 'E_DXF_EMPTY');
+      return report;
+    }
+    // layout
+    const old = d.pieces.flatMap((p) => p.vertices);
+    const maxX = old.length ? Math.max(...old.map((v) => v[0])) : 0;
+    const minY = old.length ? Math.min(...old.map((v) => v[1])) : 0;
+    let cursorX = old.length ? maxX + 80 : 0;
+    let cursorY = old.length ? minY - 80 : 0;
+    const GAP = 80;
+    const moved = res.pieces.map((dr) => {
+      const xs = dr.vertices.map((v) => v[0]), ys = dr.vertices.map((v) => v[1]);
+      const bb = { minX: Math.min(...xs), maxX: Math.max(...xs), minY: Math.min(...ys), maxY: Math.max(...ys) };
+      let dx, dy;
+      if (dr.foldEdge !== undefined && dr.foldEdge !== null) {
+        dx = 0; dy = cursorY - bb.maxY; cursorY -= (bb.maxY - bb.minY) + GAP;
+      } else {
+        dx = cursorX - bb.minX; dy = (old.length ? minY : 0) - bb.minY; cursorX += (bb.maxX - bb.minX) + GAP;
+      }
+      const T = (q) => [q[0] + dx, q[1] + dy];
+      return {
+        ...dr,
+        vertices: dr.vertices.map(T),
+        edges: dr.edges.map((e) => (e.type === 'cubic' ? { ...e, c1: T(e.c1), c2: T(e.c2) } : { ...e })),
+        grainline: dr.grainline ? { a: T(dr.grainline.a), b: T(dr.grainline.b) } : undefined,
+        internalLines: (dr.internalLines || []).map((il) => ({ ...il, points: il.points.map(T) })),
+      };
+    });
+    const warnings = report.warnings.slice();
+    /** @type {string[]} */
+    const added = [];
+    const addAll = (list) => store.update((dd) => {
+      const fabricIds = dd.fabrics.map((f) => f.id);
+      for (const dr of list) {
+        const p = normalizePiece({ ...dr, simulate: false }, { fabricIds, defaultFabricId: fabricIds[0] });
+        dd.pieces.push(p);
+      }
+    }, 'piece:import');
+    try {
+      addAll(moved);
+      added.push(...moved.map((p) => p.name));
+    } catch (_) {
+      // one bad piece must not sink the rest: add them one at a time and name the ones that fail
+      for (const dr of moved) {
+        try { addAll([dr]); added.push(dr.name); }
+        catch (err) {
+          const issue = err && err.issues && err.issues.find((i) => i.level === 'error');
+          warnings.push(dr.name + ' was not imported: ' + (issue ? issue.message : String((err && err.message) || err)));
+        }
+      }
+    }
+    flush();
+    for (const w of warnings) { try { ctx.log.push({ t: Date.now(), level: 'warn', message: 'DXF import: ' + w, code: 'W_DXF' }); } catch (_) { /* ignore */ } }
+    const e = editor();
+    if (e && e.view && typeof e.view.fitToPieces === 'function') { try { e.view.fitToPieces(); } catch (_) { /* ignore */ } }
+    const head = 'Imported ' + added.length + ' piece' + (added.length === 1 ? '' : 's') + ' from ' + fname
+      + ' (' + ({ in: 'inches', cm: 'cm' }[report.units] || 'mm') + (report.size ? ', size ' + report.size : '') + ').';
+    const tail = warnings.length ? ' ' + warnings[0] + (warnings.length > 1 ? ' (+' + (warnings.length - 1) + ' more in the log)' : '')
+      : ' Add seams and placement, then tick Simulate.';
+    showStatus(warnings.length ? 'warn' : 'info', head + tail, warnings.length ? 'W_DXF' : null);
+    return { ...report, added, warnings };
+  }
+
   // ---------------------------------------------------------------- autosave (autosave.js)
 
   /**
@@ -1441,6 +1525,9 @@ export function createWiring(ctx) {
       case 'guide':
         if (u && u.guide) u.guide.toggle(typeof a.section === 'string' ? a.section : undefined);
         break;
+      case 'importDxf':
+        if (typeof a.text === 'string') importDxf(a.text, a.filename);
+        break;
       case 'recoverRestore':
         recoverRestore();
         break;
@@ -1486,6 +1573,16 @@ export function createWiring(ctx) {
     } else if (kind === 'json') {
       exportMod.downloadText(exportMod.FILENAMES.sizesJson(name), 'application/json', exportMod.exportDocSizesJson(d));
       showStatus('info', 'Exported size chart JSON', null);
+    } else if (kind === 'dxf') {
+      // One size (the toolbar) or every size as a graded nest (the Sizes tab).
+      const all = a.size === '*';
+      const sizes = all ? sizingMod.sizeNames(d.sizes) : [size];
+      const text = dxfMod.exportAama(d, {
+        sizes, sampleSize: all ? d.sizes.baseSize : size, units: a.units === 'in' ? 'in' : 'mm',
+        fold: a.fold === 'mirror' ? 'mirror' : 'whole', author: 'Clothing CAD contributors;Clothing CAD;' + (ctx.version || '1.0.0'),
+      });
+      exportMod.downloadText(exportMod.slug(name) + (all ? '-all-sizes' : '-' + exportMod.slug(size)) + '.dxf', 'application/dxf', text);
+      showStatus('info', 'Exported DXF-AAMA: ' + (all ? sizes.length + ' sizes (' + sizes.join(', ') + ')' : 'size ' + size), null);
     } else if (kind === 'obj') {
       const state = ctx.cloth.state;
       if (!state) { showStatus('warn', 'Nothing to export: no simulated cloth', 'E_NO_CLOTH'); return; }
@@ -1674,6 +1771,7 @@ export function createWiring(ctx) {
   /** @type {any} */ (wiring).meshList = meshList;
   /** @type {any} */ (wiring).tryCall = tryCall;
   /** @type {any} */ (wiring).offerRecovery = offerRecovery;
+  /** @type {any} */ (wiring).importDxf = importDxf;
   /** @type {any} */ (wiring).showRecovery = showRecovery;
   return wiring;
 }

@@ -30,6 +30,7 @@ export function createSizesPanel(store, bus, root = document) {
   const btnRemove = /** @type {HTMLButtonElement|null} */ (byId(root, 'btn-size-remove'));
   const selBase = /** @type {HTMLSelectElement|null} */ (byId(root, 'sel-base-size'));
   const btnFromBody = /** @type {HTMLButtonElement|null} */ (byId(root, 'btn-size-from-body'));
+  const btnDxfAll = /** @type {HTMLButtonElement|null} */ (byId(root, 'btn-size-export-dxf'));
   const listIssues = byId(root, 'list-size-issues');
   const panel = byId(root, 'panel-sizes');
 
@@ -44,6 +45,12 @@ export function createSizesPanel(store, bus, root = document) {
     t.addEventListener(type, /** @type {EventListener} */ (fn));
     offs.push(() => t.removeEventListener(type, /** @type {EventListener} */ (fn)));
   }
+
+  // Every size of every piece as one graded DXF-AAMA file (the toolbar's DXF button exports the active size).
+  on(btnDxfAll, 'click', () => {
+    if (btnDxfAll) btnDxfAll.blur();
+    bus.emit(EVENT.UI_ACTION, { action: 'export', kind: 'dxf', size: '*' });
+  });
 
   /** @param {string} text @param {'info'|'warn'|'error'} level */
   function status(text, level) { bus.emit(EVENT.UI_STATUS, { level, text, source: 'ui/panels/sizes' }); }

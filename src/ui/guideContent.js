@@ -432,7 +432,7 @@ export const GUIDE_SECTIONS = Object.freeze([
     title: "Exporting",
     keywords: ["export", "svg", "print", "pdf", "tiles", "tiled", "paper", "A4", "Letter", "A3", "100 mm square", "scale", "csv", "json", "obj", "size chart", "download", "notches", "grainline", "seam allowance", "label"],
     html: `
-<p>The export buttons sit near the right end of the toolbar. <span class="guide-ui">SVG</span> and <span class="guide-ui">Print</span> use the active size from the toolbar <span class="guide-ui">Size</span> menu, so choose it first.</p>
+<p>The export buttons sit near the right end of the toolbar. <span class="guide-ui">SVG</span> and <span class="guide-ui">Print</span> use the active size from the toolbar <span class="guide-ui">Size</span> menu, so choose it first. To send a pattern to another pattern CAD system, a factory or a cutter, use <span class="guide-ui">DXF</span>: see <a data-guide="dxf">DXF-AAMA</a>.</p>
 <h3>SVG pattern sheet</h3>
 <p><span class="guide-ui">SVG</span> downloads one sheet at true size in millimetres, with every piece graded to the active size and packed side by side, unrotated. The sheet is at least 1 m wide. At the top are a 100 mm check square and a title block with the project name, size, piece count and sheet size. Each piece has:</p>
 <ul>
@@ -458,6 +458,35 @@ export const GUIDE_SECTIONS = Object.freeze([
 <li><span class="guide-ui">JSON</span>: the same chart as data, including the base size. It isn't your project; use <span class="guide-ui">Save</span> for that (see <a data-guide="projects-files">saving projects</a>).</li>
 <li><span class="guide-ui">OBJ</span>: the simulated garment exactly as it is in 3D now, one object per piece, in metres, without the body. With no cloth you'll see <em>Nothing to export: no simulated cloth</em>.</li>
 </ul>
+`,
+  },
+  {
+    id: "dxf",
+    title: "DXF-AAMA: other pattern CAD",
+    keywords: ["dxf", "aama", "astm", "gerber", "accumark", "lectra", "modaris", "optitex", "clo", "browzwear", "valentina", "seamly", "cutter", "plotter", "factory", "import", "graded nest", "units", "inches", "centimetres", "notches", "fold", "mirror line", "sew line"],
+    html: `
+<p>DXF-AAMA is the file format pattern CAD systems use to exchange pieces. Gerber AccuMark, Lectra Modaris, Optitex, CLO, Browzwear and Valentina read and write it, and so does most cutting-room software. Use it to send a pattern to a factory or a cutter, or to bring in pieces drafted elsewhere.</p>
+<h3>Exporting</h3>
+<p><span class="guide-ui">DXF</span> in the toolbar downloads the active size. <span class="guide-ui">Export all sizes (DXF)</span> in the <span class="guide-ui">Sizes</span> tab downloads every size in one file, a <em>graded nest</em>, with the base size marked as the sample size. Each piece carries:</p>
+<ul>
+<li>the cut line (seam allowance included) and the stitching line;</li>
+<li>corner and curve points, which tell the other system where the outline turns sharply and where it curves;</li>
+<li>notches cut into the allowance, pointing into the piece (a double notch becomes two notches 4 mm apart);</li>
+<li>the grainline, internal lines, and the piece name, size, cut quantity and fabric.</li>
+</ul>
+<p>Pieces cut on the fold are written <strong>whole</strong>, with the fold as a centre line, so a cutter that knows nothing about folds still cuts the full piece. Measurements are in millimetres. Pieces with <span class="guide-ui">Hide in export</span> ticked are left out.</p>
+<div class="guide-tip">In a graded nest every size is a complete piece. The other system can import each size, but it will not build grade rules from the file. Grade in that system, or send one size per file.</div>
+<h3>Importing</h3>
+<p><span class="guide-ui">Import DXF</span> adds the pieces of a DXF-AAMA file to the project, beside what is already there, as one step you can undo. The status bar says how many pieces came in and in which units; anything the app had to guess is listed in the log.</p>
+<ul>
+<li>Each outline is rebuilt from the <strong>stitching line</strong> when the file has one, and the distance to the cut line becomes the seam allowance, edge by edge. Without a stitching line, the cut line becomes the outline, with no allowance.</li>
+<li>Curves come back as smooth, editable curves, not as hundreds of points.</li>
+<li>A piece written as a half with a mirror line comes in as a fold piece.</li>
+<li>From a graded nest, the sample size is imported.</li>
+<li>Units are read from the file. A file that says METRIC but holds centimetres, as some CLO exports do, is recognised and scaled.</li>
+</ul>
+<p>Imported pieces have <span class="guide-ui">Simulate</span> off, because a DXF file has no seams and no placement on the body. Add the <a data-guide="seams">seams</a>, set the placement in the <a data-guide="pieces-panel">Pieces panel</a>, then tick <span class="guide-ui">Simulate</span>.</p>
+<div class="guide-warn">Grade rules (<code>.rul</code> files) are not read. If pieces arrive 10 or 25 times too big or too small, the file does not state its units correctly: export it again from the other system in millimetres or inches.</div>
 `,
   },
   {

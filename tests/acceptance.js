@@ -292,7 +292,7 @@ async function checkSelftests() {
     if (r.pass) groups[key].pass++;
     else groups[key].failed.push(String(r.name) + ' — ' + String(r.details || ''));
   }
-  const want = ['geometry', 'pattern', 'body', 'cloth', 'viewer3d', 'sizing', 'export', 'ui'];
+  const want = ['geometry', 'pattern', 'body', 'cloth', 'viewer3d', 'sizing', 'export', 'dxf', 'ui'];
   const absent = want.filter((k) => !groups[k]);
   expect(absent.length === 0, 'no self-test results for: ' + absent.join(', '));
   const failed = results.filter((r) => !r.pass);
@@ -1232,6 +1232,37 @@ async function checkAutosave() {
   return 'debounced write, clean/unsaved rules, suspend, discard; ' + idbNote + '; Restore and Discard through the banner';
 }
 
+/**
+ * DXF-AAMA through the app: the export writes every visible piece as one inserted block, and importing that file
+ * adds the same pieces back — same points, notches, fold and allowance, Simulate off — as ONE undo step.
+ */
+async function checkDxf() {
+  await reloadSample('tshirt');
+  const before = app().doc();
+  const exported = before.pieces.filter((p) => p.exportHidden !== true);
+  const text = app().dxf.export();
+  const inserts = (text.match(/\r\nINSERT\r\n/g) || []).length;
+  expect(/AC1009/.test(text) && inserts === exported.length, `one INSERT per exported piece: ${inserts} for ${exported.length}`);
+  const report = app().dxf.import(text, 'roundtrip.dxf');
+  await app().idle();
+  const after = app().doc();
+  expect(!!report && report.added.length === exported.length && after.pieces.length === before.pieces.length + exported.length,
+    `the import added ${report ? report.added.length : 0} pieces, ${after.pieces.length - before.pieces.length} in the document`);
+  const added = after.pieces.slice(before.pieces.length);
+  for (const src of exported) {
+    const got = added.find((p) => p.name === src.name);
+    expect(!!got, src.name + ' was not imported');
+    expect(got.vertices.length === src.vertices.length && got.notches.length === src.notches.length
+      && (got.foldEdge === null) === (src.foldEdge === null) && got.seamAllowance_mm === src.seamAllowance_mm && got.simulate === false,
+      `${src.name}: ${got.vertices.length}/${src.vertices.length} points, ${got.notches.length}/${src.notches.length} notches, fold ${got.foldEdge}/${src.foldEdge}, allowance ${got.seamAllowance_mm}/${src.seamAllowance_mm}, simulate ${got.simulate}`);
+  }
+  app().undo();
+  await app().idle();
+  expect(app().doc().pieces.length === before.pieces.length, 'one undo must remove the whole import');
+  drapeStage = 0;
+  return `${exported.length} pieces exported and read back with their points, notches, folds and allowances; one undo step`;
+}
+
 /** How long the runner waits for a timed-out check's abandoned work to settle before starting the next one. */
 const SETTLE_AFTER_TIMEOUT_MS = 30000;
 
@@ -1269,6 +1300,7 @@ export const CHECKS = Object.freeze([
   { id: '26c', name: 'body_estimate', timeoutMs: 20000, fn: checkBodyEstimate },
   { id: '26d', name: 'body_template', timeoutMs: 20000, fn: checkBodyTemplate },
   { id: '26e', name: 'autosave', timeoutMs: 20000, fn: checkAutosave },
+  { id: '26f', name: 'dxf', timeoutMs: 20000, fn: checkDxf },
   { id: '27', name: 'runtime', timeoutMs: 5000, fn: checkRuntime },
 ]);
 

@@ -29,6 +29,8 @@
         <option value="skirt">A-line skirt</option>
       </select>
       <button id="btn-load-sample" type="button" title="Load the selected built-in sample">Load sample</button>
+      <button id="btn-import-dxf" type="button" title="Add pattern pieces from a DXF-AAMA file (Gerber, Lectra, Optitex, Seamly2D, CLO…)">Import DXF</button>
+      <input id="input-import-dxf" type="file" accept=".dxf,.DXF" hidden>
     </div>
     <div class="tb-group" id="tb-edit">
       <button id="btn-undo" type="button" title="Undo (Ctrl+Z)" disabled>&#8630; Undo</button>
@@ -75,6 +77,7 @@
       <button id="btn-export-csv"   type="button" title="Download size chart CSV">CSV</button>
       <button id="btn-export-json"  type="button" title="Download size chart JSON">JSON</button>
       <button id="btn-export-obj"   type="button" title="Download the draped garment as OBJ">OBJ</button>
+      <button id="btn-export-dxf"   type="button" title="Download the active size as DXF-AAMA for other pattern CAD">DXF</button>
     </div>
     <div class="tb-group" id="tb-help">
       <button id="btn-guide" type="button" title="User guide (?)" aria-haspopup="dialog" aria-expanded="false" aria-controls="guide">? Guide</button>
@@ -344,6 +347,7 @@
           <button id="btn-size-remove" type="button">Remove size</button>
           <label>Base <select id="sel-base-size"></select></label>
           <button id="btn-size-from-body" type="button" title="Create or update the row 'Body' from the current body parameters">Size from body</button>
+          <button id="btn-size-export-dxf" type="button" title="Download every size as one graded DXF-AAMA file">Export all sizes (DXF)</button>
         </div>
         <ul id="list-size-issues" class="list"></ul>
       </section>

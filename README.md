@@ -4,7 +4,8 @@
 
 A self-contained web application for designing clothing: draw pattern pieces in 2D, sew them
 together, and drape them on a 3D human body fitted to your measurements, with a real cloth simulation
-(XPBD). Export size charts and print-ready sewing patterns.
+(XPBD). Export size charts and print-ready sewing patterns, and exchange patterns with other pattern CAD
+(Gerber, Lectra, Optitex, CLO…) as DXF-AAMA.
 
 **New here? Click `? Guide` at the right end of the toolbar, or press `?`.** The built-in user guide walks
 through the whole app — a five-minute tour, every tool and panel, sizes and fit warnings, exporting, keyboard
@@ -54,6 +55,10 @@ The guide's *Keyboard shortcuts* page lists every binding.
 * **Print** tiled pages (A4 / Letter / A3) for printing at 100 %, then taping together.
 * **CSV / JSON** size chart and piece measurements.
 * **JSON** project save / load; **OBJ** of the draped garment.
+* **DXF-AAMA** (ASTM D6673) for other pattern CAD and cutters: one size or every size as a graded nest,
+  with cut and sew lines, corner and curve points, notches, grainline and piece text. **Import DXF** reads
+  files from Gerber, Lectra, CLO, Optitex, Valentina and Seamly2D, rebuilding editable curves and seam
+  allowances.
 
 ## Project layout
 
@@ -71,6 +76,7 @@ assets/body/               the template mesh and morph targets (CC0), built by t
 src/cloth/                 XPBD cloth solver, collision, seams, fixtures
 src/viewer3d/              three.js scene, cloth/body meshes, materials, textures
 src/sizing/, src/export/   size charts, grading, SVG / print / CSV / OBJ export
+src/dxf/                   DXF-AAMA / ASTM D6673 import and export (reader, writer, curve fitting)
 src/ui/                    toolbar, dock panels, status bar, shortcuts, fit banner, user guide (guideContent.js)
 src/app/                   boot, wiring, window.__app automation API
 tests/acceptance.js        in-page acceptance suite: __app.acceptance.run()
@@ -86,6 +92,7 @@ Open the browser console and use `window.__app` (see `docs/SPEC.md` section 12),
 __app.loadSample('tshirt'); __app.sim.step(300)      // simulate 5 s synchronously, returns stats
 __app.body.setParam('chest_cm', 100)                  // rebuild the body
 __app.export.sheetSvg('L')                            // SVG string for size L
+__app.dxf.export('*')                                 // DXF-AAMA text of every size (a graded nest)
 __app.viewer.scene('pedestal')                        // backdrop and floor of the 3D view
 __app.autosave.status()                               // autosave state (storage, unsaved changes, last write)
 __app.acceptance.run()                                // run the acceptance suite

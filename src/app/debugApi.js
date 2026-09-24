@@ -21,6 +21,7 @@ import * as bodyMod from '../body/index.js';
 import * as clothMod from '../cloth/index.js';
 import * as sizingMod from '../sizing/index.js';
 import * as exportMod from '../export/index.js';
+import * as dxfMod from '../dxf/index.js';
 import { ALL_IDS } from '../ui/ids.js';
 
 /** @typedef {import('../core/types.js').ProjectDoc} ProjectDoc */
@@ -1520,7 +1521,7 @@ export function installDebugApi(ctx, wiring) {
     },
   });
 
-  const SELFTEST_MODULES = Object.freeze(['core', 'geometry', 'pattern', 'body', 'cloth', 'viewer3d', 'sizing', 'export', 'ui']);
+  const SELFTEST_MODULES = Object.freeze(['core', 'geometry', 'pattern', 'body', 'cloth', 'viewer3d', 'sizing', 'export', 'dxf', 'ui']);
 
   /** Run `fn` with autosave suspended, so a test can never overwrite the user's unsaved work. */
   async function withoutAutosave(fn) {
@@ -1628,6 +1629,35 @@ export function installDebugApi(ctx, wiring) {
     // accessor so `Object.freeze` still allows the suite to store its summary (13.1 rule 4)
     get last() { return lastAcceptance; },
     set last(v) { lastAcceptance = v; },
+  });
+
+  const dxfNs = Object.freeze({
+    /**
+     * DXF-AAMA text of the project. size: a size name, '*' for every size (a graded nest), default the active size.
+     * fold: 'whole' (default) writes fold pieces whole with a centre line; 'mirror' the half with a mirror line.
+     * @param {string} [size] @param {{units?: 'mm'|'in', fold?: 'whole'|'mirror'}} [opts] @returns {string}
+     */
+    export(size, opts) {
+      const d = liveDoc();
+      const all = size === '*';
+      const sizes = all ? sizingMod.sizeNames(d.sizes) : [size || d.ui.activeSize];
+      return dxfMod.exportAama(d, {
+        sizes, sampleSize: all ? d.sizes.baseSize : sizes[0], units: opts && opts.units, fold: opts && opts.fold,
+        author: 'Clothing CAD contributors;Clothing CAD;' + String(ctx.version || '1.0.0'),
+      });
+    },
+    /**
+     * Add the pieces of DXF-AAMA text to the project (one undo step); returns the import report.
+     * opts.units overrides the file's units ('mm', 'in', 'cm'); opts.size picks a size of a graded nest.
+     * @param {string} text @param {string} [filename] @param {{units?: 'mm'|'in'|'cm', size?: string}} [opts]
+     */
+    import(text, filename, opts) {
+      if (typeof text !== 'string') throw fail('E_BAD_ARG', 'dxf.import: text is required');
+      if (!wiring || typeof /** @type {any} */ (wiring).importDxf !== 'function') throw fail('E_NOT_READY', 'wiring is not ready');
+      return /** @type {any} */ (wiring).importDxf(text, filename || 'api.dxf', opts);
+    },
+    /** Read DXF-AAMA text without touching the project. @param {string} text @param {{units?: 'mm'|'in'|'cm', size?: string}} [opts] */
+    parse(text, opts) { return dxfMod.importAama(String(text), opts || {}); },
   });
 
   const viewerNs = Object.freeze({
@@ -1784,6 +1814,7 @@ export function installDebugApi(ctx, wiring) {
     acceptance,
     viewer: viewerNs,
     autosave: autosaveNs,
+    dxf: dxfNs,
   };
 
   Object.freeze(api);

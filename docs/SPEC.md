@@ -3258,6 +3258,66 @@ Physics columns are the effective simulation values of 7.10 (`bend_Nm` effective
 
 ## 10. Sizing and export (`src/sizing/`, `src/export/`) — agent A6
 
+> **Amendment (lead, 2026-09-24) — DXF-AAMA / ASTM D6673 import and export (`src/dxf/`).** Pattern exchange with
+> other apparel CAD (Gerber AccuMark, Lectra Modaris, Optitex, CLO, Browzwear, Valentina) and cutting-room software.
+> Pure, no DOM. `dxfio.js`: `parseDxf(text) → {header, blocks: Map<name, {base, entities}>, entities, skipped}` (ASCII
+> R12 and later; POLYLINE/VERTEX and LWPOLYLINE with bulges, LINE, POINT with its code-50 `angle`, TEXT, MTEXT, ATTRIB,
+> CIRCLE, ARC, INSERT with scale and rotation; BOM and CRLF; an unknown entity is counted in `skipped`, never fatal),
+> `placeBlock`, `unbulge`, `createWriter` (CRLF, right-aligned codes), `fnum`. `fitcurve.js`: `fitCubics(pts, tol)`
+> (Schneider; for a whole run between two corners both handles are first solved by damped Gauss-Newton on each
+> point's normal distance, which recovers a flattened cubic exactly where alternating fit and re-parameterisation
+> stalls half a millimetre off), `ringToEdges(ring, isTurn, tol)`, `guessTurns(ring, deg?, longSeg?)`. `aama.js`:
+> `exportAama(doc, {sizes?, sampleSize?, units?: 'mm'|'in', fold?: 'whole'|'mirror', date?, author?}) → string`,
+> `importAama(text, {units?: 'mm'|'in'|'cm', size?}) → {pieces, report}` (drafts, not normalised). 13 self-tests.
+>
+> **Written** — the subset that research into 35 real files (Gerber AccuMark 10, CLO 4 and 2025) and the Valentina and
+> Seamly2D writers found every reader accepts. R12: `$ACADVER AC1009` and nothing else in the header, no TABLES
+> (AccuMark rejects any block that is not a piece). One BLOCK per piece and size named `<piece>_<size>` from
+> `[A-Za-z0-9_-]`, unique, at most 31 characters; INSERT on layer 1 at 0,0; 7-bit ASCII text. In each block: piece
+> text on layer 1 (`Piece Name:`, `Size:`, `Quantity:`, `Material:` = the fabric's name); the cut line on layer 1, a
+> closed POLYLINE (the stitch outline flattened at 0.1 mm, offset by each edge's allowance with mitred corners,
+> Douglas-Peucker at 0.05 mm so a straight run keeps only its ends); the sew line on layer 14 only when some allowance
+> is non-zero (otherwise it repeats layer 1, which readers show twice); a POINT on layer 2 (turn) or 3 (curve) at every
+> vertex of layers 1, 8 and 14 (on the cut line a point is a corner when it lies in a stitch corner's join or on two
+> non-smooth edges' offsets at once — an angle test cannot tell a tight curve from a shallow corner); notches as
+> POINTs on layer 4 at a vertex of the cut line (inserted where needed) with depth in code 30 (half the allowance,
+> 3–6 mm; 4 mm with none), width 0 in 39 (a slit) and the angle into the piece in 50, a double notch as two POINTs
+> 4 mm apart; the grain line on layer 7 and again on 5 (grade reference); internal lines on 8. Fold pieces are written
+> WHOLE (`mirrorPiece`) with the fold as a centre line on layer 8 from cut line to cut line, because a reader that
+> ignores mirror lines would cut half a piece; `fold: 'mirror'` writes the stored half with the standard's mirror line
+> on layer 6, vertex to vertex along the cut line. Style text in ENTITIES: `Style Name`, `Creation Date` (dd-mm-yyyy),
+> `Creation Time` (hh:mm), `Author` (`Clothing CAD contributors;Clothing CAD;<version>`), `Sample Size`,
+> `Grade Rule Table:` (empty; the identifier is required), `Units: METRIC|ENGLISH`. Several sizes make a graded nest
+> with every block complete; point counts differ between sizes, so a system that derives grade rules from a nest
+> will not — each size imports as its own piece.
+>
+> **Read** — pieces are INSERTed blocks, blocks never inserted, or boundaries in a flat model space. The boundary is the
+> largest ring on layer 1 and the sew line the largest on 14; open polylines and LINEs that meet end to start are
+> chained (Gerber splits boundaries at turn points). The outline is rebuilt from the sew line (else the cut line, with
+> no allowance and a warning). Corners come from the turn/curve points when they mark at least 80 % of that ring's
+> vertices, else from the angles (`guessTurns`); each run between corners becomes cubics within 0.25 mm. The allowance
+> of an edge is the median sew-to-cut distance, rounded to 0.5 mm; edges differing from the piece's median by 1 mm or
+> more get their own. Notches: POINTs (or LINEs, as Seamly2D writes them) on layers 4 and 80–83, the candidate nearest
+> the cut or sew line projected onto the outline; two within 13 mm on one edge are a double notch (the standard has
+> none; vendors place two 10–12.5 mm apart). A mirror line on layer 6 makes the straight edge lying on it the fold,
+> rotated onto x = 0; in a file whose `Author` is this app, a whole piece symmetric about a layer-8 centre line is cut
+> back to its half and folded. Units: the `Units:` text, then `$INSUNITS`, then piece size (median under 80 units:
+> inches), then `$MEASUREMENT`; METRIC whose pieces are under 50 units across (largest under 200) is read as
+> centimetres, as CLO sometimes writes, with a warning; `opts.units` overrides. Sizes: `Size:` or the standard's
+> `Size Name:`; the `Sample Size:` is imported unless `opts.size` names another, with a warning listing the sizes; a
+> graded size without turn/curve points and notches borrows the sample's by point order when its outline has as many
+> points (as the standard requires), else says so. `Quantity: R,L` is summed; CLO's `Pattern2D_<id>` names give way to
+> `Annotation:`. Grade rules (`# n` text, `.rul` files) and ASTM's validation layers 84–87 are ignored.
+>
+> **UI and API.** Toolbar `btn-import-dxf` (+ hidden `input-import-dxf`, `.dxf`) and `btn-export-dxf` (active size);
+> Sizes tab `btn-size-export-dxf` (every size); `REQUIRED_IDS` is 160. `wiring.importDxf(text, filename?, opts?)` adds
+> the drafts through `normalizePiece` as ONE `piece:import` update beside the pattern (fold pieces stacked below with
+> their fold on x = 0, others to the right), `simulate: false` (a DXF carries no seams or placement); if the batch
+> fails validation each piece is tried alone and a rejected one is named; warnings go to the log with code `W_DXF`.
+> `__app.dxf = {export(size?, {units?, fold?}), import(text, filename?, {units?, size?}), parse(text, opts?)}`,
+> `size '*'` = every size. Acceptance check 26f `dxf` exports the T-shirt through the app, imports it back (same
+> points, notches, folds and allowances, Simulate off) and undoes the import in one step.
+
 > **Amendment (lead, 2026-09-17) — shoulder width is a graded measurement, and the fit check (10.4).**
 > Two related defects, both of which showed up as a garment tearing in the 3D view rather than as anything the UI
 > said.

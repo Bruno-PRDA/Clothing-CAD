@@ -36,6 +36,7 @@ export const EXPORT_ACTIONS = Object.freeze([
   ['btn-export-csv', 'csv'],
   ['btn-export-json', 'json'],
   ['btn-export-obj', 'obj'],
+  ['btn-export-dxf', 'dxf'],
 ]);
 
 /**
@@ -97,6 +98,18 @@ export function createToolbar(store, bus, root = document) {
     Promise.resolve(f.text()).then((text) => { emit({ action: 'open', text, filename }); })
       .catch((err) => bus.emit(EVENT.UI_STATUS, { level: 'error', text: 'Could not read ' + filename + ': ' + err.message, source: 'ui/toolbar' }));
     inputFile.value = '';
+  });
+
+  // Import DXF: like Open, the button only opens a hidden picker; the file becomes {action:'importDxf', text, filename}.
+  const inputDxf = /** @type {HTMLInputElement|null} */ (el('input-import-dxf'));
+  bindButton('btn-import-dxf', () => { if (inputDxf) inputDxf.click(); return null; });
+  on(inputDxf, 'change', () => {
+    const f = inputDxf && inputDxf.files && inputDxf.files[0];
+    if (!f) return;
+    const filename = f.name;
+    Promise.resolve(f.text()).then((text) => { emit({ action: 'importDxf', text, filename }); })
+      .catch((err) => bus.emit(EVENT.UI_STATUS, { level: 'error', text: 'Could not read ' + filename + ': ' + err.message, source: 'ui/toolbar' }));
+    inputDxf.value = '';
   });
 
   // Tool buttons (rule 6): the click only asks; the active state follows EVENT.TOOL_CHANGED.
