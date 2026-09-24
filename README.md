@@ -11,6 +11,15 @@ shortcuts and troubleshooting — and the small `?` buttons on the panels open i
 No installation, no build step, no Node.js. Everything is plain JavaScript ES modules; three.js is
 loaded from a CDN import map (run `python vendor.py` once if you want it to work offline).
 
+## Try it online
+
+**https://bruno-prda.github.io/Clothing-CAD/** runs the app straight from this repository (GitHub Pages).
+Nothing is uploaded: the app runs entirely in your browser, and your projects stay on your computer.
+The first visit downloads about 20 MB (mostly the body model); after that the browser caches it.
+
+Your work is autosaved in the browser as you go, and offered back after a crash or a closed tab.
+That copy lives only in that browser, so use **Save** to keep a project as a file.
+
 ## Run
 
 ```bash
@@ -75,5 +84,29 @@ Open the browser console and use `window.__app` (see `docs/SPEC.md` section 12),
 __app.loadSample('tshirt'); __app.sim.step(300)      // simulate 5 s synchronously, returns stats
 __app.body.setParam('chest_cm', 100)                  // rebuild the body
 __app.export.sheetSvg('L')                            // SVG string for size L
+__app.viewer.scene('pedestal')                        // backdrop and floor of the 3D view
+__app.autosave.status()                               // autosave state (storage, unsaved changes, last write)
 __app.acceptance.run()                                // run the acceptance suite
 ```
+
+URL options: `?sample=skirt`, `?size=L`, `?nosim=1`, `?autosave=0` (no autosave and no recovery offer),
+`?bodyassets=<url>` (load the body model from elsewhere), `?acceptance=1` (run the suite after start-up).
+
+## Licence
+
+Clothing CAD is free software: you can redistribute it and/or modify it under the terms of the
+**GNU General Public License, version 3 or (at your option) any later version** — the same licence as
+Blender. See [`LICENSE`](LICENSE) for the full text. It comes with no warranty.
+
+Copyright (C) 2026 the Clothing CAD contributors.
+
+By contributing to this repository you agree that your contribution is licensed under the same terms.
+
+Third-party parts keep their own licences:
+
+| Part | Licence | Where |
+|---|---|---|
+| Body mesh and morph targets, from MakeHuman | CC0 1.0 (public domain) | `assets/body/`, see [`assets/body/LICENSE.md`](assets/body/LICENSE.md) |
+| three.js and its `RoomEnvironment` / `OrbitControls` add-ons | MIT | loaded from jsDelivr, or `vendor/` after `python vendor.py` |
+
+MakeHuman's *program code* is AGPL and is not used; only its CC0 assets are.

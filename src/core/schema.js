@@ -41,6 +41,36 @@ const SIDES = Object.freeze(['front', 'back', 'left', 'right']);
 const ANCHOR_X = Object.freeze(['fold', 'center', 'left', 'right']);
 const ANCHOR_Y = Object.freeze(['top', 'center', 'bottom']);
 const LAYOUTS = Object.freeze(['split', '2d', '3d']);
+
+/**
+ * Scene presets of the 3D view: ids and labels only (pure data, so the UI can list them without three.js).
+ * The look of each one — backdrop, floor, props — is src/viewer3d/stage.js STAGE_PRESETS, keyed by the same
+ * ids; the viewer self-test `stage.presets` asserts the two lists match.
+ */
+export const SCENE_PRESETS = Object.freeze([
+  Object.freeze({ id: 'workshop', label: 'Workshop grid' }),
+  Object.freeze({ id: 'studio', label: 'Light studio' }),
+  Object.freeze({ id: 'dark', label: 'Dark studio' }),
+  Object.freeze({ id: 'pedestal', label: 'Pedestal' }),
+  Object.freeze({ id: 'runway', label: 'Runway' }),
+  Object.freeze({ id: 'wood', label: 'Wooden floor' }),
+  Object.freeze({ id: 'terrace', label: 'Terrace' }),
+]);
+export const DEFAULT_SCENE = 'workshop';
+const SCENE_IDS = Object.freeze(SCENE_PRESETS.map((p) => p.id));
+const HEX6 = /^#[0-9a-fA-F]{6}$/;
+
+/**
+ * @param {*} v @returns {{preset: string, background: string|null}} a valid scene: unknown preset -> default,
+ * a background that is not #rrggbb -> null (= the preset's own backdrop)
+ */
+function normalizeScene(v) {
+  const s = isObj(v) ? v : {};
+  return {
+    preset: oneOf(s.preset, SCENE_IDS, DEFAULT_SCENE),
+    background: typeof s.background === 'string' && HEX6.test(s.background) ? s.background.toLowerCase() : null,
+  };
+}
 const DOCK_TABS = Object.freeze(['pieces', 'body', 'fabric', 'sizes']);
 const EDGE_TYPES = Object.freeze(['line', 'cubic']);
 const NOTCH_KINDS = Object.freeze(['single', 'double']);
@@ -137,7 +167,7 @@ export function defaultSimSettings() {
 
 /** @param {string} [baseSize='M'] @returns {UiState} */
 export function defaultUiState(baseSize = 'M') {
-  return { split: 0.5, layout: 'split', swapped: false, activeSize: baseSize, dockTab: 'pieces' };
+  return { split: 0.5, layout: 'split', swapped: false, activeSize: baseSize, dockTab: 'pieces', scene: { preset: DEFAULT_SCENE, background: null } };
 }
 
 /** @returns {Placement} */
@@ -437,6 +467,7 @@ function normalizeUi(v, sizes) {
     swapped: bool(u.swapped, d.swapped),
     activeSize: active,
     dockTab: oneOf(u.dockTab, DOCK_TABS, d.dockTab),
+    scene: normalizeScene(u.scene),
   };
 }
 
@@ -911,6 +942,11 @@ function validateUi(issues, ui, sizes) {
   if (!LAYOUTS.includes(u.layout)) bad.push('layout = ' + show(u.layout));
   if (typeof u.swapped !== 'boolean') bad.push('swapped = ' + show(u.swapped));
   if (!DOCK_TABS.includes(u.dockTab)) bad.push('dockTab = ' + show(u.dockTab));
+  if (u.scene !== undefined) {
+    const sc = isObj(u.scene) ? u.scene : {};
+    if (!SCENE_IDS.includes(sc.preset)) bad.push('scene.preset = ' + show(sc.preset));
+    if (!(sc.background === null || (typeof sc.background === 'string' && HEX6.test(sc.background)))) bad.push('scene.background = ' + show(sc.background));
+  }
   for (const b of bad) push(issues, 'error', 'UiState', 'ui.' + b);
 }
 

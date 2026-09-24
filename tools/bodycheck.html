@@ -17,17 +17,17 @@ pre{white-space:pre-wrap} .ok{color:#7c6} .bad{color:#f77} h3{margin:14px 0 4px;
 <script type="module">
 // Numeric checks for the template body. Runs whatever ?do= asks for and prints plain text, so the
 // results can be read back with get_page_text. ?do=macro,measure,fit,...
-import { loadTemplate, applyTargets, computeNormals, jointAt } from '/src/body/template.js';
-import * as Macro from '/src/body/macro.js';
-import { measureTemplate } from '/src/body/measureTemplate.js';
-import { buildIndex, horizontalSegments, components, girthAt, limbGirth } from '/src/body/section.js';
-import * as Fit from '/src/body/fit.js';
-import * as FitLS from '/src/body/fitLS.js';
-import { estimateMeasurements } from '/src/body/params.js';
-import { bakeMeshSdf } from '/src/body/sdfMesh.js';
-import { sampleSdf, gridContains } from '/src/core/sdf.js';
-import { buildTemplateBody } from '/src/body/templateModel.js';
-import { BODY_PRESETS } from '/src/body/presets.js';
+import { loadTemplate, applyTargets, computeNormals, jointAt } from '../src/body/template.js';
+import * as Macro from '../src/body/macro.js';
+import { measureTemplate } from '../src/body/measureTemplate.js';
+import { buildIndex, horizontalSegments, components, girthAt, limbGirth } from '../src/body/section.js';
+import * as Fit from '../src/body/fit.js';
+import * as FitLS from '../src/body/fitLS.js';
+import { estimateMeasurements } from '../src/body/params.js';
+import { bakeMeshSdf } from '../src/body/sdfMesh.js';
+import { sampleSdf, gridContains } from '../src/core/sdf.js';
+import { buildTemplateBody } from '../src/body/templateModel.js';
+import { BODY_PRESETS } from '../src/body/presets.js';
 
 const q = new URLSearchParams(location.search);
 const todo = (q.get('do') || 'macro').split(',').map(s => s.trim()).filter(Boolean);
@@ -37,7 +37,7 @@ const say = (s = '') => { L.push(s); out.textContent = L.join('\n'); };
 const head = (s) => say('\n=== ' + s + ' ===');
 
 const t0 = performance.now();
-const tpl = await loadTemplate('/assets/body/');
+const tpl = await loadTemplate('../assets/body/');
 say(`template: ${tpl.nVerts} verts (${tpl.nBodyVerts} body), ${tpl.nTris} tris, ${tpl.targets.size} targets, ` +
     `rest height ${tpl.restHeight_m.toFixed(4)} m, loaded in ${(performance.now() - t0).toFixed(0)} ms`);
 
@@ -443,6 +443,31 @@ if (todo.includes('fitls')) {
   }
 }
 
+if (todo.includes('bustband')) {
+  // Where in its band does the bust maximum land? If it sits at the TOP edge the band reaches into the
+  // axilla, where the torso loop starts to take in the arm and the girth rises for the wrong reason.
+  head('bust band profile (fitted bodies): girth cm per height step, loops at each level');
+  for (const name of ['female_m', 'male_m', 'plus_f', 'athletic_m']) {
+    const m = buildTemplateBody(tpl, BODY_PRESETS[name], {});
+    const pos = new Float32Array(m.fit.pos);
+    const ix = buildIndex(tpl, pos);
+    const me = measureTemplate(tpl, pos, { index: ix });
+    const H = me.height_cm / 100;
+    const sh = jointAt(tpl, pos, 'l-shoulder');
+    const yArm = sh[1] - H * 0.055, lo = yArm - H * 0.09, hi = yArm - H * 0.005;
+    const cells = [];
+    for (let i = 0; i <= 16; i++) {
+      const y = lo + (hi - lo) * i / 16;
+      const g = girthAt(ix, y, {});
+      const comps = components(horizontalSegments(ix, y)).filter((c) => c.n >= 8).length;
+      cells.push((g ? (g.girth * 100).toFixed(1) : '-') + '/' + comps + 'L' + (g ? ' w' + (g.width * 100).toFixed(0) : ''));
+    }
+    const at = (me.levels.bust - lo) / (hi - lo);
+    say(`  ${name.padEnd(10)} bust ${me.chest_cm.toFixed(1)} at ${(at * 100).toFixed(0)}% of band (0 = bottom)`);
+    say('     ' + cells.join('  '));
+  }
+}
+
 if (todo.includes('fitlsgrid')) {
   // Solver settings against the eight cases: rms (cm) per case and the mean, for each variant.
   head('fitLS settings grid (rms cm per case)');
@@ -480,10 +505,10 @@ if (todo.includes('limbradius')) {
   // Does a limb station's search radius clip the loop on big bodies? If the girth keeps growing as the
   // radius widens past the default, the default was cutting part of the limb off.
   head('limb girth vs search radius (fitted bodies)');
-  const big = {}; for (const d of (await import('/src/body/params.js')).PARAM_DEFS) big[d.key] = d.max;
+  const big = {}; for (const d of (await import('../src/body/params.js')).PARAM_DEFS) big[d.key] = d.max;
   const heavy = estimateMeasurements({ height_cm: 170, weight_kg: 130, muscle: 0.3, age_y: 45, bustFullness: 0.6, sex: 1 });
   for (const [name, p] of [['female_m', BODY_PRESETS.female_m], ['plus_f', BODY_PRESETS.plus_f], ['130 kg', heavy], ['all max', big]]) {
-    const m = buildTemplateBody(tpl, (await import('/src/body/params.js')).clampParams(p), {});
+    const m = buildTemplateBody(tpl, (await import('../src/body/params.js')).clampParams(p), {});
     const pos = new Float32Array(m.fit.pos);
     const J = (n) => jointAt(tpl, pos, n);
     const st = [

@@ -4,7 +4,8 @@
 
 import { EVENT } from '../core/events.js';
 import { hashString } from '../core/ids.js';
-import { normalizeDoc } from '../core/schema.js';
+import { normalizeDoc, serializeDoc, parseDoc } from '../core/schema.js';
+import { shouldOffer } from './autosave.js';
 import { resolveFabric, resolveAll, diffResolved } from '../core/fabrics.js';
 
 // Namespace imports: a module that is still a stub (or lost an export) shows up as `undefined` at the call site,
@@ -1007,6 +1008,7 @@ export function createWiring(ctx) {
     }
     const drag = origin === 'drag';
     const keys = computeKeys(d);
+    autosaveNote(d, !(groups.size === 1 && groups.has('ui')));
 
     if (!drag && (groups.has('pieces') || groups.has('seams'))) {
       /** @type {string[]} */
@@ -1048,11 +1050,103 @@ export function createWiring(ctx) {
 
     if (groups.has('sim') && keys.sim !== ctx.keys.sim) applySimSettings();
 
+    if (groups.has('ui')) applyScene();
+
     if ((groups.has('sizes') && keys.sizes !== ctx.keys.sizes) || d.ui.activeSize !== ctx.lastActiveSize) {
       setActiveSize(d.ui.activeSize);
     } else if (!drag && groups.has('pieces')) {
       updateGhost();
     }
+  }
+
+  // ---------------------------------------------------------------- autosave (autosave.js)
+
+  /**
+   * Hand a changed document to the autosaver. While a recovery offer is open nothing is written — the record
+   * being offered must survive until the user chooses — but a real edit is remembered, so it is saved after.
+   * @param {ProjectDoc} d @param {boolean} dirtying
+   */
+  function autosaveNote(d, dirtying) {
+    if (!ctx.autosave) return;
+    if (ctx.recovery) { if (dirtying) ctx.editedDuringRecovery = true; return; }
+    ctx.autosave.note(d, { dirtying });
+  }
+
+  /** At start-up: offer unsaved work from an earlier session, if there is any. @returns {Promise<boolean>} */
+  async function offerRecovery() {
+    const as = ctx.autosave;
+    if (!as || as.isSuspended() || !ctx.store) return false;
+    const rec = await as.read();
+    const current = serializeDoc(ctx.store.get());
+    if (!shouldOffer(rec, current)) {
+      as.markClean(ctx.store.get());
+      return false;
+    }
+    showRecovery(/** @type {any} */ (rec));
+    return true;
+  }
+
+  /** @param {{name: string, savedAt: string, text: string}} rec */
+  function showRecovery(rec) {
+    ctx.recovery = rec;
+    ctx.editedDuringRecovery = false;
+    const u = ui();
+    if (u && u.recovery) u.recovery.show(rec);
+  }
+
+  function endRecovery() {
+    ctx.recovery = null;
+    const u = ui();
+    if (u && u.recovery) u.recovery.hide();
+  }
+
+  function recoverRestore() {
+    const rec = ctx.recovery;
+    if (!rec || !ctx.store) return;
+    let doc;
+    try { doc = parseDoc(rec.text); } catch (err) {
+      showStatus('error', 'The unsaved work could not be read: ' + String((err && err.message) || err), 'E_AUTOSAVE');
+      endRecovery();
+      return;
+    }
+    endRecovery();
+    ctx.restoringAutosave = true;
+    try { ctx.store.replace(doc, 'Restore unsaved work'); flush(); } finally { ctx.restoringAutosave = false; }
+    showStatus('info', 'Restored “' + (rec.name || 'Untitled') + '”. Save it to keep it as a file.', null);
+  }
+
+  function recoverDiscard() {
+    if (!ctx.recovery) return;
+    const edited = !!ctx.editedDuringRecovery;
+    endRecovery();
+    const as = ctx.autosave;
+    if (!as || !ctx.store) return;
+    const d = ctx.store.get();
+    as.discard();
+    // whatever the user did while the offer was open is theirs now, and unsaved if they edited
+    if (edited) as.note(d, { dirtying: true }); else as.markClean(d);
+  }
+
+  /**
+   * The 3D backdrop and floor (doc.ui.scene) to the viewer, which forwards it to the pop-out. Keyed so a ui
+   * change that is not the scene (a split drag, a dock tab) does not rebuild the stage.
+   */
+  function applyScene() {
+    const v = viewer();
+    const d = doc();
+    if (!v || typeof v.setStage !== 'function' || !d || !d.ui) return;
+    const key = JSON.stringify(d.ui.scene || null);
+    if (key === ctx.sceneKey) return;
+    ctx.sceneKey = key;
+    try {
+      v.setStage(d.ui.scene || null);
+      // Let the colour swatch open on the colour actually on screen.
+      const u = ui();
+      const bg = v.viewer && v.viewer.scene ? v.viewer.scene.background : null;
+      if (u && u.scene && typeof u.scene.setPresetBackground === 'function' && bg && bg.isColor) {
+        u.scene.setPresetBackground('#' + bg.getHexString());
+      }
+    } catch (err) { handleError('viewer.setStage', err); }
   }
 
   /**
@@ -1072,6 +1166,12 @@ export function createWiring(ctx) {
 
   /** The load path: `doc:changed` with origin 'replace' (12.2.1). @param {ProjectDoc} d */
   function onDocReplaced(d) {
+    if (ctx.restoringAutosave) {
+      // restored work is unsaved work: keep it dirty and write it straight back
+      if (ctx.autosave) { ctx.autosave.markDirty(); ctx.autosave.note(d); }
+    } else if (!ctx.recovery && ctx.autosave) {
+      ctx.autosave.markClean(d);                    // New, Open, Load sample: nothing to recover
+    }
     if (ctx.pending.remeshTimer) { clearTimeout(ctx.pending.remeshTimer); ctx.pending.remeshTimer = 0; }
     if (ctx.pending.bodyTimer) { clearTimeout(ctx.pending.bodyTimer); ctx.pending.bodyTimer = 0; }
     if (ctx.pending.dragTimer) { clearTimeout(ctx.pending.dragTimer); ctx.pending.dragTimer = 0; }
@@ -1099,6 +1199,7 @@ export function createWiring(ctx) {
     if (v) { try { v.fit(); } catch (err) { handleError('viewer.fit', err); } }
     ctx.lastActiveSize = null;
     setActiveSize(d.ui.activeSize);
+    applyScene();
     showStatus('info',
       'Loaded ' + (d.name || 'project') + ' · ' + d.pieces.length + ' pieces · '
       + fmtInt(ctx.cloth.state ? ctx.cloth.state.V : 0) + ' verts', null);
@@ -1285,7 +1386,12 @@ export function createWiring(ctx) {
         }
         break;
       case 'save':
-        if (d) { flush(); exportMod.saveProject(d); showStatus('info', 'Saved ' + exportMod.projectFilename(d), null); }
+        if (d) {
+          flush();
+          exportMod.saveProject(d);
+          if (ctx.autosave && !ctx.recovery) ctx.autosave.markClean(d);
+          showStatus('info', 'Saved ' + exportMod.projectFilename(d), null);
+        }
         break;
       case 'arrange':
         arrange();
@@ -1334,6 +1440,12 @@ export function createWiring(ctx) {
         break;
       case 'guide':
         if (u && u.guide) u.guide.toggle(typeof a.section === 'string' ? a.section : undefined);
+        break;
+      case 'recoverRestore':
+        recoverRestore();
+        break;
+      case 'recoverDiscard':
+        recoverDiscard();
         break;
       default:
         // Unknown intents are ignored on purpose (forward compatibility with the UI).
@@ -1514,13 +1626,25 @@ export function createWiring(ctx) {
     unsubs.push(bus.on(EVENT.UI_ACTION, guard('ui:action', onUiAction)));
     if (typeof window !== 'undefined' && window.addEventListener) {
       const onResize = guard('window:resize', onWindowResize);
-      const onUnload = guard('beforeunload', () => flush());
+      const onUnload = guard('beforeunload', () => { flush(); if (ctx.autosave) ctx.autosave.flush(); });
+      const onHide = guard('pagehide', () => { if (ctx.autosave) ctx.autosave.flush(); });
+      const onVis = guard('visibilitychange', () => {
+        if (typeof document !== 'undefined' && document.visibilityState === 'hidden' && ctx.autosave) ctx.autosave.flush();
+      });
+      window.addEventListener('pagehide', onHide);
+      unsubs.push(() => window.removeEventListener('pagehide', onHide));
+      if (typeof document !== 'undefined') {
+        document.addEventListener('visibilitychange', onVis);
+        unsubs.push(() => document.removeEventListener('visibilitychange', onVis));
+      }
       window.addEventListener('resize', onResize);
       window.addEventListener('beforeunload', onUnload);
       unsubs.push(() => window.removeEventListener('resize', onResize));
       unsubs.push(() => window.removeEventListener('beforeunload', onUnload));
     }
     bindPopout();
+    ctx.sceneKey = null;
+    applyScene();
   }
 
   function stop() {
@@ -1549,5 +1673,7 @@ export function createWiring(ctx) {
   /** @type {any} */ (wiring).showStatus = showStatus;
   /** @type {any} */ (wiring).meshList = meshList;
   /** @type {any} */ (wiring).tryCall = tryCall;
+  /** @type {any} */ (wiring).offerRecovery = offerRecovery;
+  /** @type {any} */ (wiring).showRecovery = showRecovery;
   return wiring;
 }

@@ -196,5 +196,5 @@ export const TSHIRT = {
     ],
   },
   sim: { substeps: 10, gravity_ms2: 9.81, selfCollision: true, sewTime_s: 1.0, collisionOffset_mm: 5, bendScale: 1, stretchScale: 1 },
-  ui: { split: 0.5, layout: 'split', swapped: false, activeSize: 'M', dockTab: 'pieces' },
+  ui: { split: 0.5, layout: 'split', swapped: false, activeSize: 'M', dockTab: 'pieces', scene: { preset: 'workshop', background: null } },
 };

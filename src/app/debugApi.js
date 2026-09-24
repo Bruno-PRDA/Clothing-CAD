@@ -10,7 +10,7 @@
 //  * never imports three (directly or transitively): viewer3d is reached only through ctx.mods.viewer.
 
 import { EVENT } from '../core/events.js';
-import { normalizeDoc, serializeDoc, validateShape } from '../core/schema.js';
+import { normalizeDoc, serializeDoc, validateShape, SCENE_PRESETS } from '../core/schema.js';
 import { uid } from '../core/ids.js';
 import {
   FABRIC_PRESETS, TEXTURE_KINDS, PHYSICS_KEYS, getPreset, hasPreset, isHexColor, resolveFabric,
@@ -1522,6 +1522,33 @@ export function installDebugApi(ctx, wiring) {
 
   const SELFTEST_MODULES = Object.freeze(['core', 'geometry', 'pattern', 'body', 'cloth', 'viewer3d', 'sizing', 'export', 'ui']);
 
+  /** Run `fn` with autosave suspended, so a test can never overwrite the user's unsaved work. */
+  async function withoutAutosave(fn) {
+    const as = ctx.autosave;
+    if (as) as.suspend();
+    try { return await fn(); } finally { if (as) as.resume(); }
+  }
+
+  const autosaveNs = Object.freeze({
+    /** @returns {any} storage kind, dirty, suspended, lastSavedAt, writes, pending */
+    status() { return ctx.autosave ? ctx.autosave.status() : null; },
+    /** @returns {Promise<void>} write the pending document now */
+    flush() { return ctx.autosave ? ctx.autosave.flush() : Promise.resolve(); },
+    /** @returns {Promise<any>} the stored record (a copy) */
+    read() { return ctx.autosave ? ctx.autosave.read() : Promise.resolve(null); },
+    /**
+     * Show the recovery offer for a record (tests and support). Does not touch storage.
+     * @param {{name?: string, savedAt?: string, text: string}} rec
+     */
+    offer(rec) {
+      if (!rec || typeof rec.text !== 'string') throw fail('E_BAD_ARG', 'autosave.offer: a record with text is required');
+      if (!wiring || typeof /** @type {any} */ (wiring).showRecovery !== 'function') throw fail('E_NOT_READY', 'wiring is not ready');
+      /** @type {any} */ (wiring).showRecovery({ name: rec.name || 'Untitled', savedAt: rec.savedAt || new Date().toISOString(), text: rec.text });
+    },
+    /** @returns {boolean} is a recovery offer open */
+    offering() { return !!ctx.recovery; },
+  });
+
   const selftest = Object.freeze({
     /** @returns {string[]} */
     list() { return SELFTEST_MODULES.slice(); },
@@ -1539,6 +1566,8 @@ export function installDebugApi(ctx, wiring) {
       }
       /** @type {{name:string, pass:boolean, details:string}[]} */
       const out = [];
+      if (ctx.autosave) ctx.autosave.suspend();
+      try {
       for (const m of wanted) {
         let mod = null;
         try {
@@ -1562,6 +1591,7 @@ export function installDebugApi(ctx, wiring) {
           out.push({ name: m + '/run', pass: false, details: 'threw: ' + msgOf(e) });
         }
       }
+      } finally { if (ctx.autosave) ctx.autosave.resume(); }
       return out;
     },
   });
@@ -1579,7 +1609,7 @@ export function installDebugApi(ctx, wiring) {
         throw fail('E_SELFTEST', 'acceptance: tests/acceptance.js failed to import — ' + msgOf(e), e);
       }
       if (!mod || typeof mod.runAcceptance !== 'function') throw fail('E_SELFTEST', 'acceptance: no runAcceptance export');
-      const summary = await mod.runAcceptance(filter, opts);
+      const summary = await withoutAutosave(() => mod.runAcceptance(filter, opts));
       lastAcceptance = summary;
       return summary;
     },
@@ -1601,6 +1631,29 @@ export function installDebugApi(ctx, wiring) {
   });
 
   const viewerNs = Object.freeze({
+    /**
+     * The 3D backdrop and floor. With arguments, sets them (a view setting in doc.ui.scene, like the layout)
+     * and returns the new value; with none, returns the current one. `background` null = the preset's own.
+     * @param {string} [preset] @param {string|null} [background] @returns {{preset: string, background: string|null}}
+     */
+    scene(preset, background) {
+      if (preset !== undefined || background !== undefined) {
+        const cur = liveDoc().ui.scene || { preset: 'workshop', background: null };
+        const next = { preset: preset !== undefined ? String(preset) : cur.preset, background: background !== undefined ? background : cur.background };
+        if (!SCENE_PRESETS.some((p) => p.id === next.preset)) {
+          throw fail('E_BAD_ARG', 'scene: unknown preset ' + JSON.stringify(next.preset) + ' — one of ' + SCENE_PRESETS.map((p) => p.id).join(', '));
+        }
+        if (!(next.background === null || (typeof next.background === 'string' && /^#[0-9a-fA-F]{6}$/.test(next.background)))) {
+          throw fail('E_BAD_ARG', 'scene: background must be #rrggbb or null');
+        }
+        commit((d) => { d.ui.scene = next; }, 'ui:scene');
+      }
+      return clone(liveDoc().ui.scene);
+    },
+
+    /** @returns {string[]} the scene preset ids */
+    scenes() { return SCENE_PRESETS.map((p) => p.id); },
+
     /** @returns {string} data URL */
     screenshotDataUrl() {
       const v = requireViewer();
@@ -1730,6 +1783,7 @@ export function installDebugApi(ctx, wiring) {
     selftest,
     acceptance,
     viewer: viewerNs,
+    autosave: autosaveNs,
   };
 
   Object.freeze(api);

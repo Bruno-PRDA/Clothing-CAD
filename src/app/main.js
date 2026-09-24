@@ -6,7 +6,8 @@
 
 import { bus, EVENT } from '../core/events.js';
 import { createStore } from '../core/store.js';
-import { normalizeDoc } from '../core/schema.js';
+import { normalizeDoc, serializeDoc } from '../core/schema.js';
+import { createAutosave } from './autosave.js';
 import * as samplesMod from '../samples/index.js';
 import * as uiMod from '../ui/index.js';
 import * as patternMod from '../pattern/index.js';
@@ -125,7 +126,7 @@ function showStatus(ctx, level, text, code) {
 
 /**
  * @param {any} ctx @param {string} search
- * @returns {{sample:string|null, nosim:boolean, size:string|null, acceptance:boolean, bodyAssets:string|null}}
+ * @returns {{sample:string|null, nosim:boolean, size:string|null, acceptance:boolean, bodyAssets:string|null, autosave:boolean}}
  */
 function parseParams(ctx, search) {
   const q = new URLSearchParams(search || '');
@@ -145,6 +146,7 @@ function parseParams(ctx, search) {
     size: q.get('size'),
     acceptance: q.get('acceptance') === '1',
     bodyAssets: q.get('bodyassets'),
+    autosave: q.get('autosave') !== '0',
   };
 }
 
@@ -428,6 +430,15 @@ async function runBoot(opts) {
   }
 
   // ------------------------------------------------------------ 12. wire
+  // Autosave before `start` subscribes to document changes. Suspended for the acceptance run and ?autosave=0,
+  // so a test (or a user who opted out) can never overwrite unsaved work kept from an earlier session.
+  try {
+    ctx.autosave = createAutosave({ serialize: serializeDoc, onError: (e) => showStatus(ctx, 'warn', 'Autosave failed: ' + String((e && /** @type {any} */ (e).message) || e), 'E_AUTOSAVE') });
+    if (ctx.params.acceptance || !ctx.params.autosave) ctx.autosave.suspend();
+  } catch (err) {
+    ctx.autosave = null;
+    try { console.warn('[boot] autosave unavailable', err); } catch (_) { /* ignore */ }
+  }
   if (!wiring) skipStage(ctx, 'wire', 'wiring failed');
   else await stage(ctx, 'wire', () => { wiring.start(); });
 
@@ -448,6 +459,10 @@ async function runBoot(opts) {
   const result = makeResult(ctx);
   announce(ctx, result);
   finishReady(result);
+  // After ready, never before: reading IndexedDB must not delay the boot, and the offer needs the UI.
+  if (wiring && typeof /** @type {any} */ (wiring).offerRecovery === 'function') {
+    /** @type {any} */ (wiring).offerRecovery().catch((err) => { try { console.warn('[boot] recovery offer failed', err); } catch (_) { /* ignore */ } });
+  }
 
   if (ctx.params.acceptance) runAcceptanceLater(ctx);
   return result;

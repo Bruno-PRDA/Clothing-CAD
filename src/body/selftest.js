@@ -10,6 +10,9 @@ import { describeBuild } from './build.js';
 import { analyticBody } from './primitives.js';
 import { unitPerimeter, RING_TUNING } from './loft.js';
 import { buildBody, sampleBody, templateReady, measureBody, FITLS_MEASURES } from './index.js';
+import { macroSliders, macroWeights } from './macro.js';
+import { bakeMeshSdf } from './sdfMesh.js';
+import { sampleSdf } from '../core/sdf.js';
 import { CELL_FULL, CELL_COARSE } from './bake.js';
 
 /** @typedef {import('../core/types.js').SelfTestResult} SelfTestResult */
@@ -359,6 +362,17 @@ export async function runSelfTest() {
       assert(rms < 1.0, id + ': rms residual ' + rms.toFixed(2) + ' cm over ' + n + ' measurements');
       assert(worst < 3.0, id + ': ' + worstKey + ' is ' + worst.toFixed(2) + ' cm off');
       assert(Math.abs(r.height_cm) < 0.5, id + ': height off by ' + r.height_cm.toFixed(2) + ' cm');
+      // grounded (feet on y = 0) and centred in depth on the lower torso's mid-sagittal strip
+      const gp = m.geometry.positions;
+      let minY = Infinity, maxY = -Infinity;
+      for (let i = 1; i < gp.length; i += 3) { if (gp[i] < minY) minY = gp[i]; if (gp[i] > maxY) maxY = gp[i]; }
+      let zLo = Infinity, zHi = -Infinity;
+      for (let i = 0; i < gp.length; i += 3) {
+        const y = (gp[i + 1] - minY) / (maxY - minY);
+        if (Math.abs(gp[i]) < 0.04 && y > 0.45 && y < 0.62) { zLo = Math.min(zLo, gp[i + 2]); zHi = Math.max(zHi, gp[i + 2]); }
+      }
+      assert(Math.abs(minY) < 1e-4, id + ': body floats or sinks, feet at y = ' + minY.toFixed(4));
+      assert(Math.abs((zLo + zHi) / 2) < 0.002, id + ': lower torso centred at z = ' + ((zLo + zHi) / 2).toFixed(4));
       parts.push(id + ' rms ' + rms.toFixed(2) + ' worst ' + worstKey.replace('_cm', '') + ' ' + worst.toFixed(2));
     }
     return parts.join('; ');
@@ -381,6 +395,81 @@ export async function runSelfTest() {
       parts.push(k.replace('_cm', '') + ' tape ' + m.measured[k].toFixed(1) + ' sdf ' + sdf[k].toFixed(1));
     }
     return parts.join(', ');
+  }));
+
+  results.push(runCase('macro.sexBlend', () => {
+    // MakeHuman's gender slider runs 1 = MALE, the opposite of our sex (1 = female). Getting it backwards
+    // swaps every body and still looks plausible, and the girth solve then hides it by fitting the right
+    // numbers on the wrong frame — so pin the blend directly, not through a measurement.
+    const base = BODY_PRESETS.female_m;
+    const genderOf = (/** @type {string} */ name) => (/-female-/.test(name) ? 'female' : /-male-/.test(name) ? 'male' : null);
+    const mass = (/** @type {number} */ sex) => {
+      const s = macroSliders({ ...base, sex });
+      const out = { female: 0, male: 0 };
+      for (const [name, w] of macroWeights(s)) {
+        const g = genderOf(name);
+        if (g) out[g] += w;
+      }
+      return out;
+    };
+    const f = mass(1), m = mass(0), h = mass(0.5);
+    assert(f.female > 0 && f.male === 0, 'sex 1 must use only female targets: ' + JSON.stringify(f));
+    assert(m.male > 0 && m.female === 0, 'sex 0 must use only male targets: ' + JSON.stringify(m));
+    assert(Math.abs(h.female - h.male) < 1e-9 && h.female > 0, 'sex 0.5 must blend both equally: ' + JSON.stringify(h));
+    assert(macroSliders({ ...base, sex: 1.7 }).female === 1 && macroSliders({ ...base, sex: -3 }).female === 0, 'sex must clamp to 0..1');
+    return 'female ' + f.female.toFixed(2) + ' / male ' + m.male.toFixed(2) + ' / half ' + h.female.toFixed(2) + '+' + h.male.toFixed(2);
+  }));
+
+  results.push(runCase('sdfMesh.seamSigns', () => {
+    // A closed mesh whose vertices lie ON the x = 0 plane — the template body is bilaterally symmetric with
+    // exactly such a seam. When a grid column sat on that plane its parity rays ran down shared edges and
+    // the whole column came back with the wrong sign (SPEC section 6, amendment 2026-09-18). Every node,
+    // on every column, must get the right sign, and the band must hold the true distance.
+    const R = 0.20, nLat = 12, nLon = 16;         // 16 longitudes include 90 and 270 degrees: vertices on x = 0
+    /** @type {number[]} */
+    const P = [0, R, 0];
+    for (let i = 1; i < nLat; i++) {
+      const th = Math.PI * i / nLat;
+      for (let j = 0; j < nLon; j++) {
+        const ph = 2 * Math.PI * j / nLon;
+        P.push(R * Math.sin(th) * Math.sin(ph), R * Math.cos(th), R * Math.sin(th) * Math.cos(ph));
+      }
+    }
+    P.push(0, -R, 0);
+    const south = P.length / 3 - 1;
+    const ring = (/** @type {number} */ i, /** @type {number} */ j) => 1 + (i - 1) * nLon + (j % nLon);
+    /** @type {number[]} */
+    const I = [];
+    for (let j = 0; j < nLon; j++) I.push(0, ring(1, j), ring(1, j + 1));
+    for (let i = 1; i < nLat - 1; i++) {
+      for (let j = 0; j < nLon; j++) {
+        const a = ring(i, j), b = ring(i, j + 1), c = ring(i + 1, j), d = ring(i + 1, j + 1);
+        I.push(a, c, d, a, d, b);
+      }
+    }
+    for (let j = 0; j < nLon; j++) I.push(south, ring(nLat - 1, j + 1), ring(nLat - 1, j));
+    const pos = Float32Array.from(P);
+    let onSeam = 0;
+    for (let v = 0; v < pos.length / 3; v++) if (Math.abs(pos[v * 3]) < 1e-9) onSeam++;
+    assert(onSeam >= 2 * (nLat - 1), 'fixture must have a vertex seam on x = 0, has ' + onSeam);
+    const cell = 0.02;
+    const g = bakeMeshSdf(pos, Uint32Array.from(I), { cell, nVerts: pos.length / 3 });
+    // polygonal sphere: the true surface lies between the inscribed radius and R
+    const rIn = R * Math.cos(Math.PI / nLon) * Math.cos(Math.PI / (2 * nLat));
+    let wrong = 0, checked = 0, worstBand = 0;
+    for (let k = 0; k < g.nz; k++) for (let j = 0; j < g.ny; j++) for (let i = 0; i < g.nx; i++) {
+      const x = g.origin[0] + i * cell, y = g.origin[1] + j * cell, z = g.origin[2] + k * cell;
+      const r = Math.hypot(x, y, z);
+      const d = g.data[i + g.nx * (j + g.ny * k)];
+      if (r < rIn - 0.5 * cell) { checked++; if (!(d < 0)) wrong++; }
+      else if (r > R + 0.5 * cell) { checked++; if (!(d > 0)) wrong++; }
+      if (r > R + 0.5 * cell && r < R + 0.025) worstBand = Math.max(worstBand, Math.abs(d - (r - R)));
+    }
+    assert(wrong === 0, wrong + ' of ' + checked + ' nodes have the wrong sign');
+    assert(worstBand < 0.012, 'band distance off by ' + (worstBand * 1000).toFixed(1) + ' mm');
+    const dc = sampleSdf(g, 0, 0, 0, null);
+    assert(dc < -R * 0.8, 'centre on the seam plane reads ' + dc.toFixed(3));
+    return checked + ' nodes, all signs right; seam vertices ' + onSeam + '; band error ' + (worstBand * 1000).toFixed(1) + ' mm';
   }));
 
   results.push(runCase('stability.range', () => {

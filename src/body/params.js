@@ -143,7 +143,7 @@ export function clampParams(p) {
 }
 
 /**
- * Strict equality on all 20 keys.
+ * Strict equality on every key of PARAM_KEYS (24).
  * @param {BodyParams} a @param {BodyParams} b @returns {boolean}
  */
 export function paramsEqual(a, b) {

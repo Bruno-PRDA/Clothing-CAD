@@ -38,7 +38,7 @@ export const GUIDE_SECTIONS = Object.freeze([
 <p>From left to right: <span class="guide-ui">New</span>, <span class="guide-ui">Open</span>, <span class="guide-ui">Save</span>, the sample list and <span class="guide-ui">Load sample</span>; <span class="guide-ui">↶ Undo</span> and <span class="guide-ui">↷ Redo</span>; the pattern tools (<span class="guide-ui">Select</span> to <span class="guide-ui">Measure</span>, then <span class="guide-ui">Fold</span> and <span class="guide-ui">Fit</span>); the simulation controls (<span class="guide-ui">Arrange</span>, <span class="guide-ui">Drape</span>, <span class="guide-ui">▶ Play</span>/<span class="guide-ui">❚❚ Pause</span>, <span class="guide-ui">Reset</span>, <span class="guide-ui">Self-collision</span>, <span class="guide-ui">Frame</span>); the <span class="guide-ui">Size</span> list; the view buttons; the paper list and <a data-guide="exporting">export buttons</a>; and <span class="guide-ui">? Guide</span> at the far right. Hover over a button for a short description and, where there is one, its <a data-guide="shortcuts">shortcut</a>.</p>
 <h4>Moving around</h4>
 <p><strong>2D pane:</strong> scroll to zoom around the pointer; drag with the middle mouse button, or hold <kbd>Space</kbd> and drag, to pan. <kbd>+</kbd> and <kbd>-</kbd> zoom; <kbd>0</kbd> or <kbd>F</kbd> fits all pieces.</p>
-<p><strong>3D pane:</strong> left-drag orbits around the body, right-drag (or <kbd>Shift</kbd>+left-drag) pans, and scrolling or middle-dragging zooms. <span class="guide-ui">Frame</span> (<kbd>Shift</kbd>+<kbd>F</kbd>) re-centres. With a single piece selected, placement guides appear around the body, with that piece's zone highlighted.</p>
+<p><strong>3D pane:</strong> left-drag orbits around the body, right-drag (or <kbd>Shift</kbd>+left-drag) pans, and scrolling or middle-dragging zooms. <span class="guide-ui">Frame</span> (<kbd>Shift</kbd>+<kbd>F</kbd>) re-centres. The <span class="guide-ui">Scene</span> control at the pane's bottom right changes the backdrop and floor (see <a data-guide="scene">The 3D scene</a>). With a single piece selected, placement guides appear around the body, with that piece's zone highlighted.</p>
 <div class="guide-warn"><kbd>Space</kbd> also plays and pauses the simulation, so panning with it toggles the drape. The middle button pans without side effects.</div>
 <h4>Arranging the panes</h4>
 <p>Drag the bar between the panes to resize them; double-click it to return to half and half. <span class="guide-ui">Split</span>, <span class="guide-ui">2D</span> and <span class="guide-ui">3D</span> (keys <kbd>3</kbd>, <kbd>1</kbd>, <kbd>2</kbd>) show both panes or just one, and <span class="guide-ui">⇆ Swap</span> exchanges their sides. <span class="guide-ui">Pop-out 3D</span> moves the 3D view into its own window, for example on a second monitor, where you can orbit it too. Click <span class="guide-ui">Bring back</span>, or close that window, to return it.</p>
@@ -58,18 +58,46 @@ export const GUIDE_SECTIONS = Object.freeze([
 `,
   },
   {
+    id: "scene",
+    title: "The 3D scene",
+    keywords: ["scene", "background", "backdrop", "colour", "color", "floor", "stand", "pedestal", "runway", "catwalk", "studio", "wood", "terrace", "environment", "shadow"],
+    html: `
+<p>The <span class="guide-ui">Scene</span> control at the bottom right of the 3D pane sets what the body stands in: the backdrop behind it and the floor under its feet. It only changes the picture. The fit, the drape, the warnings and the exports are the same in every scene.</p>
+<table>
+<thead><tr><th>Scene</th><th>What you get</th></tr></thead>
+<tbody>
+<tr><td>Workshop grid</td><td>The default: a dark backdrop and a measuring grid on the floor. Best for checking where pieces sit.</td></tr>
+<tr><td>Light studio</td><td>A white seamless studio, like a product photo.</td></tr>
+<tr><td>Dark studio</td><td>The same in charcoal, which makes pale fabrics stand out.</td></tr>
+<tr><td>Pedestal</td><td>The body stands on a round white platform.</td></tr>
+<tr><td>Runway</td><td>A raised catwalk with lit edges, in a dark room.</td></tr>
+<tr><td>Wooden floor</td><td>Oak planks in a warm room.</td></tr>
+<tr><td>Terrace</td><td>Stone paving under a pale sky.</td></tr>
+</tbody>
+</table>
+<p>In every scene the feet rest on the floor or platform, and the body casts its shadow on it. Except in Workshop grid, the floor fades into the backdrop, so there is no edge to see however you orbit.</p>
+<h4>Your own background colour</h4>
+<p>Click the colour swatch next to the list to choose a backdrop colour; the floor fades into it as well. Click <span class="guide-ui">↺</span> to go back to the scene's own backdrop.</p>
+<p>The scene is saved with the project, like the layout, and the pop-out window shows the same one. Choosing a scene is not an undo step.</p>
+<div class="guide-tip">With a solid floor the camera can't go below it, whether you orbit or pan. To look at a garment from underneath, switch to Workshop grid.</div>
+`,
+  },
+  {
     id: "projects-files",
     title: "Projects and files",
-    keywords: ["save", "open", "new", "project file", "json", "load sample", "samples", "skirt", "undo", "redo", "history", "autosave", "unsaved", "reload", "url options"],
+    keywords: ["save", "open", "new", "project file", "json", "load sample", "samples", "skirt", "undo", "redo", "history", "autosave", "unsaved", "reload", "recover", "restore", "crash", "url options"],
     html: `
-<p>A project holds everything you work on: pattern pieces, seams, fabrics, body measurements, the size chart, simulation settings, and the layout and active size. It lives only in this browser tab until you save it.</p>
+<p>A project holds everything you work on: pattern pieces, seams, fabrics, body measurements, the size chart, simulation settings, and the layout, active size and scene. Save it to a file to keep it, share it or move it to another computer.</p>
 <h4>Saving</h4>
 <p>Click <span class="guide-ui">Save</span> (<kbd>Ctrl</kbd>+<kbd>S</kbd>). Your browser downloads a project file named after the project, such as <code>basic-t-shirt.clothing.json</code>, or <code>untitled.clothing.json</code> for a new one, into its usual downloads location. You can rename the file; keep the <code>.json</code> ending so <span class="guide-ui">Open</span> can find it. The draped shape is not stored: the garment is draped again when you open the file.</p>
 <h4>Opening</h4>
 <p>Click <span class="guide-ui">Open</span> (<kbd>Ctrl</kbd>+<kbd>O</kbd>) and choose a project <code>.json</code> file. It replaces the current project, including the layout and active size saved with it. If the file is not a valid project, an error appears in the status bar and your current work is left as it was.</p>
 <h4>New projects and samples</h4>
 <p><span class="guide-ui">New</span> starts an empty project called <em>Untitled</em>: no pieces, the <em>Female M</em> body, a size chart from S to XL with M as the base size, and one cotton fabric. The sample list offers <span class="guide-ui">T-shirt</span> (front and back on the fold, two sleeves) and <span class="guide-ui">A-line skirt</span> (front and back, waist pinned to the body). Choose one and click <span class="guide-ui">Load sample</span>. Unless you ask for something else (see the tip below), the app starts with the T-shirt.</p>
-<div class="guide-warn">Nothing is saved automatically. <span class="guide-ui">New</span>, <span class="guide-ui">Open</span> and <span class="guide-ui">Load sample</span> replace the project straight away, with no "save changes?" question, and clear the undo history. Reloading or closing the tab loses unsaved work too. Save often.</div>
+<h4>Autosave and recovery</h4>
+<p>While you work, the app keeps a copy of the project in this browser, a second or two after each change and again when you close or leave the tab. If the tab closes, the browser crashes or you reload before saving, the next time you open the app a banner at the top offers your unsaved work back: <span class="guide-ui">Restore</span> brings it back, <span class="guide-ui">Discard</span> forgets it. Autosave pauses until you choose.</p>
+<p>The copy lives in this browser only. It is not a file, it does not follow you to another browser or computer, and clearing the browser's site data deletes it. Only changes to the work itself count as unsaved: moving the pane divider or changing the scene does not bring up the banner.</p>
+<div class="guide-warn"><span class="guide-ui">New</span>, <span class="guide-ui">Open</span> and <span class="guide-ui">Load sample</span> replace the project straight away, with no "save changes?" question, and clear the undo history. Unsaved work is not recoverable after that, so click <span class="guide-ui">Save</span> first if you want to keep it.</div>
 <h4>Undo and redo</h4>
 <p><span class="guide-ui">↶ Undo</span> (<kbd>Ctrl</kbd>+<kbd>Z</kbd>) and <span class="guide-ui">↷ Redo</span> (<kbd>Ctrl</kbd>+<kbd>Y</kbd> or <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd>) cover the last 100 changes to the pattern, seams, body, fabrics, size chart and simulation settings. A drag counts as one step once you let go. View changes (layout, pane sizes, dock tab and the active size) are not steps, and undo leaves them alone. Making a new change after undoing discards the redo steps.</p>
 <div class="guide-tip">Start-up options: add <code>?sample=skirt</code> to the app's address to open with the skirt, <code>?sample=none</code> to start empty, <code>?size=L</code> to start in size L, or <code>?nosim=1</code> to start with the garment arranged but not simulating (handy on a slow computer). Combine them with <code>&amp;</code>, for example <code>?sample=skirt&amp;size=L</code>.</div>

@@ -123,7 +123,11 @@ export function measureTemplate(tpl, pos, opts = {}) {
   const spine3 = J('spine-3') || [0, height * 0.72, 0];
 
   // --- torso girths -------------------------------------------------------------------------------
-  // bust: fullest between the armpit (just under the shoulder joint) and mid-chest
+  // bust: fullest between the armpit (just under the shoulder joint) and mid-chest. On a man the girth
+  // rises all the way to the top of the band (the lats flare out under the arm) and the maximum lands on
+  // the edge — which is right: a man's chest is measured under the arms. Checked 2026-09-24 with
+  // tools/bodycheck.html?do=bustband: the section is three separate loops at every level of the band, so the
+  // arm is never counted; women peak mid-band (female_m 72 %, plus_f 63 % of the way up).
   const yArmpit = shoulderL[1] - height * 0.055;
   const bust = extremeGirth(ix, yArmpit - height * 0.09, yArmpit - height * 0.005, 'max');
   // underbust: tightest in the band below the bust

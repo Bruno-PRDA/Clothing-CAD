@@ -8,8 +8,8 @@ import { getAux } from './state.js';
 import { snapshot as snapshotImpl, restore as restoreImpl } from './safety.js';
 
 export { buildCloth, setFabricParams, setSettings, setScale, setPin, clearPin, setGravityDir, commitPositions, SEAM_ALPHA } from './state.js';
-export { arrange, pushOut } from './arrange.js';
-export { step, drape, reset, phase } from './solver.js';
+export { arrange, pushOut, convexifyRow } from './arrange.js';
+export { step, drape, reset, phase, sewGravityScale, contactRoundsAt } from './solver.js';
 export { bendingCoefficients, bendingC, solveDistance, solveBending, solveSeams, applyPins } from './constraints.js';
 export { FRICTION_FLOOR } from './collide.js';
 export { LRA_ANCHORS, LRA_RINGS, LRA_SLACK, solveLra } from './lra.js';

@@ -6,8 +6,9 @@ import {
   buildCloth, arrange, step, stats, setFabricParams, snapshot, restore, selfMaskedPairCount,
   bendingCoefficients, bendingC, solveDistance, solveBending,
   makeHangingSheet, makeSphereDrape, makeSeamFixture, makeSlopeFixture, makeLatticeMesh,
-  findTears, TEAR_STRAIN, TEAR_GAP_M, CLUSTER_M,
+  findTears, TEAR_STRAIN, TEAR_GAP_M, CLUSTER_M, sewGravityScale, contactRoundsAt, convexifyRow,
 } from './index.js';
+import { G_SEW_FLOOR, G_SEW_POWER, CONTACT_ROUNDS, CONTACT_ROUNDS_SEW, MU_RELEASE_TIME } from './solver.js';
 
 /** @typedef {import('../core/types.js').SelfTestResult} SelfTestResult */
 /** @typedef {import('../core/types.js').FabricResolved} FabricResolved */
@@ -310,6 +311,51 @@ export async function runSelfTest() {
     assert(CLUSTER_M > 0.02 && merged.strainCount === 2 && merged.marks.length === 1, 'two nearby strains must merge into one mark, got ' + merged.marks.length);
     assert(Math.abs(merged.marks[0].value - 1) < 1e-6, 'the merged mark must keep the worse strain, got ' + merged.marks[0].value);
     return 'strain + seam found, relaxed state clean, nearby marks merged';
+  });
+
+  check('solver.sewSchedule', () => {
+    // The schedule that closed the template body's shoulder seam (SPEC 7, amendment 2026-09-18): gravity nearly
+    // off while the seams pull shut, cubic so the last of it arrives as they finish, and one extra
+    // fabric/contact round per substep while closing and for the release window after. A seam that freezes
+    // open is invisible to every other check until a body other than the default is draped.
+    const sew = 1.0;
+    assert(sewGravityScale(0, sew) === G_SEW_FLOOR, 'gravity at t = 0 must be the floor, got ' + sewGravityScale(0, sew));
+    assert(Math.abs(sewGravityScale(0.5, sew) - Math.max(G_SEW_FLOOR, Math.pow(0.5, G_SEW_POWER))) < 1e-12, 'mid-sew gravity');
+    assert(sewGravityScale(sew, sew) === 1 && sewGravityScale(5, sew) === 1 && sewGravityScale(0.3, 0) === 1, 'gravity outside sewing must be 1');
+    let prevG = 0;
+    for (let t = 0; t < sew; t += 0.05) {
+      const gs = sewGravityScale(t, sew);
+      assert(gs >= prevG - 1e-12 && gs >= G_SEW_FLOOR && gs <= 1, 'gravity ramp not monotone in [floor, 1] at t = ' + t.toFixed(2));
+      prevG = gs;
+    }
+    assert(sewGravityScale(0.5, sew) < 0.2, 'mid-sew gravity must stay small (cubic), got ' + sewGravityScale(0.5, sew));
+    assert(contactRoundsAt(0.2, sew, true) === CONTACT_ROUNDS_SEW && contactRoundsAt(sew + MU_RELEASE_TIME - 0.01, sew, true) === CONTACT_ROUNDS_SEW,
+      'extra contact rounds must run while closing and through the release window');
+    assert(contactRoundsAt(sew + MU_RELEASE_TIME + 0.01, sew, true) === CONTACT_ROUNDS, 'steady-state contact rounds');
+    assert(contactRoundsAt(0.2, sew, false) === CONTACT_ROUNDS && contactRoundsAt(0.2, 0, true) === CONTACT_ROUNDS, 'seamless cloth or no sew time: steady rounds');
+    return 'floor ' + G_SEW_FLOOR + ', power ' + G_SEW_POWER + ', rounds ' + CONTACT_ROUNDS_SEW + ' -> ' + CONTACT_ROUNDS;
+  });
+
+  check('arrange.convexifyRow', () => {
+    // A garment bridges a hollow; it does not sink into it (the cleavage notch that put 624 % strain on one edge).
+    const ang = 64, dTheta = 2 * Math.PI / ang;
+    const round = new Float64Array(ang).fill(0.2);
+    const same = round.slice();
+    convexifyRow(same, 0, ang, dTheta);
+    for (let a = 0; a < ang; a++) assert(Math.abs(same[a] - 0.2) < 1e-12, 'a convex row must not change (angle ' + a + ': ' + same[a] + ')');
+    const notched = round.slice();
+    for (const a of [15, 16, 17]) notched[a] = 0.12;            // an 8 cm deep hollow three samples wide
+    notched[40] = 0.26;                                           // and one bump, which must survive
+    const r = new Float64Array(ang * 2);
+    r.set(notched, ang);                                          // second row of a two-row table: `off` must be honoured
+    convexifyRow(r, ang, ang, dTheta);
+    for (const a of [15, 16, 17]) {
+      assert(r[ang + a] > 0.195 && r[ang + a] <= 0.2 + 1e-12, 'hollow at angle ' + a + ' must be bridged, got ' + r[ang + a].toFixed(4));
+    }
+    assert(Math.abs(r[ang + 40] - 0.26) < 1e-12, 'a bump must be kept, got ' + r[ang + 40]);
+    for (let a = 0; a < ang; a++) assert(r[a] === 0, 'row 0 must be untouched');
+    for (let a = 0; a < ang; a++) assert(r[ang + a] >= notched[a] - 1e-12, 'a radius may only grow (angle ' + a + ')');
+    return 'hollow 0.12 -> ' + r[ang + 16].toFixed(4) + ' m, bump kept, convex row unchanged';
   });
   return results;
 }

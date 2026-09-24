@@ -187,6 +187,29 @@ function releaseProgress(state) {
   return f >= 1 ? 1 : f;
 }
 
+/**
+ * Gravity multiplier WHILE THE SEAMS CLOSE (t < sewTime): (t / sewTime)^G_SEW_POWER, floored at G_SEW_FLOOR.
+ * Exported so the schedule can be pinned by a test: it is what closed the template body's shoulder seam
+ * (SPEC section 7, amendment 2026-09-18), and it changes nothing a render would show until a seam freezes open.
+ * @param {number} time @param {number} sewTime @returns {number}
+ */
+export function sewGravityScale(time, sewTime) {
+  if (!(sewTime > 0) || time >= sewTime) return 1;
+  let g = Math.pow(Math.max(0, time) / sewTime, G_SEW_POWER);
+  if (g < G_SEW_FLOOR) g = G_SEW_FLOOR;
+  return g > 1 ? 1 : g;
+}
+
+/**
+ * Extra fabric/contact negotiation rounds per substep: CONTACT_ROUNDS_SEW while the seams close and for the
+ * release window after (t < sewTime + MU_RELEASE_TIME), CONTACT_ROUNDS afterwards and on seamless cloth.
+ * @param {number} time @param {number} sewTime @param {boolean} hasSeams @returns {number}
+ */
+export function contactRoundsAt(time, sewTime, hasSeams) {
+  const closing = hasSeams && sewTime > 0 && time < sewTime + MU_RELEASE_TIME;
+  return closing ? CONTACT_ROUNDS_SEW : CONTACT_ROUNDS;
+}
+
 /** @param {ClothState} state @returns {number} gravity multiplier at the state's current time */
 function gScaleAt(state) {
   if (G_RELEASE >= 1 || !hasRelease(state)) return 1;
@@ -232,14 +255,8 @@ export function step(state, sdf) {
   const h = p.dt / substeps;
   const invH2 = 1 / (h * h);
   const sewing = p.sewTime > 0 && state.time < p.sewTime;
-  let gScale = 1;
-  if (sewing) {
-    gScale = Math.pow(state.time / p.sewTime, G_SEW_POWER);
-    if (gScale < G_SEW_FLOOR) gScale = G_SEW_FLOOR;
-    if (gScale > 1) gScale = 1;
-  }
   const dampMul = sewing ? 5 : 1;
-  if (!sewing) gScale = gScaleAt(state);
+  const gScale = sewing ? sewGravityScale(state.time, p.sewTime) : gScaleAt(state);
   const g = p.gravity * gScale;
   const gx = aux.gravityDir[0] * g * h;
   const gy = aux.gravityDir[1] * g * h;
@@ -329,8 +346,7 @@ export function step(state, sdf) {
       // Let the fabric and the body contact negotiate instead of contact simply overriding the cloth: alternating the
       // two with the distance multiplier carried across the passes converges on a configuration that satisfies both,
       // rather than leaving the residual on whichever ran last.
-      const closing = hasSeams && p.sewTime > 0 && state.time < p.sewTime + MU_RELEASE_TIME;
-      const rounds = closing ? CONTACT_ROUNDS_SEW : CONTACT_ROUNDS;
+      const rounds = contactRoundsAt(state.time, p.sewTime, hasSeams);
       for (let q = 0; q < rounds; q++) {
         solveDistance(pos, invMass, state.eIdx, state.eRest, state.eAlpha, invH2, eLambda);
         if (hasSeams) solveSeams(pos, invMass, state.sIdx, state.sRest0, state.sStart, invH2, state.time, p.sewTime);

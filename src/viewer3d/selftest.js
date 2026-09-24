@@ -4,8 +4,10 @@ import * as THREE from 'three';
 import { FABRIC_PRESETS, resolveFabric } from '../core/fabrics.js';
 import {
   createViewer3D, createLoop, topologyFromState, fabricMaterial, materialFor, materialCacheSize,
-  drawTextureCanvas, fabricTexture, textureCacheSize,
+  drawTextureCanvas, fabricTexture, textureCacheSize, createTearMarks, MARK_COLORS,
+  STAGE_PRESETS, PEDESTAL_H, RUNWAY_H,
 } from './index.js';
+import { SCENE_PRESETS } from '../core/schema.js';
 
 /** @typedef {import('../core/types.js').SelfTestResult} SelfTestResult */
 
@@ -333,6 +335,117 @@ export async function runSelfTest() {
       } finally {
         loop.dispose();
       }
+    });
+
+    await check('stage.presets', () => {
+      // The UI lists scenes from core (no three.js there); the looks live in stage.js. Same ids, both ways.
+      const core = SCENE_PRESETS.map((p) => p.id).sort().join(',');
+      const view = Object.keys(STAGE_PRESETS).sort().join(',');
+      assert(core === view, 'scene ids differ: core [' + core + '] vs viewer [' + view + ']');
+      assert(v && typeof v.setStage === 'function', 'viewer has no setStage');
+      const scene = v.viewer.scene;
+      const ray = new THREE.Raycaster();
+      const down = new THREE.Vector3(0, -1, 0);
+      /** Height of the first surface straight below (x, 0.5, z) among the stage props and the grid's shadow catcher. */
+      const surfaceAt = (/** @type {number} */ x, /** @type {number} */ z) => {
+        const targets = [...v.stage.object.children.filter((o) => o.name !== 'stage-dome')];
+        if (v.viewer.ground.shadowPlane.visible) targets.push(v.viewer.ground.shadowPlane);
+        scene.updateMatrixWorld(true);
+        ray.set(new THREE.Vector3(x, 0.5, z), down);
+        const hit = ray.intersectObjects(targets, false)[0];
+        return hit ? hit.point.y : NaN;
+      };
+      const gl = v.viewer.renderer.getContext();
+      const parts = [];
+      try {
+        for (const { id } of SCENE_PRESETS) {
+          const applied = v.setStage({ preset: id });
+          assert(applied.preset === id && applied.background === null, id + ': applied ' + JSON.stringify(applied));
+          // the mannequin stands at y = 0 whatever the scene
+          const y = surfaceAt(0, 0);
+          assert(Math.abs(y) < 1e-3, id + ': the surface under the feet is at y = ' + y);
+          const isGrid = STAGE_PRESETS[id].floor === 'grid';
+          assert(v.viewer.ground.grid.visible === isGrid && v.viewer.ground.shadowPlane.visible === isGrid, id + ': grid visibility');
+          assert(isGrid ? scene.fog === null : (scene.fog && scene.fog.near > 5), id + ': fog must be off on the grid and start past the body elsewhere');
+          const expectFloor = id === 'pedestal' ? -PEDESTAL_H : id === 'runway' ? -RUNWAY_H : 0;
+          assert(Math.abs(v.stage.floorY() - expectFloor) < 1e-9, id + ': floorY ' + v.stage.floorY());
+          if (!isGrid) {
+            const yAway = surfaceAt(3, -3);                              // off the pedestal / runway
+            assert(Math.abs(yAway - expectFloor) < 1e-3, id + ': floor away from the body at y = ' + yAway);
+          }
+          v.viewer.render();
+          assert(gl.getError() === gl.NO_ERROR, id + ': GL error after render');
+          parts.push(id);
+        }
+        // a custom colour becomes the backdrop and the fog, so the floor still fades into it
+        const c = v.setStage({ preset: 'studio', background: '#123456' });
+        assert(c.background === '#123456' && scene.background.getHexString() === '123456' && scene.fog.color.getHexString() === '123456', 'custom background');
+        const w = v.setStage({ preset: 'workshop', background: '#654321' });
+        assert(scene.background.getHexString() === '654321' && scene.fog === null, 'custom background on the grid scene');
+        // a dark custom colour stays dark at the zenith (the 14 % lightening is in sRGB, not linear light)
+        v.setStage({ preset: 'dark', background: '#000000' });
+        const dome = v.stage.object.getObjectByName('stage-dome');
+        const col = dome.geometry.getAttribute('color'), dp = dome.geometry.getAttribute('position');
+        let top = 0;
+        for (let i = 1; i < dp.count; i++) if (dp.getY(i) > dp.getY(top)) top = i;
+        const zen = new THREE.Color(col.getX(top), col.getY(top), col.getZ(top)).getHexString();
+        assert(parseInt(zen.slice(0, 2), 16) < 0x30, 'a black backdrop must keep a dark zenith, got #' + zen);
+        // a pan cannot carry the orbit target or the camera below a solid floor
+        v.setStage({ preset: 'studio' });
+        const cam = v.viewer.camera, ctl = v.viewer.controls;
+        const keepT = ctl.target.clone(), keepP = cam.position.clone();
+        ctl.target.set(0, -1.2, 0); cam.position.set(0, -0.6, 3);
+        v.render();
+        assert(ctl.target.y >= 0.049 && cam.position.y >= 0.049, 'camera under the floor: target ' + ctl.target.y.toFixed(3) + ', camera ' + cam.position.y.toFixed(3));
+        v.setStage({ preset: 'workshop' });
+        ctl.target.set(0, -1.2, 0); cam.position.set(0, -0.6, 3);
+        v.render();
+        assert(ctl.target.y < 0, 'the grid scene must still allow looking from below');
+        ctl.target.copy(keepT); cam.position.copy(keepP); ctl.update();
+        // anything unknown falls back to the default rather than failing
+        const bad = v.setStage({ preset: 'moon', background: 'red' });
+        assert(bad.preset === 'workshop' && bad.background === null && v.viewer.ground.grid.visible, 'unknown preset must fall back: ' + JSON.stringify(bad));
+        assert(w.preset === 'workshop', 'workshop');
+      } finally {
+        v.setStage({ preset: 'workshop' });
+      }
+      return parts.length + ' scenes, all standing at y = 0';
+    });
+
+    await check('tears.overlay', () => {
+      // Markers are a diagnostic: always drawn on top (no depth test), coloured amber -> red by severity,
+      // hidden when there is nothing to show.
+      const t = createTearMarks();
+      try {
+        assert(t.object.visible === false && t.count() === 0, 'a fresh overlay must be empty and hidden');
+        t.setMarks([
+          { x: 0, y: 1.2, z: 0.1, severity: 0, kind: 'strain', value: 0.31 },
+          { x: 0.1, y: 1.1, z: 0.1, severity: 1, kind: 'seam', value: 12 },
+        ]);
+        assert(t.count() === 2 && t.object.visible === true, 'two marks must show, count ' + t.count());
+        const mat = /** @type {any} */ (t.object.material);
+        assert(mat.depthTest === false, 'markers must draw through the body (depthTest off)');
+        const col = /** @type {any} */ (t.object.geometry.getAttribute('color')).array;
+        const lo = new THREE.Color(MARK_COLORS.low), hi = new THREE.Color(MARK_COLORS.high);
+        assert(Math.abs(col[0] - lo.r) < 1e-6 && Math.abs(col[1] - lo.g) < 1e-6 && Math.abs(col[3] - hi.r) < 1e-6 && Math.abs(col[4] - hi.g) < 1e-6,
+          'severity 0 must be the low colour and 1 the high colour');
+        t.setVisible(false);
+        assert(t.object.visible === false, 'setVisible(false) must hide');
+        t.setVisible(true);
+        assert(t.object.visible === true, 'setVisible(true) must show marks again');
+        t.setMarks([]);
+        assert(t.count() === 0 && t.object.visible === false, 'clearing must hide');
+        t.setVisible(true);
+        assert(t.object.visible === false, 'setVisible(true) with no marks must stay hidden');
+        if (v && typeof v.setTears === 'function') {
+          v.setTears([{ x: 0, y: 1, z: 0.2, severity: 0.5, kind: 'strain', value: 0.4 }]);
+          v.render();
+          v.setTears(null);
+        }
+      } finally {
+        t.dispose();
+      }
+      return 'visibility, colours, depthTest off, viewer.setTears';
     });
 
     await check('viewer.screenshot', () => {

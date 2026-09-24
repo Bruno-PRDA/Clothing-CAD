@@ -11,6 +11,7 @@ import { TEXTURE_SIZE, textureKey, drawTextureCanvas, fabricTexture, textureCach
 import { createLoop } from './loop.js';
 import { GIZMO_COLORS, createAnchorsGizmo } from './anchorsGizmo.js';
 import { MARK_COLORS, MARK_SIZE, createTearMarks } from './tearMarks.js';
+import { STAGE_PRESETS, DEFAULT_STAGE, PEDESTAL_H, RUNWAY_H, normalizeStageSpec, createStage } from './stage.js';
 
 export { VIEWER_DEFAULTS, DEFAULT_BODY_BOX, createViewer };
 export { BODY_SKIN, createBodyMesh };
@@ -20,6 +21,7 @@ export { TEXTURE_SIZE, textureKey, drawTextureCanvas, fabricTexture, textureCach
 export { createLoop };
 export { GIZMO_COLORS, createAnchorsGizmo };
 export { MARK_COLORS, MARK_SIZE, createTearMarks };
+export { STAGE_PRESETS, DEFAULT_STAGE, PEDESTAL_H, RUNWAY_H, normalizeStageSpec, createStage };
 
 /** @typedef {import('../core/types.js').ClothState} ClothState */
 /** @typedef {import('../core/types.js').BodyModel} BodyModel */
@@ -58,6 +60,7 @@ const POPOUT_WINDOW_NAME = 'clothing-app-3d';
  * @property {() => void} close
  * @property {(model:BodyModel|null) => void} sendBody
  * @property {(topology:ClothTopology|null) => void} sendClothInit
+ * @property {(spec:{preset:string, background:string|null}) => void} sendStage
  * @property {(pos:Float32Array, frame:number, force?:boolean) => void} sendPositions
  * @property {(fn:() => void) => void} onOpened
  * @property {(fn:() => void) => void} onClosed
@@ -69,13 +72,14 @@ const EMPTY_U32 = new Uint32Array(0);
 
 /**
  * Main-window side of the BroadcastChannel bridge. Never touches the bus; wiring turns onOpened/onClosed into popout:open/close.
- * @param {{getBody: () => BodyModel|null, getTopology: () => ClothTopology|null, getPositions: () => {pos: Float32Array, frame: number}|null}} opts
+ * @param {{getBody: () => BodyModel|null, getTopology: () => ClothTopology|null, getPositions: () => {pos: Float32Array, frame: number}|null, getStage?: () => {preset:string, background:string|null}|null}} opts
  * @returns {PopoutBridge}
  */
 export function createPopoutBridge(opts) {
   const getBody = opts && typeof opts.getBody === 'function' ? opts.getBody : () => null;
   const getTopology = opts && typeof opts.getTopology === 'function' ? opts.getTopology : () => null;
   const getPositions = opts && typeof opts.getPositions === 'function' ? opts.getPositions : () => null;
+  const getStage = opts && typeof opts.getStage === 'function' ? opts.getStage : () => null;
 
   const sessionId = uid('sess');
   /** @type {BroadcastChannel|null} */
@@ -123,6 +127,8 @@ export function createPopoutBridge(opts) {
   function onHello() {
     if (disposed) return;
     open = true;
+    const st = getStage();
+    if (st) sendStage(st);
     sendBody(getBody());
     sendClothInit(getTopology());
     const p = getPositions();
@@ -186,6 +192,12 @@ export function createPopoutBridge(opts) {
     });
   }
 
+  /** The scene the main window shows, so the pop-out stands the body on the same floor. */
+  function sendStage(spec) {
+    if (!open || !channel || !spec) return;
+    post({ type: 'stage', session: sessionId, preset: spec.preset, background: spec.background || null });
+  }
+
   /** @param {ClothTopology|null} topology */
   function sendClothInit(topology) {
     if (!open || !channel) return;
@@ -222,7 +234,7 @@ export function createPopoutBridge(opts) {
     closedCbs.length = 0;
   }
 
-  return { sessionId, open: openWindow, isOpen, close, sendBody, sendClothInit, sendPositions, onOpened, onClosed, dispose };
+  return { sessionId, open: openWindow, isOpen, close, sendBody, sendClothInit, sendStage, sendPositions, onOpened, onClosed, dispose };
 }
 
 // ---------------------------------------------------------------- 8.9 facade
@@ -246,6 +258,8 @@ export function createPopoutBridge(opts) {
  * @property {(on:boolean) => void} setLandmarks
  * @property {(on:boolean) => void} setGizmo
  * @property {(a:number) => void} setBodyOpacity
+ * @property {(spec:{preset?:string, background?:string|null}|null) => {preset:string, background:string|null}} setStage
+ * @property {import('./stage.js').StageHandle} stage
  * @property {() => {fps:number, frames:number, drawCalls:number, triangles:number, V:number, T:number, lastFrameMs:number}} stats
  * @property {() => void} dispose
  */
@@ -263,6 +277,7 @@ export function createViewer3D(container, opts = {}) {
   const gizmo = createAnchorsGizmo();
   const tears = createTearMarks();
   viewer.root.add(body.object, cloth.object, cloth.wire, gizmo.object, tears.object);
+  const stage = createStage(viewer);
 
   /** @type {BodyModel|null} */
   let currentBody = null;
@@ -278,10 +293,23 @@ export function createViewer3D(container, opts = {}) {
     getBody: () => currentBody,
     getTopology: () => cloth.topology(),
     getPositions: () => (currentState ? { pos: currentState.pos, frame: currentState.frame | 0 } : null),
+    getStage: () => stage.current(),
   });
+
+  /**
+   * Backdrop and floor (stage.js). Returns the normalised spec actually applied, and forwards it to the pop-out.
+   * @param {{preset?: string, background?: string|null}|null} spec
+   */
+  function setStage(spec) {
+    const applied = stage.set(spec || {});
+    popout.sendStage(applied);
+    render();
+    return applied;
+  }
 
   function render() {
     viewer.controls.update();
+    stage.clampCamera(viewer.camera, viewer.controls);
     viewer.render();
   }
 
@@ -374,6 +402,7 @@ export function createViewer3D(container, opts = {}) {
     disposed = true;
     loop.dispose();
     popout.dispose();
+    stage.dispose();
     tears.dispose();
     gizmo.dispose();
     cloth.dispose();
@@ -386,8 +415,8 @@ export function createViewer3D(container, opts = {}) {
   }
 
   return {
-    viewer, body, cloth, gizmo, tears, loop, popout,
+    viewer, body, cloth, gizmo, tears, stage, loop, popout,
     setBody, setCloth, sync, setPieceFabric, fit, render, screenshot,
-    setWireframe, setLandmarks, setGizmo, setTears, setBodyOpacity, stats, dispose,
+    setWireframe, setLandmarks, setGizmo, setTears, setStage, setBodyOpacity, stats, dispose,
   };
 }

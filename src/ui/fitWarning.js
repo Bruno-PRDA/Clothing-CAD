@@ -121,6 +121,8 @@ export function createFitWarning(store, bus, root = document) {
     /** @returns {FitReport|null} the last computed report (SPEC 12.3) */
     report: () => report,
     refresh: paint,
+    /** Forget a dismissal, so the current warning shows again (tests; a new message shows anyway). */
+    clearDismissed() { dismissed = ''; paint(); },
     destroy() {
       destroyed = true;
       if (raf) { clearTimeout(raf); raf = 0; }

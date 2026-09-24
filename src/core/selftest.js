@@ -380,7 +380,7 @@ export async function runSelfTest() {
     assert(d.pieces.length === 0 && d.ui.activeSize === 'M' && d.sizes.baseSize === 'M' && d.sizes.rows.length === 4, 'defaults');
     assert(d.body.preset === 'female_m' && deepEqual(d.body.params, DEFAULT_BODY_PARAMS), 'body defaults');
     assert(deepEqual(d.sim, { substeps: 10, gravity_ms2: 9.81, selfCollision: true, sewTime_s: 1, collisionOffset_mm: 5, bendScale: 1, stretchScale: 1 }), 'sim defaults');
-    assert(deepEqual(d.ui, { split: 0.5, layout: 'split', swapped: false, activeSize: 'M', dockTab: 'pieces' }), 'ui defaults');
+    assert(deepEqual(d.ui, { split: 0.5, layout: 'split', swapped: false, activeSize: 'M', dockTab: 'pieces', scene: { preset: 'workshop', background: null } }), 'ui defaults');
     // piece defaults
     const p = normalizeDoc({ pieces: [{ vertices: [[0, 0], [100, 0], [100, 200]] }] }).pieces[0];
     assert(/^piece_/.test(p.id) && p.name === p.id && p.edges.length === 3 && p.fabricId === 'main', 'piece id/edges/fabric');
@@ -422,6 +422,20 @@ export async function runSelfTest() {
       assert(issues.length === 0, s.id + ': ' + stableStringify(issues));
     }
     return samples.note;
+  });
+
+  await check('schema/scene', () => {
+    // The 3D backdrop is a view setting saved with the project, like the layout: every document gets a valid one.
+    const sceneOf = (/** @type {any} */ scene) => normalizeDoc({ version: 1, ui: { scene } }).ui.scene;
+    assert(deepEqual(normalizeDoc({}).ui.scene, { preset: 'workshop', background: null }), 'default scene');
+    assert(deepEqual(sceneOf({ preset: 'runway', background: '#AABBCC' }), { preset: 'runway', background: '#aabbcc' }), 'valid scene kept, colour lower-cased');
+    assert(deepEqual(sceneOf({ preset: 'moon', background: 'red' }), { preset: 'workshop', background: null }), 'unknown preset / bad colour fall back');
+    assert(deepEqual(sceneOf(undefined), { preset: 'workshop', background: null }), 'a document from before scenes gets the default');
+    const bad = normalizeDoc({});
+    bad.ui.scene = { preset: 'moon', background: 12 };
+    const issues = validateShape(bad).filter((i) => i.code === 'UiState');
+    assert(issues.length === 2, 'validateShape must flag the preset and the colour: ' + JSON.stringify(issues));
+    return 'default, kept, fallback, validation';
   });
 
   await check('schema/sex-inference', () => {

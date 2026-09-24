@@ -82,6 +82,11 @@
   </header>
 
   <main id="main">
+    <div id="recovery-banner" role="alertdialog" aria-labelledby="recovery-text" hidden>
+      <span id="recovery-text"></span>
+      <button id="btn-recover-restore" type="button">Restore</button>
+      <button id="btn-recover-discard" type="button">Discard</button>
+    </div>
     <div id="fit-warning" data-level="" data-testid="fit-warning" hidden>
       <span id="fit-warning-icon" aria-hidden="true"></span>
       <span id="fit-warning-text" data-testid="fit-warning-text"></span>
@@ -99,6 +104,13 @@
     <section id="pane-right" class="pane" data-slot="right">
       <div id="pane-3d" class="pane-content" data-pane="3d">
         <div id="view-3d" aria-label="3D view"></div>
+        <div id="scene-controls" role="group" aria-label="Scene">
+          <label for="sel-scene">Scene</label>
+          <select id="sel-scene" title="Backdrop and floor of the 3D view"></select>
+          <input id="input-scene-bg" type="color" title="Custom background colour" aria-label="Custom background colour">
+          <button id="btn-scene-bg-reset" type="button" title="Use the scene's own background" aria-label="Use the scene's own background">&#8634;</button>
+          <button class="guide-link" type="button" data-guide="scene" title="Help: the 3D scene" aria-label="Help: the 3D scene">?</button>
+        </div>
         <div id="msg-3d-popout" class="pane-msg" hidden>
           The 3D view is open in a separate window. <button id="btn-popin" type="button">Bring back</button>
         </div>

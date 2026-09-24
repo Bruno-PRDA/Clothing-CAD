@@ -59,14 +59,15 @@ function positiveFinite(v) {
 /**
  * Scale factor for one axis (steps 2–3): row[ref] / base[ref] when both are finite and > 0, else 1 (+ warn issue).
  * @param {Piece} piece @param {string|null} ref @param {import('../core/types.js').SizeRow} base
- * @param {import('../core/types.js').SizeRow} row @param {Issue[]} issues @returns {number}
+ * @param {import('../core/types.js').SizeRow} row @param {Issue[]} issues @param {string} [field] which grade field names `ref`
+ * @returns {number}
  */
-function axisScale(piece, ref, base, row, issues) {
+function axisScale(piece, ref, base, row, issues, field = 'widthRef') {
   if (ref === null || ref === undefined) return 1;
   const b = base[ref];
   const r = row[ref];
   if (positiveFinite(b) && positiveFinite(r)) return /** @type {number} */ (r) / /** @type {number} */ (b);
-  issues.push({ level: 'warn', code: 'GRADE_REF_MISSING', pieceId: piece.id, message: `widthRef ${ref} not in size chart` });
+  issues.push({ level: 'warn', code: 'GRADE_REF_MISSING', pieceId: piece.id, message: `${field} ${ref} not in size chart` });
   return 1;
 }
 
@@ -90,7 +91,7 @@ export function gradeScale(piece, chart, sizeName) {
   const grade = piece.grade || { widthRef: null, lengthRef: null };
   return {
     sx: axisScale(piece, grade.widthRef, base, row, issues),
-    sy: axisScale(piece, grade.lengthRef, base, row, issues),
+    sy: axisScale(piece, grade.lengthRef, base, row, issues, 'lengthRef'),
   };
 }
 
@@ -104,7 +105,7 @@ export function gradePieceDetailed(piece, chart, sizeName) {
   const issues = [];
   const grade = piece.grade || { widthRef: null, lengthRef: null, anchorX: 'center', anchorY: 'center', vertexRules: [] };
   const sx = axisScale(piece, grade.widthRef, base, row, issues);
-  const sy = axisScale(piece, grade.lengthRef, base, row, issues);
+  const sy = axisScale(piece, grade.lengthRef, base, row, issues, 'lengthRef');
 
   // 4. pivot from the base vertices only
   const bb = polyBbox(piece.vertices);

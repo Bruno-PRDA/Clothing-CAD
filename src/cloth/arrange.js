@@ -187,7 +187,7 @@ function buildProfile(A, sdf, tMin, tMax, c, f, sVec) {
  *
  * @param {Float64Array} r @param {number} off @param {number} ang @param {number} dTheta
  */
-function convexifyRow(r, off, ang, dTheta) {
+export function convexifyRow(r, off, ang, dTheta) {
   const x = new Float64Array(ang);
   const y = new Float64Array(ang);
   for (let a = 0; a < ang; a++) {
@@ -220,10 +220,13 @@ function convexifyRow(r, off, ang, dTheta) {
     for (let k = 0; k < n; k++) {
       const p = hull[k], q = hull[(k + 1) % n];
       const ex = x[q] - x[p], ey = y[q] - y[p];
-      // solve  p + u*e = t*d  for t > 0 and u in [0, 1]
+      // solve  p + u*e = t*d  for t > 0 and u in [0, 1]. Crossing both sides with d gives
+      // u = (p x d) / (d x e). The sign was flipped until 2026-09-24, which made u land in [0, 1] on the
+      // wrong edges: no hollow was ever bridged, and rows were pushed OUT where there was no hollow at all
+      // (a 0.200 m round row came back 0.222 m in places). Pinned by the cloth self-test arrange.convexifyRow.
       const den = dx * ey - dy * ex;
       if (Math.abs(den) < 1e-12) continue;
-      const u = (dx * y[p] - dy * x[p]) / den;
+      const u = (x[p] * dy - y[p] * dx) / den;
       if (u < 0 || u > 1) continue;
       const t = Math.abs(dx) > Math.abs(dy) ? (x[p] + u * ex) / dx : (y[p] + u * ey) / dy;
       if (t > best) { best = t; break; }

@@ -2439,16 +2439,17 @@ export function sampleBody(model, x, y, z, outGrad)   // = sampleSdf(model.sdf, 
 2. `skeleton.heights` — female_m: `chin.y = 1.43 ± 1e-6`, `waist = 1.01 ± 1e-6`, `chest ≈ 1.19`, `crotch = 0.76`; `+x` shoulder is `shoulderL`.
 3. `sdf.signs` — female_m full: `sampleBody(chestCenter) < −0.05`; `sampleBody(chestCenter + [0,0,0.30]) > 0.15`; `sampleBody(headTop + [0,0.05,0]) > 0.03`; `sampleBody(elbowL) < 0`.
 4. `sdf.armpitClearance` — the point midway between the upper-arm axis and the torso surface at `armpit − 0.05` height has `d ≥ +0.025` (arms are clear of the torso so sleeves can drape).
-5. `sdf.gradient` — at 200 deterministic points with `0 < d < 0.1`, `|outGrad| = 1 ± 1e-6` and a 2 mm step along `outGrad` increases `d` by `≥ 1.5 mm`.
+5. `sdf.gradient` — at 200 deterministic points with `0 < d < 0.1`, `|outGrad| = 1 ± 1e-6` and a 2 mm step along `outGrad` increases `d` by `≥ 1.5 mm` at all but 4 of the 200 (2 %; amended 2026-09-18: points on the body's medial axes — between the legs, in the armpit — legitimately gain less, and the template's mesh SDF has more of them than the analytic field had).
 6. `measure.female_m` — `|measured.chest_cm − 88| ≤ 1.5`, `|waist − 70| ≤ 1.5`, `|hips − 96| ≤ 2.0`.
 7. `measure.male_m` — same tolerances for male_m.
 8. `measure.allPresets` — every preset: `|measured.chest − chest_cm| ≤ 2.5`, no NaN in `sdf.data`.
 9. `anchors.torso` — `radius ∈ [0.16, 0.24]` for female_m; `origin.y = neckBase`; arm anchors' `axis` has negative y and `|axis| = 1`.
 10. `mesh.valid` — `indices.length % 3 === 0`, every index `< positions.length/3`, no NaN, ≥ 10 000 vertices.
-11. `perf.full` — full build `buildMs < 400`; `perf.coarse` — coarse build `< 80` (details: ms).
+11. `perf.full` — full build `buildMs < 400`; `perf.coarse` — coarse build `< 80` (details: ms). *Amended 2026-09-18 for the template body: < 1400 ms full, < 350 ms coarse with a reused mesh (measured 2026-09-23: ~280-580 ms and ~110 ms).*
 12. `stability.range` — building with every parameter at its min and then at its max produces finite grids and `measured` values.
 13. *(2026-09-23)* `template.fit` — when the template is loaded: female_m, male_m and child_10 are built from it (`source === 'template'`), fit ≥ 14 measurements with rms < 1 cm and worst < 3 cm, height within 0.5 cm. Reports `skipped` on the analytic body.
 14. *(2026-09-23)* `template.tapeVsSdf` — female_m's tape chest / waist / hips against a ray cast of its baked SDF at the same rings: the SDF may read up to 4 / 2.5 / 3 cm longer (it follows the hollows a tape bridges) and at most 1.5 cm shorter (grid rounding).
+15. *(2026-09-24)* `macro.sexBlend` — sex 1 uses only female macro targets, 0 only male, 0.5 both equally (MakeHuman's own slider runs the other way). `sdfMesh.seamSigns` — a UV sphere with a vertex seam on x = 0, baked at 20 mm: every node farther than half a cell from the surface has the right sign, and the band holds the distance within 12 mm of polygon error. `template.fit` also asserts the body is grounded (feet at y = 0) and its lower-torso strip centred at z = 0 within 2 mm.
 
 Budgets on the template body (amended 2026-09-18): `perf.full` < 1400 ms full, < 350 ms coarse with a reused mesh.
 
@@ -2459,6 +2460,16 @@ Budgets on the template body (amended 2026-09-18): `perf.full` < 1400 ms full, <
 ---
 
 ## 7. Cloth simulation (`src/cloth/`) — agent A4
+
+> **Amendment (lead, 2026-09-24) — `convexifyRow` had a sign error and never bridged a hollow.** The ray–edge
+> parameter was computed as (d × p)/(d × e) instead of (p × d)/(d × e), so it landed in [0, 1] on the wrong hull
+> edges: concave stretches were left as they were, and rows were pushed OUT where nothing was concave (a 0.200 m
+> round row came back 0.222 m in places). Fixed and pinned by the cloth self-test `arrange.convexifyRow`. Eight
+> preset × closest-size T-shirt drapes, 600 frames each, before → after: p99 strain within ±0.1 point everywhere
+> (female_m 6.47 → 6.44 %, plus_f 9.73 → 9.74 %), seam gap ≤ 0.1 mm and penetration 2.5–4.1 mm unchanged, peak
+> strain lower on athletic_m (37.9 → 34.7 %) and male_m (22.7 → 21.6 %). The solver had been absorbing the bad
+> start; the arrangement now does what it was written to do. The two sewing-schedule rules below are now the
+> exported `sewGravityScale` / `contactRoundsAt`, pinned by `solver.sewSchedule`.
 
 > **Amendment (lead, 2026-09-18) — the shoulder seam on a real body: gravity during sewing, and contact rounds
 > gated to the sew window.** Two changes to `solver.js`, both measured on the eight preset × size drapes of the
@@ -2700,6 +2711,25 @@ export function makeSeamFixture({fabric, spacing_mm})
 ---
 
 ## 8. 3D viewer (`src/viewer3d/`), pop-out (`popout.html`, `src/popout/main.js`) — agent A5
+
+> **Amendment (lead, 2026-09-24) — scene presets: a backdrop and a floor the body stands on.**
+> `src/viewer3d/stage.js` builds the set: `createStage(viewer)` → `{object, set(spec), current(), floorY(), dispose()}`,
+> `STAGE_PRESETS` keyed by the ids of `core/schema.js SCENE_PRESETS` (workshop, studio, dark, pedestal, runway, wood,
+> terrace; the viewer self-test asserts the two lists match). A spec is `{preset, background}` with `background`
+> `#rrggbb` or null. Rules every preset keeps: the surface under the feet is at y = 0 (flat floors at 0; the
+> pedestal and runway put their TOP at 0 and drop the floor by 0.10 / 0.14 m); `workshop` is the original look
+> exactly (flat #2a2e35, grid, shadow catcher, no fog); every other preset hides the grid, adds a vertex-coloured
+> backdrop dome and a floor disc of radius 40 m that receives the body's shadow, and fog of the horizon colour
+> from 8 to 30 m so the floor fades into the dome (the body, 3.7–4.4 m away at the default framing, never fogs).
+> The dome is `toneMapped: false` (fog and background are applied after tone mapping, so a tone-mapped dome met the
+> fogged floor in a visible line), and floors reflect the environment at 0.35 through their OWN `envMap =
+> scene.environment`: with only the scene's environment, r163+ ignores `material.envMapIntensity` (review finding).
+> A custom background replaces the horizon colour (dome zenith 14 % lighter in sRGB) and the fog. On a solid floor
+> `controls.maxPolarAngle = 0.5π` stops orbiting under it, and `stage.clampCamera`, run by the facade every frame,
+> keeps the orbit target and the camera at least 5 cm above the floor so a pan cannot carry them below it.
+> The facade gains `setStage(spec) → applied spec` and `stage`; the pop-out bridge gains a `stage` message
+> (`{type:'stage', session, preset, background}`), sent on `hello` and on every change, so the pop-out stands the
+> body on the same floor. The scene is `doc.ui.scene` (section 3), applied by wiring on start, load and change.
 
 The viewer is a **passive mirror** of data owned by other modules: it reads `BodyModel.geometry` (section 6), `ClothState` (section 7) and `FabricResolved` (section 9.1) **by shape only**, never mutates them, never imports the store or the bus, and never steps the simulation itself. The wiring layer (`src/app/wiring.js`) owns the per-frame `tick` callback (step solver → `sync`), reacts to the events of section 3.2 and calls the API below. Imports allowed: `three`, `three/addons/`, `src/core/` (`types.js`, `fabrics.js`, `ids.js`). DOM access is limited to the container element handed in, `ResizeObserver`, `document.visibilityState`, and (bridge only) `window.open` / `BroadcastChannel`.
 
@@ -3781,6 +3811,14 @@ Acceptance hooks (section 13) built on these: sheet SVG parses, `width` ends in 
 ---
 
 ## 11. App shell, UI, and the 2D pattern editor
+
+> **Amendment (lead, 2026-09-24) — the Scene control.** `#scene-controls` sits at the bottom right of `#pane-3d` (the fit banner owns the top-left corner, which is the 3D pane's after Swap; over
+> `#view-3d` and the pop-out message): `#sel-scene` (the `SCENE_PRESETS` labels), `#input-scene-bg` (custom backdrop;
+> `input` writes live), `#btn-scene-bg-reset` (back to the preset's own backdrop; disabled when there is none) and a
+> `?` link to the guide's *The 3D scene*. `src/ui/sceneControls.js` `createSceneControls(store, bus, root)` →
+> `{refresh, setPresetBackground(hex), destroy}` writes `doc.ui.scene` with label `ui:scene`; like every ui-only
+> change it is saved with the project and is not an undo step. `REQUIRED_IDS` is 152. Debug API:
+> `__app.viewer.scene(preset?, background?)`, `__app.viewer.scenes()`.
 
 > **Amendment (lead, 2026-09-23) — the user guide.** A written guide is part of the app. `src/ui/guide.js`
 > (`createGuide(store, bus, root)` → `{open(section?), close(), toggle(section?), isOpen(), search(q), current(),
@@ -4996,6 +5034,23 @@ The suite leaves the page store untouched (it uses its own store instance) and r
 ---
 
 ## 12. Application layer — `src/app/` (agent A8)
+
+> **Amendment (lead, 2026-09-24) — autosave and recovery; licence; GitHub Pages.** `src/app/autosave.js`:
+> `createAutosave({storage?, key?, debounceMs? = 1500, serialize, now?, onError?})` → `{note(doc, {dirtying?}),
+> flush(), markClean(doc), markDirty(), read(), discard(), suspend(), resume(), isSuspended(), isDirty(), status(),
+> dispose()}`, storage `indexedDbStorage()` (default) → `localStorageAdapter()` → `memoryStorage()`, one record
+> `{v, savedAt, name, dirty, text}` under `clothing-cad.autosave.v1`. Wiring notes every document change (a change
+> to `ui` alone does not make the work dirty), marks it clean on New / Open / Load sample and on Save, and flushes on
+> `pagehide`, `beforeunload` and a hidden tab. After `app:ready` (never before: reading IndexedDB must not delay the
+> boot) `wiring.offerRecovery()` shows `#recovery-banner` when the record is dirty and differs from the document the
+> app opened with (`shouldOffer`). While the offer is open nothing is written, so the record survives until the user
+> chooses; Restore replaces the document and keeps it dirty, Discard deletes the record (and saves any edits made
+> meanwhile as unsaved). The autosaver is created suspended for `?acceptance=1` and `?autosave=0`, and the debug API
+> suspends it around `selftest.run` and `acceptance.run`, so a test can never overwrite a user's unsaved work.
+> `__app.autosave = {status, flush, read, offer(record), offering}`; acceptance check 26e `autosave`.
+> The code is GPL-3.0-or-later (`LICENSE`, README "Licence"); the body assets stay CC0 and three.js MIT. The app is
+> served from the repository by GitHub Pages (`.nojekyll` at the root; every path in the app and the tools is
+> relative, so it runs under `/Clothing-CAD/`).
 
 > **Amendment (lead, 2026-09-23) — six defects found while fact-checking the user guide against the code.**
 > (1) The body stage called an undefined `status()`; in a browser that is the legacy `window.status` STRING, so a

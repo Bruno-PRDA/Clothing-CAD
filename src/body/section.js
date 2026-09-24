@@ -79,8 +79,11 @@ export function horizontalSegments(ix, y) {
     const t = ix.bucketTris[s] * 3;
     const va = idx[t] * 3, vb = idx[t + 1] * 3, vc = idx[t + 2] * 3;
     let n = 0;
-    // for each edge, does it straddle the plane?
-    for (const [p, q] of [[va, vb], [vb, vc], [vc, va]]) {
+    // For each edge, does it straddle the plane? Unrolled: the array-of-pairs form allocated four arrays
+    // per triangle, on the path every girth sample of every measurement runs through.
+    for (let e = 0; e < 3; e++) {
+      const p = e === 0 ? va : e === 1 ? vb : vc;
+      const q = e === 0 ? vb : e === 1 ? vc : va;
       const ya = pos[p + 1], yb = pos[q + 1];
       if ((ya <= y && yb > y) || (yb <= y && ya > y)) {
         const f = (y - ya) / (yb - ya);
@@ -114,7 +117,7 @@ export function components(seg, tol = 1e-4) {
   /** @type {Map<number, number[]>} */
   const at = new Map();
   for (let i = 0; i < n; i++) {
-    for (const j of [0, 1]) {
+    for (let j = 0; j < 2; j++) {
       const k = key(seg[i * 4 + j * 2], seg[i * 4 + j * 2 + 1]);
       let list = at.get(k);
       if (!list) at.set(k, (list = []));
@@ -131,7 +134,7 @@ export function components(seg, tol = 1e-4) {
     while (stack.length) {
       const s = stack.pop();
       pts.push(seg[s * 4], seg[s * 4 + 1], seg[s * 4 + 2], seg[s * 4 + 3]);
-      for (const j of [0, 1]) {
+      for (let j = 0; j < 2; j++) {
         const list = at.get(key(seg[s * 4 + j * 2], seg[s * 4 + j * 2 + 1]));
         if (!list) continue;
         for (const m of list) if (!seen[m]) { seen[m] = 1; stack.push(m); }

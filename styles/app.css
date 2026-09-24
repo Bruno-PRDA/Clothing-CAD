@@ -304,3 +304,31 @@ td { font-family: var(--mono); }
   #guide-toc { max-height: 30vh; border-right: 0; border-bottom: 1px solid var(--border); }
   #guide-body { padding: 8px 16px 40vh; }
 }
+
+/* ---------- Scene control over the 3D pane (src/ui/sceneControls.js) ---------- */
+/* Bottom-right: the fit banner owns the top-left of the work area, which is the 3D pane's corner after Swap. */
+#scene-controls {
+  position: absolute; z-index: 5; bottom: 8px; right: 8px;
+  display: flex; align-items: center; gap: 4px; padding: 4px 6px;
+  border: 1px solid var(--border); border-radius: 6px;
+  background: rgba(28, 30, 34, 0.82); backdrop-filter: blur(4px);
+  font-size: 12px;
+}
+#scene-controls label { color: var(--fg-dim); padding: 0 2px; }
+#scene-controls select { height: 24px; }
+#scene-controls input[type="color"] { width: 28px; height: 22px; }
+#btn-scene-bg-reset { height: 24px; padding: 0 6px; font-size: 14px; }
+#scene-controls .guide-link { margin-left: 2px; }
+
+/* ---------- Recovery banner (src/ui/recoveryBanner.js) ---------- */
+#recovery-banner {
+  position: absolute; z-index: 8; top: 8px; left: 50%; transform: translateX(-50%);
+  max-width: min(64ch, calc(100% - 32px));
+  display: flex; align-items: center; gap: 8px; padding: 8px 10px;
+  border: 1px solid var(--accent); border-radius: 6px;
+  background: rgba(16, 36, 58, 0.96); color: var(--fg);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5); font-size: 12px; line-height: 1.35;
+}
+#recovery-text { flex: 1 1 auto; min-width: 0; }
+#btn-recover-restore { background: var(--accent); border-color: var(--accent); color: #0b1a2b; font-weight: 600; }
+

@@ -11,6 +11,7 @@ import { resolveFabric, getPreset } from '../src/core/fabrics.js';
 import { makeSphereDrape } from '../src/cloth/fixtures.js';
 import { step as clothStep } from '../src/cloth/index.js';
 import { ALL_IDS } from '../src/ui/ids.js';
+import { createAutosave, memoryStorage, indexedDbStorage, shouldOffer } from '../src/app/autosave.js';
 
 /** @typedef {{id:string, name:string, pass:boolean, ms:number, details:string}} AcceptanceResult */
 /** @typedef {{pass:boolean, passed:number, failed:number, total:number, ms:number, results:AcceptanceResult[], errors:string[]}} AcceptanceSummary */
@@ -1082,6 +1083,21 @@ async function checkSizeDrapes() {
   expect(s < m && m < l && l < xl,
     `simulated pattern width must grow with size, got S ${fmt(s)} M ${fmt(m)} L ${fmt(l)} XL ${fmt(xl)} mm`);
   expect(xl - s > 40, `XL is only ${fmt(xl - s)} mm wider than S in the simulation (expected > 40)`);
+  // Editing a cell of the ACTIVE size must re-grade the simulated garment too, not just the 2D outline and
+  // the exports (it once kept the old mesh because the remesh was keyed on the size NAME only).
+  const xlRow = app().sizes.chart().rows.find((r) => r.name === 'XL');
+  expect(!!xlRow && Number.isFinite(xlRow.chest_cm), 'the sample chart has no XL chest');
+  app().sizes.setCell('XL', 'chest_cm', xlRow.chest_cm + 8);
+  await app().idle();
+  let minX = Infinity, maxX = -Infinity;
+  for (const pc of stateOf().pieces) {
+    const P = pc.mesh.positions2d;
+    for (let k = 0; k < P.length; k += 2) { if (P[k] < minX) minX = P[k]; if (P[k] > maxX) maxX = P[k]; }
+  }
+  const xlEdited = maxX - minX;
+  expect(xlEdited > xl + 5, `editing XL's chest by +8 cm left the simulated width at ${fmt(xlEdited)} mm (was ${fmt(xl)})`);
+  app().sizes.setCell('XL', 'chest_cm', xlRow.chest_cm);
+  await app().idle();
   app().sizes.setActive('M');
   await app().idle();
   drapeStage = 0;
@@ -1148,6 +1164,74 @@ async function checkBodyTemplate() {
   return `template body, ${n} measurements within ${rms.toFixed(2)} cm rms, pose sliders disabled`;
 }
 
+/**
+ * Autosave keeps the project in the browser and offers unsaved work back after a crash. The app's own autosaver
+ * is suspended for the whole suite (the suite must never overwrite a user's unsaved work), so the logic is
+ * checked on an in-memory instance, IndexedDB on a separate test database, and the offer through the real UI.
+ * @returns {Promise<string>}
+ */
+async function checkAutosave() {
+  const pause = (ms) => new Promise((r) => setTimeout(r, ms));
+  // 1. the rules, in memory
+  const doc0 = app().doc();
+  const as = createAutosave({ storage: memoryStorage(), debounceMs: 20, serialize: (d) => JSON.stringify(d) });
+  await as.markClean(doc0);
+  let r = await as.read();
+  expect(!!r && r.dirty === false && r.text === JSON.stringify(doc0), 'markClean must store the document as saved');
+  as.note(doc0, { dirtying: false });
+  await as.flush();
+  r = await as.read();
+  expect(r.dirty === false, 'a view-only change must not count as unsaved work');
+  as.note({ ...doc0, name: 'Edited' });
+  await pause(80);
+  r = await as.read();
+  expect(r.dirty === true && r.name === 'Edited', 'an edit must be written after the debounce, as unsaved: ' + JSON.stringify({ dirty: r.dirty, name: r.name }));
+  expect(shouldOffer(r, JSON.stringify(doc0)) === true, 'unsaved work that differs from the open document must be offered');
+  expect(shouldOffer(r, r.text) === false, 'work identical to the open document must not be offered');
+  expect(shouldOffer({ ...r, dirty: false }, JSON.stringify(doc0)) === false, 'saved work must not be offered');
+  as.suspend();
+  as.note({ ...doc0, name: 'Hidden' });
+  await as.flush();
+  await as.markClean(doc0);
+  as.resume();
+  r = await as.read();
+  expect(r.name === 'Edited' && r.dirty === true, 'a suspended autosaver must not write anything');
+  await as.discard();
+  expect((await as.read()) === null, 'discard must remove the record');
+  // 2. real IndexedDB, on its own database so the user's record is untouched
+  const idb = indexedDbStorage('clothing-cad-acceptance');
+  let idbNote = 'IndexedDB unavailable';
+  if (idb) {
+    await idb.set('k', { a: 1, text: 'x' });
+    const got = await idb.get('k');
+    expect(got && got.a === 1, 'IndexedDB round trip failed: ' + JSON.stringify(got));
+    await idb.del('k');
+    expect((await idb.get('k')) === null, 'IndexedDB delete failed');
+    idbNote = 'IndexedDB round trip ok';
+  }
+  // 3. the app's autosaver is off for the suite
+  const st = app().autosave.status();
+  expect(!!st && st.suspended === true, 'the app autosave must be suspended while the acceptance suite runs: ' + JSON.stringify(st));
+  // 4. the offer, through the real banner
+  await reloadSample('tshirt');
+  const edited = app().doc();
+  edited.name = 'Recovered project';
+  edited.body.params.chest_cm = 101;
+  app().autosave.offer({ name: 'Recovered project', savedAt: new Date().toISOString(), text: serializeDoc(edited) });
+  const banner = document.getElementById('recovery-banner');
+  const text = document.getElementById('recovery-text');
+  expect(!!banner && !banner.hidden && /Recovered project/.test((text && text.textContent) || ''), 'the recovery banner must show the project name');
+  /** @type {HTMLButtonElement} */ (document.getElementById('btn-recover-restore')).click();
+  await app().idle();
+  expect(banner.hidden && app().doc().name === 'Recovered project' && app().doc().body.params.chest_cm === 101,
+    'Restore must bring the unsaved document back: ' + app().doc().name);
+  app().autosave.offer({ name: 'Other', savedAt: new Date().toISOString(), text: serializeDoc(app().doc()) });
+  /** @type {HTMLButtonElement} */ (document.getElementById('btn-recover-discard')).click();
+  expect(banner.hidden && !app().autosave.offering() && app().doc().name === 'Recovered project', 'Discard must close the offer and leave the document alone');
+  drapeStage = 0;
+  return 'debounced write, clean/unsaved rules, suspend, discard; ' + idbNote + '; Restore and Discard through the banner';
+}
+
 /** How long the runner waits for a timed-out check's abandoned work to settle before starting the next one. */
 const SETTLE_AFTER_TIMEOUT_MS = 30000;
 
@@ -1184,6 +1268,7 @@ export const CHECKS = Object.freeze([
   { id: '26b', name: 'size_drapes', timeoutMs: 30000, fn: checkSizeDrapes },
   { id: '26c', name: 'body_estimate', timeoutMs: 20000, fn: checkBodyEstimate },
   { id: '26d', name: 'body_template', timeoutMs: 20000, fn: checkBodyTemplate },
+  { id: '26e', name: 'autosave', timeoutMs: 20000, fn: checkAutosave },
   { id: '27', name: 'runtime', timeoutMs: 5000, fn: checkRuntime },
 ]);
 

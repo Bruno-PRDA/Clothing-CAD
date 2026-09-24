@@ -83,6 +83,14 @@ function main() {
         }
         break;
       }
+      case 'stage': {
+        try {
+          if (typeof v.setStage === 'function') v.setStage({ preset: m.preset, background: m.background || null });
+        } catch (err) {
+          setStatus('Bad scene data: ' + String(err && err.message ? err.message : err));
+        }
+        break;
+      }
       case 'cloth:init': {
         try {
           if (m.topology) v.cloth.build(m.topology);

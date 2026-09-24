@@ -5,7 +5,8 @@
 import { PARAM_KEYS } from '../body/index.js';
 
 /**
- * Every STATIC id of SPEC 11.1.1, in document order: the 135 of 11.1.1, the fit banner's 4 and the guide's 8.
+ * Every STATIC id of SPEC 11.1.1: the 135 of 11.1.1, the fit banner's 4, the guide's 8, the scene control's 4 and
+ * the recovery banner's 4.
  * The 48 generated body-parameter ids live in
  * `BODY_PARAM_IDS`; `ALL_IDS` is the concatenation and is what `checkIds()` verifies.
  * @type {ReadonlyArray<string>}
@@ -32,6 +33,8 @@ export const REQUIRED_IDS = Object.freeze([
   'status-cursor', 'status-seam-ease', 'status-quality', 'status-sim',
   'fit-warning', 'fit-warning-text', 'btn-fit-use', 'btn-fit-dismiss',
   'tb-help', 'btn-guide', 'guide', 'guide-title', 'inp-guide-search', 'btn-guide-close', 'guide-toc', 'guide-body',
+  'scene-controls', 'sel-scene', 'input-scene-bg', 'btn-scene-bg-reset',
+  'recovery-banner', 'recovery-text', 'btn-recover-restore', 'btn-recover-discard',
 ]);
 
 /** `body-<key>` + `body-<key>-num` for the 24 keys of SPEC 6.1 (static in index.html; the panel BINDS them). */

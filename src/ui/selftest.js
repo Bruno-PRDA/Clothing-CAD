@@ -5,7 +5,7 @@
 
 import { EVENT, bus as globalBus } from '../core/events.js';
 import { createStore } from '../core/store.js';
-import { normalizeDoc, serializeDoc, parseDoc } from '../core/schema.js';
+import { normalizeDoc, serializeDoc, parseDoc, SCENE_PRESETS } from '../core/schema.js';
 import { createUi } from './index.js';
 import { ALL_IDS, byId } from './ids.js';
 import { GUIDE_SECTIONS } from './guideContent.js';
@@ -381,6 +381,69 @@ export async function runSelfTest() {
     if (press('v', { ctrlKey: true }).length !== 0) bad.push('Ctrl+V emitted');
     assert(bad.length === 0, bad.join('; '));
     return '13 bindings plus the two modifier guards';
+  });
+
+  // 18 ----------------------------------------------------------------- the fit banner
+  await run('fit-banner', () => {
+    // Needs a garment with torso panels; the app's own document has one unless a test replaced it.
+    const d0 = store.get();
+    const hasTorso = d0.pieces.some((/** @type {any} */ p) => p.simulate !== false && p.placement && p.placement.anchor === 'torso');
+    if (!hasTorso) return 'skipped: the document has no torso panels';
+    const fw = ui.fitWarning;
+    // A dismissal lives as long as the page; a previous run of this test (or the user) may have left one.
+    fw.clearDismissed();
+    const el = byId(document, 'fit-warning');
+    const btnUse = /** @type {HTMLButtonElement} */ (byId(document, 'btn-fit-use'));
+    const smallest = d0.sizes.rows[0].name;
+    // a body 1 cm bigger than the smallest size's garment: tight there, and some larger size must clear it
+    store.update((d) => { d.ui.activeSize = smallest; }, 'ui:activeSize');
+    fw.refresh();
+    const g = fw.report() ? fw.report().garmentGirth_cm : 0;
+    assert(g > 0, 'no fit report for the active size');
+    store.update((d) => { d.body.params.chest_cm = g + 1; d.body.params.waist_cm = 60; d.body.params.hips_cm = 70; }, 'body:params');
+    fw.refresh();
+    const r = fw.report();
+    assert(r && r.level === 'tight' && !el.hidden && el.dataset.level === 'tight', 'banner must show tight: ' + JSON.stringify(r && { level: r.level, hidden: el.hidden }));
+    assert(/tear/.test(byId(document, 'fit-warning-text').textContent || ''), 'the message must say the seams will tear');
+    assert(r.better && !btnUse.hidden && btnUse.dataset.size === r.better.name, 'a size that fits must be offered: ' + JSON.stringify(r.better));
+    btnUse.click();
+    assert(store.get().ui.activeSize === r.better.name, 'Use must switch the active size to ' + r.better.name + ', got ' + store.get().ui.activeSize);
+    fw.refresh();
+    assert(el.hidden || el.dataset.level !== 'tight', 'after switching to a size that fits, the tight banner must go');
+    // dismiss hides this message but a different one shows again
+    store.update((d) => { d.ui.activeSize = smallest; }, 'ui:activeSize');
+    fw.refresh();
+    assert(!el.hidden, 'banner should be back at the small size');
+    /** @type {HTMLButtonElement} */ (byId(document, 'btn-fit-dismiss')).click();
+    assert(el.hidden, 'dismiss must hide the banner');
+    fw.refresh();
+    assert(el.hidden, 'the same message must stay dismissed');
+    fw.clearDismissed();
+    return 'tight at ' + smallest + ' (' + g + ' cm garment), offered ' + r.better.name + ', dismiss sticks';
+  });
+
+  // 19 ----------------------------------------------------------------- the scene control over the 3D pane
+  await run('scene-controls', () => {
+    const sel = /** @type {HTMLSelectElement} */ (byId(document, 'sel-scene'));
+    const color = /** @type {HTMLInputElement} */ (byId(document, 'input-scene-bg'));
+    const reset = /** @type {HTMLButtonElement} */ (byId(document, 'btn-scene-bg-reset'));
+    assert(sel.options.length === SCENE_PRESETS.length, 'the list has ' + sel.options.length + ' scenes, expected ' + SCENE_PRESETS.length);
+    const target = SCENE_PRESETS[SCENE_PRESETS.length - 1].id;
+    sel.value = target;
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
+    assert(store.get().ui.scene.preset === target, 'choosing a scene must write ui.scene.preset, got ' + JSON.stringify(store.get().ui.scene));
+    color.value = '#112233';
+    color.dispatchEvent(new Event('input', { bubbles: true }));
+    assert(store.get().ui.scene.background === '#112233' && store.get().ui.scene.preset === target, 'the colour must write ui.scene.background and keep the preset');
+    assert(!reset.disabled, 'reset must be enabled with a custom colour');
+    reset.click();
+    assert(store.get().ui.scene.background === null && reset.disabled, 'reset must clear the colour and disable itself');
+    // a scene change is a view setting, like the layout: never an undo step
+    const h = store.history();
+    assert(!h.undo.some((l) => /scene/.test(l)), 'scene changes must not be undo steps: ' + JSON.stringify(h.undo.slice(-3)));
+    store.update((d) => { d.ui.scene = { preset: 'workshop', background: null }; }, 'ui:scene');
+    assert(sel.value === 'workshop', 'the list must follow the document');
+    return SCENE_PRESETS.length + ' scenes; preset, colour and reset write ui.scene; not undoable';
   });
 
   // 17 ----------------------------------------------------------------- the user guide

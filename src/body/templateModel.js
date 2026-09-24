@@ -314,9 +314,20 @@ export function buildTemplateBody(tpl, params, opts = {}) {
   };
   lap('geometry');
 
+  // The same guards as the analytic path (index.js buildAnalyticBody): the contract is that buildBody throws
+  // BodyError on any non-finite result rather than handing NaN to the arrangement and the solver.
+  const f3 = (v) => Array.isArray(v) && v.length === 3 && Number.isFinite(v[0]) && Number.isFinite(v[1]) && Number.isFinite(v[2]);
   for (const name of Object.keys(anchors)) {
     const a = anchors[name];
-    if (!Number.isFinite(a.radius) || !Number.isFinite(a.length)) throw bodyError('non-finite anchor', name);
+    if (!Number.isFinite(a.radius) || !Number.isFinite(a.length) || !f3(a.origin) || !f3(a.axis) || !f3(a.front)) {
+      throw bodyError('non-finite anchor', name);
+    }
+  }
+  for (const key of Object.keys(sk.landmarks)) {
+    if (!f3(sk.landmarks[key])) throw bodyError('non-finite landmark', key);
+  }
+  if (!Number.isFinite(measured.chest_cm) || !Number.isFinite(measured.waist_cm) || !Number.isFinite(measured.hips_cm)) {
+    throw bodyError('non-finite measurement');
   }
 
   return {

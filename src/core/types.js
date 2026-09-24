@@ -203,6 +203,7 @@ export {};
  * @property {boolean} swapped             true = 3D pane on the left
  * @property {string} activeSize
  * @property {'pieces'|'body'|'fabric'|'sizes'} dockTab
+ * @property {{preset: string, background: string|null}} scene   3D backdrop and floor (schema SCENE_PRESETS); background #rrggbb or null
  */
 
 /**
@@ -269,6 +270,10 @@ export {};
  * @property {{chest_cm:number, waist_cm:number, hips_cm:number}} measured   template body: convex-hull girths of the fitted mesh; analytic body: ray-cast from the baked SDF
  * @property {number} buildMs
  * @property {'template'} [source]   set when the scanned template built the body; absent on the analytic fallback
+ * @property {any} [fit]              template body: the fit result (sliders, residual per measurement, clamped controls, variant)
+ * @property {any} [measuredFull]     template body: every TemplateMeasurements value, levels grounded
+ * @property {any} [skeleton]         template body: joints and derived lengths the anchors were built from
+ * @property {Record<string, number>} [timing]  template body: ms per build stage (fit, measure, anchors, sdf, geometry)
  */
 
 /**
