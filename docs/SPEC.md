@@ -5717,6 +5717,17 @@ Store contract (section 3.3, authoritative): `update(mutator, label)` emits `doc
 
 ## 13. Acceptance suite (`tests/acceptance.js`)
 
+> **Amendment (lead, 2026-09-24) — continuous integration.** `.github/workflows/tests.yml` runs on every push and
+> pull request: `tests/ci/run_browser_tests.py` starts `serve.py`, boots the app in headless Chromium (WebGL through
+> SwiftShader), runs `__app.selftest.run()` and then the acceptance suite without check 03 (which only re-runs the
+> self-tests). Two classes do not fail the build, both listed in the runner: EXPECTED_FAILURES (check 10, matched on
+> its message; if it starts passing the run says so) and timing assertions, matched on their exact message (checks 01,
+> 07, 11, 15, 27; self-tests `body/perf.full`, `cloth/perf.4k`, `core/ids/uid-hash`, `core/sdf/perf`,
+> `geometry/remesh.performance`), which only warn with `--timing warn` on the runners. Any other failure in the same
+> test still fails. `runAcceptance(filter, {timeoutScale})` multiplies every check's timeout (3 on CI). Uncaught page
+> errors and a failed boot fail the run. Results go to the job summary, annotations, and a `test-report` artifact
+> (results.json and a screenshot). Locally the same script is strict about timing by default.
+
 > **Amendment (lead, 2026-09-23) — check 26d `body_template`.** Every other body check passes on the analytic fallback
 > too (it measures its own rings just as honestly), so a broken `assets/body/` folder shipped green. 26d asserts the
 > app's body has `source === 'template'`, that its fit misses the ≥ 14 steered measurements by < 1 cm rms, and that
