@@ -1,0 +1,46 @@
+# Run every self-test and the acceptance suite in headless Chromium on each push and pull request.
+# The tests run inside the app (tools are Python only for driving the browser): see tests/ci/run_browser_tests.py.
+name: Tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  browser-tests:
+    name: Self-tests and acceptance (headless Chromium)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Playwright and Chromium
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "playwright>=1.45,<2"
+          python -m playwright install --with-deps chromium
+
+      - name: Run the browser test suites
+        # Timing assertions are tuned on a desktop GPU; this runner renders WebGL in software, so they only warn here,
+        # and every acceptance check gets three times its timeout. Everything else must pass.
+        run: python tests/ci/run_browser_tests.py --serve --timing warn --timeout-scale 3
+
+      - name: Upload the report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report
+          path: tests/ci/report/
+          if-no-files-found: ignore

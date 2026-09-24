@@ -92,6 +92,21 @@ __app.acceptance.run()                                // run the acceptance suit
 URL options: `?sample=skirt`, `?size=L`, `?nosim=1`, `?autosave=0` (no autosave and no recovery offer),
 `?bodyassets=<url>` (load the body model from elsewhere), `?acceptance=1` (run the suite after start-up).
 
+## Tests
+
+Every push and pull request runs all module self-tests and the acceptance suite in headless Chromium on GitHub
+Actions ([`.github/workflows/tests.yml`](.github/workflows/tests.yml)); the results are in the **Actions** tab. To
+run the same thing locally:
+
+```bash
+python -m pip install playwright
+python -m playwright install chromium
+python tests/ci/run_browser_tests.py --serve
+```
+
+Or open the app and run `__app.selftest.run()` / `__app.acceptance.run()` in the console. Check 10 is red on
+purpose (see `docs/SPEC.md` section 13); speed assertions only warn on the CI runners, which have no GPU.
+
 ## Licence
 
 Clothing CAD is free software: you can redistribute it and/or modify it under the terms of the

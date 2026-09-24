@@ -1290,11 +1290,12 @@ function selectChecks(filter) {
 /**
  * Runs the whole suite (or the checks whose id or name matches `filter`) and NEVER throws.
  * @param {string|RegExp} [filter]
- * @param {{log?:boolean}} [opts]
+ * @param {{log?:boolean, timeoutScale?:number}} [opts]  timeoutScale multiplies every check's timeout (CI runners are slower)
  * @returns {Promise<AcceptanceSummary>}
  */
 export async function runAcceptance(filter, opts) {
   const doLog = !(opts && opts.log === false);
+  const scale = opts && Number.isFinite(opts.timeoutScale) && opts.timeoutScale > 0 ? Number(opts.timeoutScale) : 1;
   const t0 = now();
   /** @type {AcceptanceResult[]} */
   const results = [];
@@ -1327,7 +1328,7 @@ export async function runAcceptance(filter, opts) {
     const c0 = now();
     /** @type {AcceptanceResult} */
     let row;
-    const guard = timeout(check.timeoutMs);
+    const guard = timeout(check.timeoutMs * scale);
     /** @type {Promise<string>|null} */
     let running = null;
     try {
@@ -1354,7 +1355,7 @@ export async function runAcceptance(filter, opts) {
       // synchronous sim steps then block the NEXT check, which times out in turn. (Observed: check 13 hit its budget
       // and check 14 — 128 ms when run on its own — was recorded at 57.8 s.) Let the abandoned work settle first so
       // every check starts from a quiet engine.
-      const settle = timeout(SETTLE_AFTER_TIMEOUT_MS);
+      const settle = timeout(SETTLE_AFTER_TIMEOUT_MS * scale);
       try { await Promise.race([running.catch(() => undefined), settle.catch(() => undefined)]); } finally { settle.cancel(); }
     }
     results.push(row);
