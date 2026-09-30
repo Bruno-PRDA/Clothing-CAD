@@ -3482,6 +3482,18 @@ Physics columns are the effective simulation values of 7.10 (`bend_Nm` effective
 > back as exactly one dart within 0.1 mm, with the same number of outline edges, no extra notch and no stray internal
 > line; a layer-8 three-point line with no drill hole stays an internal line.
 
+> **Amendment (lead, 2026-09-30) — Darts: a straight edge ends at a turn point.** On the sew line (and in the
+> smoothness test of the cut line's corners), a stitch vertex is a corner — a turn POINT on layer 2 — when the tangent
+> turns there by more than 3°, as before, **or when either edge meeting there is a line**. A straight edge between two
+> curve points is a curve to a reader that splines through them, and `fitcurve.js` refitted it together with the curve
+> it runs into: the dress skirt's side, a 350 mm line meeting the hip curve 1.6° off tangent, came back as five cubics
+> whose first handle lay 110 mm below the hem (outline self-intersecting, the waist dart crossing it; found by the dress
+> round trip of acceptance check 26f, §13 amendment "Darts: acceptance"). With a turn point there it comes back as the
+> same line and cubic. The T-shirt and skirt round trips are unchanged (their straight edges already ended at real
+> corners). Self-test `dxf.lineIntoCurve` (the 16th): that side as a piece of its own comes back as `line, line, cubic,
+> line, line` with its area within 0.1 %. Still open: `fitCubics` itself, given such a run by another system's file
+> (a long chord followed by dense curve samples), can seed its split with a handle pointing backwards.
+
 > **Amendment (lead, 2026-09-17) — shoulder width is a graded measurement, and the fit check (10.4).**
 > Two related defects, both of which showed up as a garment tearing in the 3D view rather than as anything the UI
 > said.

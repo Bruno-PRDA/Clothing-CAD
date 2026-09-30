@@ -98,9 +98,17 @@ function edgeTangents(piece, e) {
   return { leave: u(out), arrive: u(inn) };
 }
 
-/** Is vertex v a corner (tangent turns by more than 3 degrees)? */
+/**
+ * Is vertex v a corner: does the tangent turn by more than 3 degrees, or does a straight edge end there? A straight
+ * edge between curve points is a curve to a reader that splines them, and to fitcurve.js, which refits it together with
+ * the curve it runs into (the dress skirt's side, a line meeting the hip curve 1.6 degrees off, came back as five
+ * cubics crossing the hem). A turn point where a straight edge ends keeps it straight everywhere.
+ */
 function isCorner(piece, v) {
   const n = piece.vertices.length;
+  const prev = piece.edges[(v - 1 + n) % n];
+  const next = piece.edges[v];
+  if (!prev || prev.type !== 'cubic' || !next || next.type !== 'cubic') return true;
   const a = edgeTangents(piece, (v - 1 + n) % n).arrive;
   const b = edgeTangents(piece, v).leave;
   return a[0] * b[0] + a[1] * b[1] < Math.cos(3 * Math.PI / 180);

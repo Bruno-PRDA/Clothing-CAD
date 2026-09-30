@@ -429,5 +429,24 @@ export async function runSelfTest() {
     return 'no-allowance plain and fold pieces and a curved edge keep their dart (worst ' + Math.max(...worst).toFixed(3) + ' mm); without a drill hole the legs stay a line';
   });
 
+  check('dxf.lineIntoCurve', () => {
+    // The dress skirt's side: a straight edge running into a curve 1.6 degrees off tangent, same allowance on both.
+    // Written with a curve point at the join, it was refitted as one curve and came back crossing the hem.
+    const doc = normalizeDoc({ version: 2, name: 'Line into curve', pieces: [
+      { id: 'side', name: 'Side', vertices: [[0, 0], [272, 0], [262.5, 350], [217.5, 550], [0, 550]], seamAllowance_mm: 10,
+        edges: [{ type: 'line' }, { type: 'line' }, { type: 'cubic', c1: [262.5, 440], c2: [237.5, 530] }, { type: 'line' }, { type: 'line' }] },
+    ] });
+    const src = doc.pieces[0];
+    const got = importAama(exportAama(doc, { sizes: ['M'] })).pieces[0];
+    assert(!!got, 'imported');
+    const types = (p) => p.edges.map((e) => e.type[0]).join('');
+    assert(got.vertices.length === src.vertices.length && types(got) === types(src),
+      'the outline keeps its edges: ' + types(src) + ', got ' + types(got));
+    const a = measure(src), b = measure(got);
+    const dA = Math.abs(a.area - b.area) / a.area;
+    assert(dA < 1e-3, 'area within 0.1 %, got ' + (100 * dA).toFixed(3) + ' %');
+    return 'line + cubic back as ' + types(got) + ', area ' + (100 * dA).toFixed(4) + ' % off';
+  });
+
   return results;
 }
