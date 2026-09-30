@@ -850,7 +850,7 @@ Rules:
 
 #### 3.3.8 Self-checks (acceptance group `core.store`, section 13)
 
-1. `createStore(normalizeDoc({}), bus)` → `get().version === 1`, `canUndo() === false`.
+1. `createStore(normalizeDoc({}), bus)` → `get().version === DOC_VERSION`, `canUndo() === false`.
 2. `update(d => { d.name = 'x' }, 'rename')` emits exactly one `doc:changed` with `name: true` and no other hint keys; `canUndo() === true`; `undo()` restores `name`, emits with `origin:'undo'`; `redo()` re-applies.
 3. `update(d => { d.ui.split = 0.3 }, 'split')` emits with only `ui: true` and creates **no** undo entry.
 4. A mutator that sets `d.pieces[0].vertices = []` → throws `ValidationError`, `get()` unchanged, no emit.
@@ -901,7 +901,7 @@ Helpers used throughout (all local): `num(v, def)` → `v` if `typeof v === 'num
 
 | Path | Default | Notes |
 |---|---|---|
-| `version` | `1` | `migrate` runs first when `< 1` (3.4.4) |
+| `version` | `2` (`DOC_VERSION`) | `migrate` runs first when `< 2` (3.4.4) |
 | `name` | `'Untitled'` | |
 | `body.preset` | `'female_m'` | any non-empty string kept (presets validated by the body module, not here; unknown → treated as `'custom'` by section 6.1) |
 | `body.params.<key>` | `DEFAULT_BODY_PARAMS[key]` for each of the 20 keys | extra keys dropped; ranges are NOT clamped here (validateShape warns; body module clamps at build, section 6.1) |
@@ -921,6 +921,7 @@ Helpers used throughout (all local): `num(v, def)` → `v` if `typeof v === 'num
 | `pieces[i].notches` | `[]` | each `{edge:int(…,0), t:num(…,0.5), kind: oneOf(['single','double'],'single')}` |
 | `pieces[i].grainline` | vertical arrow through the bbox centre: with bbox `[minx,miny,maxx,maxy]` of the vertices, `cx=(minx+maxx)/2`, `h=maxy-miny`; `a=[cx, cy-0.25h]`, `b=[cx, cy+0.25h]`; if `h < 1` (degenerate/empty): `a=[0,0]`, `b=[0,100]` | |
 | `pieces[i].internalLines` | `[]` | each `{kind: oneOf(['fold','dart','mark'],'mark'), points: vec2[] (invalid entries dropped)}` |
+| `pieces[i].darts` | `[]` | each `{id: str(…, '') or uid('dart') when empty, edge: int(…, 0), t: num(…, 0.5), width_mm: num(…, 20), apex: vec2(…, [0, 0])}`; values are not clamped (validateShape reports them, 3.4.2) *(Amended 2026-09-30.)* |
 | `pieces[i].seamAllowance_mm` | `10` | |
 | `pieces[i].fabricId` | first fabric id | when missing or not in `fabrics` |
 | `pieces[i].layer` | `0` | `int`, clamped `0..4` |
@@ -971,7 +972,7 @@ Structural and referential checks only. Geometric validity of outlines (self-int
 
 | code | level | Check |
 |---|---|---|
-| `DocVersion` | error | `doc.version !== 1` |
+| `DocVersion` | error | `doc.version !== DOC_VERSION` (2) |
 | `NoFabrics` | error | `doc.fabrics.length === 0` |
 | `DuplicateId` | error | duplicate id among pieces, among seams, or among fabrics (`message` names the collection); ids must be non-empty strings |
 | `FabricPreset` | error | `fabrics[i].preset` is not a `FABRIC_PRESETS` id |
@@ -1016,16 +1017,17 @@ Issue objects carry `pieceId`, `seamId` and `edge` whenever they apply. Issues a
 
 #### 3.4.4 `migrate(doc)`
 
-* `version` missing, non-numeric or `< 1` → treated as **v0**, the pre-freeze layout of the design documents. Applied in order, on a deep copy:
+* `version` missing, non-numeric or `< 1` → treated as **v0**, the pre-freeze layout of the design documents. Applied in order, on a deep copy, followed by the v1 → v2 step below:
   1. Top-level: `schemaVersion` → `version`; `sizeChart` → `sizes`; `sizes.sizes` (array) → `sizes.rows`; `sizes.table` (object) → `rows` in key order with `name` = key; `sizes.base` → `baseSize`; `sizes.measures` → `measurements`.
   2. Key renames anywhere in pieces/sim/placement: `seamAllowanceMm`→`seamAllowance_mm`, `meshSpacingMm`→`meshSpacing_mm`, `offsetMm`→`offset_mm`, `quantity`→`cutQty`, `sewTimeS`/`sewDurationS`→`sewTime_s`, `collisionOffsetMm`→`collisionOffset_mm`, `gravity`→`gravity_ms2` (absolute value), `grade.x`→`grade.widthRef`, `grade.y`→`grade.lengthRef`, `grade.xAnchor`→`anchorX`, `grade.yAnchor`→`anchorY`, rule `dx`/`dy`→`dx_mm`/`dy_mm`, `grading`→`grade`, `internalLines[].kind` missing → `'mark'`.
   3. Body params: unsuffixed keys get `_cm` (`chest`→`chest_cm`, `hips`/`hip`→`hips_cm`, `neckCirc`→`neck_cm`, `upperArmCirc`→`upperArm_cm`, `wristCirc`→`wrist_cm`, `thighCirc`→`thigh_cm`, `calfCirc`→`calf_cm`, `ankleCirc`→`ankle_cm`, `backLength`→`torsoLength_cm`, `bust`→`bustFullness`, `armAbductionDeg`→`armAbduction_deg`, `legSpreadDeg`→`legSpread_deg`); any value `< 3` on a `_cm` key is assumed to be metres and multiplied by 100; `masculinity`, `chestDepthRatio`, `headCirc`, `kneeCirc` are dropped. *(Amended 2026-09-23.)* `sex` is no longer dropped: v0 stored it as `'m' | 'f' | 'n'`, which converts to 0 / 1 / 0.5 (any other value is deleted). A document of any version whose body has no numeric `sex` gets one from `normalizeDoc`: the preset name decides (`female*`/`plus*` 1, `male*`/`athletic*` 0, `child*` 0.5), otherwise `bustFullness > 0.05` means 1, else 0. Filling it from the female default instead loaded every male body saved before 2026-09-18 as a woman fitted to a man's numbers.
   4. Size rows: if every numeric value of the base row is `> 300`, the chart is assumed to be in mm and every value is divided by 10; measurement keys renamed as in step 3.
   5. Seam sides: `piece`→`pieceId`; `edges:[e]` (single-element chain) → `edge: e`; a chain with more than one edge → keep `edges[0]` and add an `Issue`-style entry to `migrate.warnings` (module-level array cleared at each call) — the user is told the seam was truncated via `ui:status`.
   6. Fabrics: `piece.color` + `piece.fabricId` naming a preset (v0 had no fabric instances) → one `FabricInstance` per distinct `(preset, color)` pair with id `fab_<preset>_<n>`, pieces re-pointed. `fabricOverrides` (object keyed by preset) → `overrides` of the matching instances.
-  7. Set `version = 1`.
-* `version === 1` → returned unchanged (same object).
-* `version > 1` → throw `Error{code:'UnsupportedVersion', message:'Document version X is newer than this app (1)'}`.
+  7. Continue with the v1 → v2 step (a v0 document is a v1 document once steps 1-6 are done).
+* `version === 1` → **v1 → v2** *(Amended 2026-09-30, Darts)*: on a deep copy, every piece whose `darts` is not an array gets `darts: []`; then `version = 2`. A v0 document ends here too.
+* `version === 2` → returned unchanged (same object).
+* `version > 2` → throw `Error{code:'UnsupportedVersion', message:'Document version X is newer than this app (2)'}`.
 * `migrate.warnings: string[]` — populated during the last call, read by `store.replace` which forwards each as `ui:status` warn.
 
 #### 3.4.5 Self-checks (acceptance group `core.schema`)
@@ -1036,7 +1038,7 @@ Issue objects carry `pieceId`, `seamId` and `edge` whenever they apply. Issues a
 4. `validateShape(sample)` returns `[]` for `tshirt` and `skirt` (section 4.4 guarantees this).
 5. Every code in the table fires on a purpose-built broken doc (one fixture per code; at least the error-level ones).
 6. `migrate` of a v0 fixture (design-document layout with `seamAllowanceMm`, `height: 1.65`, mm size rows) yields a doc with `height_cm === 165`, `rows[1].chest_cm === 88`, zero validation errors.
-7. `migrate({version: 2})` throws `UnsupportedVersion`.
+7. `migrate({version: 3})` throws `UnsupportedVersion`; `migrate({version: 2})` returns its argument unchanged; `migrate({version: 1, pieces: [{id: 'p'}]})` returns a copy with `version === 2` and `pieces[0].darts` equal to `[]`, leaving the input untouched. *(Amended 2026-09-30.)*
 
 ---
 
@@ -1499,7 +1501,7 @@ Both documents share the same `body`, `sizes`, `sim` and `ui` blocks; they diffe
 
 /** @type {import('../core/types.js').ProjectDoc} */
 export const TSHIRT = {
-  version: 1,
+  version: 2,
   name: 'Basic T-shirt',
   body: {
     preset: 'female_m',
@@ -1533,6 +1535,7 @@ export const TSHIRT = {
       notches: [{ edge: 2, t: 0.5, kind: 'single' }],
       grainline: { a: [120, 100], b: [120, 450] },
       internalLines: [],
+      darts: [],
       seamAllowance_mm: 10,
       fabricId: 'main',
       layer: 0,
@@ -1562,6 +1565,7 @@ export const TSHIRT = {
       notches: [{ edge: 2, t: 0.5, kind: 'double' }],
       grainline: { a: [120, 100], b: [120, 450] },
       internalLines: [],
+      darts: [],
       seamAllowance_mm: 10,
       fabricId: 'main',
       layer: 0,
@@ -1590,6 +1594,7 @@ export const TSHIRT = {
       notches: [{ edge: 2, t: 0.5, kind: 'double' }, { edge: 3, t: 0.5, kind: 'single' }],
       grainline: { a: [0, 30], b: [0, 250] },
       internalLines: [],
+      darts: [],
       seamAllowance_mm: 10,
       fabricId: 'main',
       layer: 0,
@@ -1615,6 +1620,7 @@ export const TSHIRT = {
       notches: [{ edge: 2, t: 0.5, kind: 'double' }, { edge: 3, t: 0.5, kind: 'single' }],
       grainline: { a: [0, 30], b: [0, 250] },
       internalLines: [],
+      darts: [],
       seamAllowance_mm: 10,
       fabricId: 'main',
       layer: 0,
@@ -1690,7 +1696,7 @@ Note on `SeamSide.reverse`: types.js defines the pairing by the flag on the reco
 
 /** @type {import('../core/types.js').ProjectDoc} */
 export const SKIRT = {
-  version: 1,
+  version: 2,
   name: 'A-line skirt',
   body: {
     preset: 'female_m',
@@ -1722,6 +1728,7 @@ export const SKIRT = {
       notches: [{ edge: 1, t: 0.5, kind: 'single' }],
       grainline: { a: [120, 80], b: [120, 480] },
       internalLines: [],
+      darts: [],
       seamAllowance_mm: 10,
       fabricId: 'main',
       layer: 0,
@@ -1746,6 +1753,7 @@ export const SKIRT = {
       notches: [{ edge: 1, t: 0.5, kind: 'double' }],
       grainline: { a: [120, 80], b: [120, 480] },
       internalLines: [],
+      darts: [],
       seamAllowance_mm: 10,
       fabricId: 'main',
       layer: 0,
@@ -5971,7 +5979,7 @@ All numbers below are the assertion thresholds; `s` denotes the `SimStats` retur
 | 20 | `export_offset` | 0.5 s | `cut = __app.export.cutLine('front','M')`: `isSimplePolygon(cut)`, `signedArea(cut) > signedArea(doc.pieces.front.vertices)`, `min x of cut ≥ −0.05` mm (no allowance on the fold edge; the half piece is stored with x ≥ 0 and the fold on x = 0), `cut.length ≥ 20`. Same for `'sleeve_l'` (no fold): simple, area larger, and the stitch vertices all inside the cut polygon (`pointInPolygon` re-implemented in the suite, 8 lines). |
 | 21 | `export_print` | 1 s | `html = __app.export.printHtml('M', 'A4')`; `d = new DOMParser().parseFromString(html,'text/html')`; `pages = d.querySelectorAll('.page').length`; with `{w,h}` of the M sheet: `cols = max(1, ceil((w − 10)/180))`, `rows = max(1, ceil((h − 10)/267))` (A4 window 190×277 mm = 210×297 minus 10 mm margins, 10 mm overlap ⇒ step 180×267); `pages === cols·rows`; every `.page` contains one `<svg>` with a `viewBox`; `html.includes('100 mm')` (calibration square label) and every page's svg contains `rect.calibration` (10.4). Repeat for `paper:'Letter'` (window 195.9×259.4 mm = 215.9×279.4 − 20; step 185.9×249.4) and `'A3'` (window 277×400; step 267×390): page counts match. |
 | 22 | `export_csv` | 0.1 s | `csv = __app.export.csv()`: `lines = csv.trimEnd().split(/\r?\n/)`; `lines.length === 5`; `lines[0] === 'size,chest_cm,waist_cm,hips_cm,height_cm,torsoLength_cm,armLength_cm'`; row `M` equals `M,88,70,96,165,40,56`; row `XL` equals `XL,96,78,104,175,42,58`; no line contains `"`. |
-| 23 | `json_roundtrip` | 0.2 s | `s1 = __app.save()`; `s2 = serializeDoc(normalizeDoc(JSON.parse(s1)))`; `s1 === s2` (byte-identical); `__app.load(s1); await idle(); __app.save() === s1`; `JSON.parse(s1).version === 1`; keys of the parsed root are sorted (`Object.keys(o).join() === Object.keys(o).sort().join()`). |
+| 23 | `json_roundtrip` | 0.2 s | `s1 = __app.save()`; `s2 = serializeDoc(normalizeDoc(JSON.parse(s1)))`; `s1 === s2` (byte-identical); `__app.load(s1); await idle(); __app.save() === s1`; `JSON.parse(s1).version === 2`; keys of the parsed root are sorted (`Object.keys(o).join() === Object.keys(o).sort().join()`). |
 | 24 | `undo_redo` | 0.5 s | `reloadSample('tshirt'); v0 = structuredClone(doc.pieces.sleeve_l.vertices)`; `__app.pattern.movePiece('sleeve_l', 50, −20); await idle()`: every vertex moved by exactly (50, −20); `__app.undo(); await idle()`: vertices deep-equal `v0`; `__app.redo(); await idle()`: moved again; after undo+redo `__app.mesh.all().length === 4` (remesh re-ran) and `step(60).nanCount === 0`. |
 | 25 | `editor_api` | 1 s | `reloadSample('tshirt')`; `a = addPiece({name:'Sq A', vertices:[[0,0],[200,0],[200,200],[0,200]]})`, `b = addPiece({name:'Sq B', vertices:[[300,0],[500,0],[500,200],[300,200]]})` (defaults from `normalizeDoc`: line edges, first fabric, `simulate:true`, placement torso/front); `sid = addSeam({pieceId:a, edge:1, mirror:false, reverse:false}, {pieceId:b, edge:3, mirror:false, reverse:true})`; `await idle(); mesh = remesh(a)[0]`: `120 ≤ vertexCount ≤ 320`, `edgeVerts[0][1].length === 15` (`ceil(200/15) + 1`), equals the partner's `edgeVerts[0][3].length`; `validate()` has no error for a, b, sid; `removeSeam(sid); deletePiece(a); deletePiece(b); await idle()`: doc back to 4 pieces / 10 seam records. |
 | 26 | `ui_clicks` | 0.5 s | `reloadSample('tshirt')`; `__app.ui.click(IDS.layout2d)` → `doc.ui.layout === '2d'`, `__app.ui.state().layout === '2d'`, `#pane-3d` has `hidden === true`; `click(IDS.layout3d)` → `'3d'`; `click(IDS.layoutSplit)` → `'split'`, both panes visible; `click(IDS.swap)` → `doc.ui.swapped` flipped and the DOM order of `#pane-2d`/`#pane-3d` inside their parent reversed; click again → restored; `click(IDS.tabBody)` → `doc.ui.dockTab === 'body'` and `#tab-body` has `aria-selected="true"`; `click(IDS.tabPieces)` → `'pieces'`; `click(IDS.play)` → `__app.sim.running() === true`; `click(IDS.pause)` → `false`. |
