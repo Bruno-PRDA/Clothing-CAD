@@ -1536,6 +1536,53 @@ async function checkInvalidDart() {
   return 'loaded and edited: 6 of 6 pieces meshed, the bad dart ignored with a warning, seams pair, cloth built';
 }
 
+/**
+ * A dart on a pinned edge closes (SPEC 7.1 amendment "Darts: a dart on a pinned edge"): its two mouth corners are
+ * both pinned, and a seam pair whose two vertices are pinned is welded at the midpoint of their arranged positions
+ * before the pin targets are projected, so they share one target. The pinned edge keeps its arranged length: the
+ * dart closes at the mouth but does not pull the edge in.
+ * @returns {Promise<string>}
+ */
+async function checkPinnedDart() {
+  await reloadSample('skirt');
+  app().update((d) => {
+    pieceOf(d, 'front').darts.push({ id: 'waist_dart', edge: 2, t: 0.5, width_mm: 20, apex: [125, 460] });
+  }, 'acceptance: a dart on the pinned waist');
+  await app().idle();
+  app().sim.pause();
+  const doc = app().doc();
+  expect(pieceOf(doc, 'front').pinnedEdges.indexOf(2) >= 0, 'the skirt front waist (edge 2) is not pinned');
+  const bad = app().pattern.validate().filter((i) => i.level === 'error');
+  expect(bad.length === 0, 'the waist dart is not valid: ' + bad.map((i) => i.code + ' ' + i.message).join(' | '));
+  expect(app().mesh.stats().seamPairsEqual, 'the two sides of a seam do not pair');
+  app().sim.reset();
+  const st = stateOf();
+  const pc = st.pieces.find((x) => x.pieceId === 'front');
+  /** @type {Map<number, number>} */
+  const slot = new Map();
+  for (let p = 0; p < st.pIdx.length; p++) slot.set(st.pIdx[p], p);
+  let mouths = 0;
+  for (const list of pc.mesh.dartVerts) {
+    for (const legs of list || []) {
+      const A = pc.start + legs.a[0];
+      const B = pc.start + legs.b[0];
+      expect(slot.has(A) && slot.has(B), 'a mouth corner of the dart is not pinned');
+      const sa = 3 * /** @type {number} */ (slot.get(A));
+      const sb = 3 * /** @type {number} */ (slot.get(B));
+      const apart = Math.hypot(st.pTarget[sa] - st.pTarget[sb], st.pTarget[sa + 1] - st.pTarget[sb + 1], st.pTarget[sa + 2] - st.pTarget[sb + 2]);
+      expect(apart < 1e-6, `the mouth corners are pinned ${fmt(apart * 1000)} mm apart`);
+      mouths++;
+    }
+  }
+  expect(mouths === 2, `${mouths} mouths on the fold piece's pinned waist, expected 2 (the dart and its mirrored twin)`);
+  const s = app().sim.step(120);
+  expect(s.nanCount === 0, `nanCount ${s.nanCount}`);
+  const gap = dartGapMax_mm();
+  expect(gap < 3, `the dart on the pinned waist is still ${fmt(gap)} mm open (>= 3)`);
+  drapeStage = 0;
+  return `both mouth corners pinned to one target (2 mouths); after 120 frames dart gap ${fmt(gap)} mm, pen ${fmt(s.maxPenetration_mm)} mm, seam gap ${fmt(s.seamGapMax_mm)} mm`;
+}
+
 /** How long the runner waits for a timed-out check's abandoned work to settle before starting the next one. */
 const SETTLE_AFTER_TIMEOUT_MS = 30000;
 
@@ -1578,6 +1625,7 @@ export const CHECKS = Object.freeze([
   { id: '26h', name: 'dart_shaping', timeoutMs: 40000, fn: checkDartShaping },
   { id: '26i', name: 'incremental_remesh', timeoutMs: 20000, fn: checkIncrementalRemesh },
   { id: '26j', name: 'invalid_dart', timeoutMs: 20000, fn: checkInvalidDart },
+  { id: '26k', name: 'pinned_dart', timeoutMs: 20000, fn: checkPinnedDart },
   { id: '27', name: 'runtime', timeoutMs: 5000, fn: checkRuntime },
 ]);
 

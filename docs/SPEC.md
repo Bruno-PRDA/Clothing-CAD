@@ -2692,6 +2692,19 @@ Also exported from `state.js`: `setFabricParams(state, pieceIndex, fabric)` (rew
 > the seam-gap statistics of §7.9 and tear detection all treat them like any other. `__app.mesh.stats().seamPairsEqual`
 > (§12) uses the same rule: `false` when the pairing returns `null` or a side is missing.
 
+> **Amendment (lead, 2026-09-30) — Darts: a dart on a pinned edge.** Step 6 pins every vertex of `edgeVerts[m][e]` for
+> a pinned edge, and those lists hold both mouth corners, A and B, of every valid dart on the edge. A and B are also a
+> dart pair in `sIdx`, and a seam pair whose two vertices are both pinned is welded before the pin targets are
+> projected (`commitPositions`; item (2) of the §7 amendment "what actually makes a garment drape"). So both corners are
+> pinned at the **midpoint of their two arranged positions**, to one shared target: the mouth is closed from frame 0,
+> and the rest of the dart sews shut as usual. Nothing else about a pinned edge changes. Its other vertices keep their
+> arranged positions, so a pinned edge keeps the flat pattern's arranged length: a dart on it closes at the mouth but
+> does not pull the edge in, and the fabric beside the mouth takes up the dart's width (up to 24.5 % strain on the edges
+> at the corners for a 20 mm dart at h = 15 mm, under the 30 % at which §7 reports a tear). Measured by acceptance check
+> 26k `pinned_dart` (§13 amendment "Darts: the fix wave"): the skirt front with a 20 mm dart on its pinned waist has
+> each mouth's corners on one pin target, and after 120 frames the dart gap is 0.000 mm with no NaN. With the weld
+> switched off, the corners are pinned 14.7 mm apart and the mouth can never close.
+
 ### 7.2 Constraints (`constraints.js`)
 
 XPBD update for a constraint `C` with gradient `∇_i C`, compliance `α`, `α̃ = α/h²`, λ reset to 0 each substep (so `Δλ = −C / (Σ_i w_i|∇_iC|² + α̃)`), `Δx_i = w_i · Δλ · ∇_iC`.
@@ -6167,7 +6180,7 @@ Store contract (section 3.3, authoritative): `update(mutator, label)` emits `doc
 > cannot crash it before `results.json` is written.
 
 > **Amendment (lead, 2026-09-30) — Darts: the fix wave.** Checks after 26h that guard the fixes of the branch's final
-> review; the suite has **36 checks** (01–27 plus 26b–26j). "Rebuilt" below means: one `__app.update`, `await idle()`, no
+> review; the suite has **37 checks** (01–27 plus 26b–26k). "Rebuilt" below means: one `__app.update`, `await idle()`, no
 > new `errorsNow()` line, `mesh.stats().seamPairsEqual`, and a new live `ClothState` whose `V` equals
 > `mesh.stats().verts`.
 >
@@ -6175,6 +6188,7 @@ Store contract (section 3.3, authoritative): `update(mutator, label)` emits `doc
 > |---|---|---|---|
 > | 26i | `incremental_remesh` | 20 s | the dress with a dart added on `bodice_back_r`'s shoulder (`{edge: 3, t: 0.5, width_mm: 10, apex: [140, 320]}`) is rebuilt; the T-shirt with the front armhole notch moved to `t = 0.43` is rebuilt; at size L a notch added on the front hem is rebuilt and replaces the front's mesh alone, and a placement change then leaves the live `ClothState` the same object (re-arranged, not rebuilt). §12.2.3 amendment "Darts: the mesh fingerprint is the seam sampling"; before it, the first two failed with `seam-parity` and the last rebuilt. |
 > | 26j | `invalid_dart` | 20 s | the dress with `bodice_back_r`'s waist dart pointing outside the piece (`apex [89, −50]`, `DART_APEX`), once through `__app.load` and once through `__app.update` on the loaded dress: all 6 pieces meshed, `bodice_back_r`'s mesh warnings include a `dart-ignored:` line, `seamPairsEqual`, no new error line, and a live `ClothState` of 6 pieces whose `V` equals `mesh.stats().verts` (after the edit, a new one). §12.2.2 amendment "Darts: an invalid dart does not exclude its piece"; before it, the load meshed 5 pieces and the edit failed with `seam-parity`. |
+> | 26k | `pinned_dart` | 20 s | `reloadSample('skirt')` plus a front waist dart on the pinned waist (`{edge: 2, t: 0.5, width_mm: 20, apex: [125, 460]}`): no validation error, `seamPairsEqual`; after `sim.reset()` both corners of each of the 2 mouths (the dart and its mirrored twin) are pinned, to targets less than 1 µm apart; `s = step(120)`: `s.nanCount === 0` and every dart leg pair closer than 3 mm (as in 26g). §7.1 amendment "Darts: a dart on a pinned edge". 120 frames because the dart is shut when the sewing ends (0.29 mm at frame 60, 0.000 at 120). |
 >
 > An invalid document is error-level by design, and the status bar reports it as an error-level `N issues` line that
 > `console.error` echoes into `__app.log()`. The runner (§13.1 rule 4) would count that line as a failure of the run, so a

@@ -16,7 +16,7 @@ dependency, everything running in the browser.
 
 | Works today | Not yet |
 |---|---|
-| 2D pattern editor: straight and curved edges, seams, notches, darts (a dart tool and a Darts list), grainlines, fold edges, per-edge seam allowance | Tools for internal lines; darts pointed at both ends, inside a piece (every dart opens onto an edge) |
+| 2D pattern editor: straight and curved edges, seams, notches, darts (a dart tool and a Darts list), grainlines, fold edges, per-edge seam allowance | Tools for internal lines; darts pointed at both ends, inside a piece (every dart opens onto an edge); darts on a pinned edge do not pull that edge in (they close at the mouth, and the edge keeps its length) |
 | XPBD cloth simulation: sewing, gravity, body collision with friction, self-collision; darts sewn shut, seams that compare sewn lengths | Gathers, pleats, elastic; seams across several edges or part of one |
 | MakeHuman CC0 body fitted to 24 measurements, 9 presets | Posing (the arm and leg angle sliders do not move the template body), animation |
 | Size chart and grading (darts keep their width); drapes the size you pick; warns before a size too small tears, checking each part of a garment against the body it covers | Men's and children's size charts (the default chart is a women's S–XL) |
