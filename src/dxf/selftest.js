@@ -3,6 +3,7 @@
 import { normalizeDoc } from '../core/schema.js';
 import { getSample } from '../samples/index.js';
 import { flattenPiece } from '../geometry/bezier.js';
+import { dartMouth } from '../geometry/darts.js';
 import { signedArea, polylineLength, pointInPolygon } from '../geometry/polygon.js';
 import { sizeNames } from '../sizing/index.js';
 import { parseDxf, placeBlock, unbulge } from './dxfio.js';
@@ -340,6 +341,35 @@ export async function runSelfTest() {
     const r = importAama('this is not a DXF file\nat all');
     assert(r.pieces.length === 0 && r.report.warnings.some((w) => /No pattern pieces/.test(w)), 'no pieces and a clear warning');
     return 'rejected with a message';
+  });
+
+  check('dxf.darts', () => {
+    const doc = normalizeDoc({ version: 2, name: 'Darts', pieces: [
+      { id: 'panel', name: 'Panel', vertices: [[0, 0], [200, 0], [200, 300], [0, 300]], seamAllowance_mm: 10,
+        darts: [{ id: 'd', edge: 0, t: 0.5, width_mm: 20, apex: [100, 120] }] },
+      { id: 'half', name: 'Half', vertices: [[0, 0], [150, 0], [150, 300], [0, 300]], foldEdge: 3, seamAllowance_mm: 10,
+        edges: [{ type: 'line' }, { type: 'line' }, { type: 'line' }, { type: 'line', allowance_mm: 0 }],
+        darts: [{ id: 'e', edge: 0, t: 0.6, width_mm: 16, apex: [90, 110] }] },
+    ] });
+    const text = exportAama(doc, { sizes: ['M'] });
+    // one drill hole per dart on layer 13 (the whole fold piece carries its dart twice), read back from the parsed file
+    const drillPts = [...parseDxf(text).blocks.values()].flatMap((b) => b.entities).filter((e) => e.type === 'POINT' && layerNo(e.layer) === '13');
+    assert(drillPts.length === 3, 'a drill hole on layer 13 per dart (3 expected), got ' + drillPts.length);
+    const { pieces } = importAama(text);
+    const byName = (nm) => pieces.find((p) => p.name === nm);
+    for (const [src, got] of [[doc.pieces[0], byName('Panel')], [doc.pieces[1], byName('Half')]]) {
+      assert(!!got, src.name + ' imported');
+      assert(Array.isArray(got.darts) && got.darts.length === 1, src.name + ': one dart back, got ' + (got.darts || []).length);
+      assert(got.notches.length === src.notches.length, src.name + ': the mouth notches are not notches (' + got.notches.length + ')');
+      assert(got.internalLines.length === 0, src.name + ': no stray internal lines (' + got.internalLines.length + ')');
+      const ms = dartMouth(src, src.darts[0]);
+      const mg = dartMouth(got, got.darts[0]);
+      const dA = Math.min(Math.hypot(ms.a[0] - mg.a[0], ms.a[1] - mg.a[1]), Math.hypot(ms.a[0] - mg.b[0], ms.a[1] - mg.b[1]));
+      const dX = Math.hypot(src.darts[0].apex[0] - got.darts[0].apex[0], src.darts[0].apex[1] - got.darts[0].apex[1]);
+      assert(dA < 0.1 && dX < 0.1 && Math.abs(src.darts[0].width_mm - got.darts[0].width_mm) < 0.1,
+        src.name + ': mouth ' + dA.toFixed(3) + ' mm, apex ' + dX.toFixed(3) + ' mm, width ' + got.darts[0].width_mm);
+    }
+    return 'both pieces keep their dart within 0.1 mm';
   });
 
   return results;

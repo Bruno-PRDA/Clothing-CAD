@@ -25,6 +25,7 @@
 import { parseDxf, placeBlock, unbulge, createWriter, fnum } from './dxfio.js';
 import { ringToEdges, guessTurns } from './fitcurve.js';
 import { flattenPiece, sampleEdge, edgeLength } from '../geometry/bezier.js';
+import { validDartIndices, dartMouth, dartDrillPoint } from '../geometry/darts.js';
 import { offsetPolygon } from '../geometry/offset.js';
 import { mirrorPiece } from '../geometry/mirror.js';
 import { signedArea, bbox, distToPolyline, distToSegment, pointInPolygon } from '../geometry/polygon.js';
@@ -62,6 +63,11 @@ const NOTCH_MAX_MM = 40;
 const DOUBLE_NOTCH_MM = 13;
 /** Chaining tolerance for boundaries written in pieces, file units. */
 const CHAIN_TOL = 0.005;
+/** A dart's legs end on the sew line of one edge, within this (mm); the drill hole lies within DART_DRILL_TOL_MM of its point. */
+const DART_END_TOL_MM = 0.5;
+const DART_DRILL_TOL_MM = 15;
+/** A notch this close (mm, along the edge) to a recognised dart's mouth corner is the mouth's notch, not a notch of its own. */
+const DART_NOTCH_TOL_MM = 1.5;
 
 // ------------------------------------------------------------------------------------------ export
 
@@ -305,7 +311,13 @@ export function exportAama(doc, opts = {}) {
     const cut = hasAllowance ? cutLine(p, sew, edgeStart, allowanceOf) : sew.map((q) => /** @type {Vec2} */ ([q[0], q[1]]));
     const cutTurn = hasAllowance ? cutTurns(cut, p, sew, edgeStart, allowanceOf) : sewTurn.slice();
     // every notch on a vertex of the cut line: insert one where it falls between two
-    const notches = notchPoints(p, allowanceOf).map((nt) => {
+    // darts (SPEC 10 amendment "Darts"): every valid dart's mouth corners are notches too
+    const dartList = validDartIndices(p).map((k) => ({ dt: p.darts[k], m: dartMouth(p, p.darts[k]) }));
+    const withMouths = dartList.length
+      ? { ...p, notches: (p.notches || []).concat(dartList.flatMap(({ dt, m }) => [
+        { edge: dt.edge, t: m.ta, kind: 'single' }, { edge: dt.edge, t: m.tb, kind: 'single' }])) }
+      : p;
+    const notches = notchPoints(withMouths, allowanceOf).map((nt) => {
       const r = distToPolyline(nt.at, cut, true);
       const a = cut[r.seg], b = cut[(r.seg + 1) % cut.length];
       let idx;
@@ -366,6 +378,14 @@ export function exportAama(doc, opts = {}) {
       if (!Array.isArray(il.points) || il.points.length < 2) continue;
       polyline(LAYER.internal, il.points, false);
       marks(il.points, il.points.map(() => true));
+    }
+    // darts: the legs as one open line through the point (layer 8, every point a turn), the drill hole on layer 13
+    for (const { dt, m } of dartList) {
+      const legs = [m.a, dt.apex, m.b];
+      polyline(LAYER.internal, legs, false);
+      marks(legs, [true, true, true]);
+      const dr = dartDrillPoint(m.a, m.b, dt.apex);
+      w.entity('POINT', LAYER.drill).point(X(dr[0]), X(dr[1]));
     }
     w.pair(0, 'ENDBLK').pair(8, '0');
   }
@@ -840,6 +860,44 @@ export function importAama(text, opts = {}) {
     }
     piece.seamAllowance_mm = allowance;
 
+    // darts: an open layer-8 line of exactly three points whose ends lie on the sew line of one edge, with a drill hole
+    // near its middle point — the shape exportAama writes (SPEC 10 amendment "Darts")
+    const outline = /** @type {any} */ ({ vertices, edges });
+    const drills = g.ents.filter((e) => layerNo(e.layer) === LAYER.drill && (e.type === 'POINT' || e.type === 'CIRCLE'));
+    const dartEnts = new Set();
+    const usedDrills = new Set();
+    piece.darts = [];
+    for (const e of g.ents) {
+      if (layerNo(e.layer) !== LAYER.internal || e.type !== 'POLYLINE' || e.closed || e.points.length !== 3) continue;
+      const raw3 = e.points.map(S);
+      if (!raw3.every(kept)) continue;
+      const [A, Xp, B] = raw3.map(Tq);
+      if (nearestOnRing(ring, A).d > DART_END_TOL_MM || nearestOnRing(ring, B).d > DART_END_TOL_MM) continue;
+      const pa = edgeParamOf(outline, A);
+      const pb = edgeParamOf(outline, B);
+      if (pa.edge !== pb.edge) continue;
+      const drill = drills.find((d) => {
+        if (usedDrills.has(d)) return false;
+        const q = Tq(S(d.p));
+        return Math.hypot(q[0] - Xp[0], q[1] - Xp[1]) <= DART_DRILL_TOL_MM;
+      });
+      if (!drill) continue;
+      const L = edgeLength(outline, pa.edge);
+      const ta = Math.min(pa.t, pb.t);
+      const tb = Math.max(pa.t, pb.t);
+      piece.darts.push({ id: 'dart_' + (piece.darts.length + 1), edge: pa.edge, t: (ta + tb) / 2, width_mm: (tb - ta) * L, apex: [Xp[0], Xp[1]] });
+      dartEnts.add(e);
+      usedDrills.add(drill);
+    }
+    /** @param {{edge:number, t:number}} par @returns {boolean} a notch candidate that is a recognised dart's mouth corner */
+    const isMouth = (par) => piece.darts.some((dt) => {
+      if (dt.edge !== par.edge) return false;
+      const L = edgeLength(outline, dt.edge);
+      const c = dt.t * L;
+      const s = par.t * L;
+      return Math.abs(s - (c - dt.width_mm / 2)) < DART_NOTCH_TOL_MM || Math.abs(s - (c + dt.width_mm / 2)) < DART_NOTCH_TOL_MM;
+    });
+
     // notches: the candidate point nearest the cut or sew line is the notch; two close together are a double notch
     const raw = [];
     for (const ne of notchEnts) {
@@ -851,7 +909,8 @@ export function importAama(text, opts = {}) {
         if (!best || d < best.d) best = { d, c };
       }
       if (!best || best.d > NOTCH_MAX_MM) continue;
-      raw.push(edgeParamOf({ vertices, edges }, best.c));
+      const par = edgeParamOf({ vertices, edges }, best.c);
+      if (!isMouth(par)) raw.push(par);
     }
     raw.sort((p, q) => p.edge - q.edge || p.t - q.t);
     for (let i = 0; i < raw.length; i++) {
@@ -872,7 +931,7 @@ export function importAama(text, opts = {}) {
 
     // internal lines, cutouts, drill holes (the dropped half's mirrored copies and the centre line excepted)
     for (const e of g.ents) {
-      if (centreLines.includes(e)) continue;
+      if (centreLines.includes(e) || dartEnts.has(e) || usedDrills.has(e)) continue;
       const L = layerNo(e.layer);
       if (L === LAYER.internal || L === LAYER.cutout) {
         const pts = e.type === 'LINE' ? [S(e.a), S(e.b)] : e.type === 'POLYLINE' && e.points.length >= 2 ? unbulge(e.points, !!e.closed).map(S) : null;

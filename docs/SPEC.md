@@ -3421,6 +3421,29 @@ Physics columns are the effective simulation values of 7.10 (`bend_Nm` effective
 > `size '*'` = every size. Acceptance check 26f `dxf` exports the T-shirt through the app, imports it back (same
 > points, notches, folds and allowances, Simulate off) and undoes the import in one step.
 
+> **Amendment (lead, 2026-09-30) — Darts: DXF-AAMA.** A dart travels as the shape the standard already has for one, in
+> both directions (`src/dxf/aama.js`). **Written:** for every *valid* dart (`validDartIndices`, §5.10), after the
+> block's internal lines: (1) its legs as ONE open 3-point POLYLINE `A → apex → B` on layer 8, with `A` and `B` from
+> `dartMouth` (so on the sew line, layer 14, and not on the cut line) and a turn POINT on layer 2 at each of the three
+> points; (2) a POINT on layer 13 (drill) at `dartDrillPoint(A, B, apex)`: on the centre line, 10 mm back from the
+> point, at most half way to the mouth; (3) the two mouth corners as notches on layer 4 — they are appended to the
+> piece's notches before `notchPoints` runs, so they get the usual place on the cut line, depth and angle. A fold
+> piece is written whole by `mirrorPiece`, which already carries every dart twice, so the mirrored half has its own
+> legs, drill hole and mouth notches; with `fold: 'mirror'` only the stored half's darts are written. **Read:** the
+> darts block comes after the seam allowance and before the notches, and recognises exactly that shape — an OPEN
+> POLYLINE on layer 8 of exactly 3 points, inside the kept half of a folded piece, whose first and last points lie
+> within 0.5 mm of the ring the outline was rebuilt from (the sew line, else the cut line) and project onto the SAME
+> edge, with an unused POINT or CIRCLE on layer 13 within 15 mm of its middle point. `piece.darts` then gets
+> `{id: 'dart_<n>', edge, t = the midpoint of the two arc-length fractions, width_mm = their distance, apex}`. The
+> polyline and its drill hole are not read as internal lines or marks, and **mouth notches are not notches**: a notch
+> candidate lying within 1.5 mm, along the edge, of a recognised dart's mouth corner is dropped (a notch placed there on
+> purpose is lost with it; the dart's own mouth shows it). Anything else — a 3-point line with no drill hole, a closed
+> line, a line of 2 or 4 points, legs that end on two edges — stays an internal line, as before, so a file from another
+> system is never changed into darts by guesswork. Round trip: mouth, point and width agree to the file's precision
+> (0.0001 mm in a metric file; about 0.002 mm in an inch file). `dxf.darts` is the 14th self-test: a dart on a whole
+> piece and one on a fold piece come back as exactly one dart each, with no extra notch and no stray internal line, within
+> 0.1 mm.
+
 > **Amendment (lead, 2026-09-17) — shoulder width is a graded measurement, and the fit check (10.4).**
 > Two related defects, both of which showed up as a garment tearing in the 3D view rather than as anything the UI
 > said.
