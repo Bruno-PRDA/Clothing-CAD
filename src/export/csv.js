@@ -1,6 +1,6 @@
 // src/export/csv.js — size chart CSV/JSON and piece measurements (SPEC section 10.5). Pure. No trailing newline.
 
-import { edgeLength, packRects } from '../geometry/index.js';
+import { edgeLength, sewnLength, packRects } from '../geometry/index.js';
 import { gradePiece, seamEasePct, validationError } from '../sizing/index.js';
 import { buildPieceGeometry } from './svg.js';
 
@@ -179,7 +179,7 @@ export function pieceMeasurementsCsv(doc, chart, opts) {
           partner = `${other.pieceId}:${other.edge}`;
           const otherPiece = all.find((p) => p.id === other.pieceId);
           if (otherPiece && other.edge >= 0 && other.edge < otherPiece.edges.length) {
-            partnerLen = fmtCsv(round(edgeLength(otherPiece, other.edge), 1));
+            partnerLen = fmtCsv(round(sewnLength(otherPiece, other.edge), 1));
             try {
               ease = fmtCsv(round(seamEasePct(all, seam).easePct, 1));
             } catch (e) {
@@ -190,7 +190,7 @@ export function pieceMeasurementsCsv(doc, chart, opts) {
         }
         lines.push(csvLine([
           size, piece.name, piece.cutQty, fold ? 1 : 0, i, (piece.edges[i] && piece.edges[i].label) || '',
-          fmtCsv(round(len, 1)), geom.allowances[i], seamId, partner, partnerLen, ease, '', '',
+          fmtCsv(round(sewnLength(piece, i), 1)), geom.allowances[i], seamId, partner, partnerLen, ease, '', '',
         ]));
       }
       const totalLen = fold ? perimeter * 2 - 2 * foldLen : perimeter;

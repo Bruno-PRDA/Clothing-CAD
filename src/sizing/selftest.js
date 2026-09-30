@@ -7,7 +7,7 @@ import {
   defaultChart, validateChart, sizeIndex, baseIndex, addRow, removeRow, renameRow, setValue,
   closestSize, rowFromBody, rowToBodyParams,
 } from './chart.js';
-import { gradePiece, gradePieceDetailed, gradeScale, gradeDoc, seamEaseDrift } from './grading.js';
+import { gradePiece, gradePieceDetailed, gradeScale, gradeDoc, seamEaseDrift, seamEasePct } from './grading.js';
 import { checkFit, EASE_LIMITS } from './fit.js';
 import { getSample } from '../samples/index.js';
 
@@ -315,6 +315,26 @@ export async function runSelfTest() {
     assert(l.length === 1 && l[0].code === 'GRADE_EASE_DRIFT' && l[0].level === 'warn', 'expected one GRADE_EASE_DRIFT: ' + JSON.stringify(l));
     assert(/4\.5%/.test(l[0].message), 'message should mention 4.5%: ' + l[0].message);
     return l[0].message;
+  }));
+
+  out.push(runCase('grade.darts', () => {
+    const chart = defaultChart();
+    const piece = { ...makeSQ({ id: 'dp', name: 'Darted' }), darts: [{ id: 'd', edge: 0, t: 0.5, width_mm: 20, apex: [50, 60] }] };
+    piece.grade = { widthRef: 'chest_cm', lengthRef: 'height_cm', anchorX: 'left', anchorY: 'bottom', vertexRules: [] };
+    const r = gradePieceDetailed(piece, chart, 'XL');
+    const d = r.piece.darts[0];
+    assert(near(d.t, 0.5, 1e-12), 'graded dart keeps t');
+    assert(near(d.width_mm, 20, 1e-12), 'graded dart keeps its width');
+    assert(near(d.apex[0], r.pivot[0] + (50 - r.pivot[0]) * r.sx, 1e-9), 'apex x follows the transform, got ' + d.apex[0]);
+    assert(near(d.apex[1], r.pivot[1] + (60 - r.pivot[1]) * r.sy, 1e-9), 'apex y follows the transform, got ' + d.apex[1]);
+    const A = { ...makeSQ({ id: 'A', name: 'A' }), darts: [{ id: 'd', edge: 0, t: 0.5, width_mm: 20, apex: [50, 60] }] };
+    const bLen = 100 - 20;
+    const B = makeSQ({ id: 'B', name: 'B' });
+    B.vertices = B.vertices.map((v) => [v[0] * bLen / 100, v[1]]);
+    const seam = { id: 's', kind: 'plain', a: { pieceId: 'A', edge: 0, mirror: false, reverse: false }, b: { pieceId: 'B', edge: 0, mirror: false, reverse: false } };
+    const ease = seamEasePct([A, B], seam).easePct;
+    assert(near(ease, 0, 1e-9), 'darted edge vs plain edge of the same sewn length, ease ' + ease);
+    return 'apex ' + d.apex.map((x) => x.toFixed(2)).join(', ');
   }));
 
   return out;

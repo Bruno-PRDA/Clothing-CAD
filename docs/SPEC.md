@@ -3659,6 +3659,14 @@ export function seamEaseDrift(doc: ProjectDoc, sizeName: string): Issue[]
 
 `seamEasePct` uses the *stored* edge (mirror copies have the same length by construction). The Sizes panel (section 11) lists `seamEaseDrift` results for the active size; the status bar shows `A 312 mm / B 328 mm — ease 5.1%` from the same function when a seam is selected. Example: piece A (`widthRef 'chest_cm'`) and piece B (`widthRef null`) share a 100 mm seam edge: base ease 0 %, size L ease 4.5 % → drift 4.5 → warn.
 
+> **Amendment (lead, 2026-09-30) — Darts: grading.** `gradePieceDetailed` carries `piece.darts` to every size. A graded
+> dart keeps its `id`, `edge`, `t` and `width_mm` unchanged, and its `apex` goes through the same affine map `T` as the
+> vertices (step 5 therefore maps every `darts[k].apex` too; a plain deep copy when `sx === sy === 1`). No vertex rule
+> (step 6) touches an apex. `seamEasePct` and so `seamEaseDrift`, the status bar and the Sizes panel compare *sewn*
+> lengths: `sewnLength(piece, e)` (§5.10), the arc length of edge `e` minus the widths of its valid darts, which is
+> `edgeLength` for an edge without darts, so pieces without darts grade and drift exactly as before. A 200 mm edge with a
+> 20 mm dart sewn to a plain 180 mm edge reads ease 0% in every size.
+
 ### 10.3 `src/export/svg.js` — 1:1 SVG
 
 **Coordinate convention.** One SVG user unit = 1 mm. The root element is
@@ -3872,6 +3880,12 @@ For every size (chart row order) → `pieces = gradeDoc(doc, size)` filtered to 
 3. one line per size after its pieces: `piece = '*'`, `edge = 'fabric'`, `area_cm2` = Σ area × cutQty, `fabric_length_m` = `fabricEstimate(...).length_m` (2 decimals).
 
 `fabricEstimate`: items are the cut bboxes of `buildPieceGeometry` (`w` doubled for fold pieces because the cut is unfolded), repeated `cutQty` times; `packRects(items, fabricWidth_mm, { gap: gap_mm, allowRotate: false })`; `length_m = pack.height / 1000`. A 2-piece doc with 4 edges each and the default chart yields `1 + 4 × (2 × 5 + 1) = 45` lines.
+
+> **Amendment (lead, 2026-09-30) — Darts: sewn lengths in the CSV.** On an edge row, `length_mm` and `partner_length_mm`
+> are *sewn* lengths (`sewnLength`, §5.10: arc length minus the widths of the edge's valid darts; identical to
+> `edgeLength` for an edge without darts), and `ease_pct` uses the same lengths (`seamEasePct`, §10.2). The `total` row
+> keeps the raw perimeter, the sum of `edgeLength` (doubled minus 2 × the fold edge for fold pieces): it describes the
+> cut outline, where a dart's mouth is still part of the edge.
 
 ### 10.6 `src/export/download.js` — browser side, project files, OBJ
 

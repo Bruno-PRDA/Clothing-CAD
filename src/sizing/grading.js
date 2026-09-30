@@ -1,7 +1,7 @@
 // src/sizing/grading.js — graded pieces (SPEC section 10.2). Pure: measurement-driven scaling about a pivot followed by
 // per-vertex grade rules. Coordinates mm, y up. Graded pieces are ordinary Piece objects (deep copies).
 
-import { edgeLength } from '../geometry/index.js';
+import { sewnLength } from '../geometry/index.js';
 import { rowByName, sizeIndex, baseIndex, validationError } from './chart.js';
 
 /** @typedef {import('../core/types.js').Piece} Piece */
@@ -152,6 +152,10 @@ export function gradePieceDetailed(piece, chart, sizeName) {
         if (Array.isArray(line.points)) line.points = line.points.map(T);
       }
     }
+    // darts keep t and width in every size; the point moves with the piece (SPEC 10.2 amendment "Darts")
+    if (Array.isArray(out.darts)) {
+      for (const d of out.darts) if (Array.isArray(d.apex)) d.apex = T(d.apex);
+    }
   }
 
   // 6. vertex rules (after scaling, array order, accumulating). The loop runs at every size including
@@ -229,7 +233,8 @@ export function gradeDocDetailed(doc, sizeName) {
 }
 
 /**
- * Length of a seam side on the given pieces; null when the piece or edge is missing.
+ * Sewn length of a seam side on the given pieces (arc length minus the edge's valid darts' widths); null when the
+ * piece or edge is missing.
  * @param {Piece[]} pieces @param {import('../core/types.js').SeamSide} side @returns {number|null}
  */
 function sideLength(pieces, side) {
@@ -237,11 +242,12 @@ function sideLength(pieces, side) {
   const piece = pieces.find((p) => p && p.id === side.pieceId);
   if (!piece) return null;
   if (!Number.isInteger(side.edge) || side.edge < 0 || side.edge >= piece.edges.length) return null;
-  return edgeLength(piece, side.edge);
+  return sewnLength(piece, side.edge);
 }
 
 /**
- * Ease of a seam in percent: (longer / shorter - 1) * 100, using edgeLength on the given pieces (base or graded).
+ * Ease of a seam in percent: (longer / shorter - 1) * 100, using the sewn length of each side on the given pieces
+ * (base or graded).
  * Throws GRADE_SEAM_REF when a side references a missing piece/edge.
  * @param {Piece[]} pieces @param {Seam} seam @returns {{lenA: number, lenB: number, easePct: number}}
  */

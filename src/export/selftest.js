@@ -221,6 +221,20 @@ export async function runSelfTest() {
     return fabricLines[1];
   }));
 
+  out.push(runCase('csv.sewn', () => {
+    const doc = normalizeDoc({ version: 2, pieces: [
+      { id: 'A', name: 'A', vertices: [[0, 0], [100, 0], [100, 100], [0, 100]], darts: [{ id: 'd', edge: 0, t: 0.5, width_mm: 20, apex: [50, 60] }] },
+      { id: 'B', name: 'B', vertices: [[0, 200], [80, 200], [80, 300], [0, 300]] },
+    ], seams: [{ id: 's', kind: 'plain', a: { pieceId: 'A', edge: 0, mirror: false, reverse: false }, b: { pieceId: 'B', edge: 0, mirror: false, reverse: false } }] });
+    const csv = pieceMeasurementsCsv(doc, doc.sizes);
+    const rowA0 = csv.split('\n').find((l) => l.startsWith('M,A,') && l.split(',')[4] === '0');
+    assert(!!rowA0, 'row for A edge 0 at size M');
+    const cols = rowA0.split(',');
+    assert(cols[6] === '80', 'A e0 sewn length 80, got ' + cols[6]);
+    assert(cols[11] === '0', 'ease 0, got ' + cols[11]);
+    return rowA0;
+  }));
+
   out.push(runCase('obj.write', () => {
     const state = /** @type {any} */ ({
       V: 3, pos: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]), tris: new Uint32Array([0, 1, 2]),
