@@ -115,7 +115,7 @@ export function createToolbar(store, bus, root = document) {
   // Tool buttons (rule 6): the click only asks; the active state follows EVENT.TOOL_CHANGED.
   /** @type {HTMLElement[]} */
   const toolButtons = [];
-  for (const id of ['tool-select', 'tool-draw', 'tool-edit', 'tool-split', 'tool-seam', 'tool-notch', 'tool-grainline', 'tool-measure']) {
+  for (const id of ['tool-select', 'tool-draw', 'tool-edit', 'tool-split', 'tool-seam', 'tool-notch', 'tool-dart', 'tool-grainline', 'tool-measure']) {
     const b = el(id);
     if (b) toolButtons.push(b);
     bindButton(id, () => ({ action: 'tool', tool: b ? (b.dataset.tool || id.slice(5)) : id.slice(5) }));

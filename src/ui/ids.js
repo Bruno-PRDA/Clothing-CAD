@@ -5,7 +5,7 @@
 import { PARAM_KEYS } from '../body/index.js';
 
 /**
- * Every STATIC id of SPEC 11.1.1: the 135 of 11.1.1, the fit banner's 4, the guide's 8, the scene control's 4 and
+ * Every STATIC id of SPEC 11.1.1: the 135 of 11.1.1, the Dart tool's 1, the fit banner's 4, the guide's 8, the scene control's 4 and
  * the recovery banner's 4, and DXF import/export's 4.
  * The 48 generated body-parameter ids live in
  * `BODY_PARAM_IDS`; `ALL_IDS` is the concatenation and is what `checkIds()` verifies.
@@ -14,7 +14,7 @@ import { PARAM_KEYS } from '../body/index.js';
 export const REQUIRED_IDS = Object.freeze([
   'app', 'toolbar', 'tb-file', 'btn-new', 'btn-open', 'input-file', 'btn-save', 'sel-sample', 'btn-load-sample', 'tb-edit',
   'btn-undo', 'btn-redo', 'tb-tools', 'tool-select', 'tool-draw', 'tool-edit', 'tool-split', 'tool-seam', 'tool-notch',
-  'tool-grainline', 'tool-measure', 'btn-mirror', 'btn-fit-2d', 'tb-sim', 'btn-arrange', 'btn-drape', 'btn-play', 'btn-pause',
+  'tool-dart', 'tool-grainline', 'tool-measure', 'btn-mirror', 'btn-fit-2d', 'tb-sim', 'btn-arrange', 'btn-drape', 'btn-play', 'btn-pause',
   'btn-reset', 'chk-selfcollision', 'btn-frame-3d', 'tb-size', 'sel-size', 'tb-view', 'btn-layout-split', 'btn-layout-2d',
   'btn-layout-3d', 'btn-swap', 'btn-popout', 'tb-export', 'sel-paper', 'btn-export-svg', 'btn-export-print', 'btn-export-csv',
   'btn-export-json', 'btn-export-obj', 'main', 'pane-left', 'pane-2d', 'canvas-2d', 'resizer', 'pane-right', 'pane-3d',

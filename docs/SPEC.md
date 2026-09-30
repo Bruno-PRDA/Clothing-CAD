@@ -5038,6 +5038,47 @@ Preconditions: exactly one selected piece P (`selection.pieceIds.length === 1`),
 
 Automation: `__app.pattern.setFold(pieceId, edge|null)` (section 12) calls the same ops without the selection preconditions.
 
+#### 11.10.10 `tools/dart.js` — Dart (T)
+
+> **Amendment (lead, 2026-09-30) — Darts: the Dart tool.** States `IDLE`, `DRAG_APEX`, `DRAG_END`, `DRAG_MOUTH` (a drag
+> remembers `{pieceId, index, x0, y0}`). A selected dart has three kinds of handle: its **point** (`dart.apex`), the two
+> **mouth corners** A and B (`geometry.dartMouth`) and the **mouth centre** (the edge point at `t`).
+>
+> - `onMove` over an outline edge (mirrored ghosts excluded) → `transient.edgeMarker`.
+> - `onDown` on an edge (not the fold edge, not a mirrored ghost) → `proposeDart(piece, edge, t)`, with `t` the clicked
+>   arc-length fraction: a dart centred at `t`, `width_mm` 20, its point 80 mm inside along the left-hand normal of the
+>   edge direction (outlines are counter-clockwise, so that points into the piece). When `checkDarts` rejects it, the
+>   length is shortened in 10 mm steps down to 20 mm, then the same is tried at 10 mm wide; when nothing fits the
+>   status says `No room for a dart here` (warn). On the fold edge it says `No darts on the fold edge` (warn). On success
+>   `commit('dart:add')` appends the dart and selects it (`selection.dart`; the vertex, edge and notch selections are cleared).
+> - `onDown` on a handle selects that dart and starts the matching drag.
+> - `onMove` after 3 px: **point** → the point follows the cursor (no snapping); **corner** → `width_mm = 2·|t′ − t|·L`
+>   (`t′` = arc fraction of the edge point nearest the cursor, `L` the edge length; rounded to 0.1 mm, at least 1 mm), the
+>   centre stays; **mouth centre** → `t = t′` and the point moves by the same displacement as the centre, so the dart
+>   slides along its edge without changing shape. The result is `transient.dartOverride = {pieceId, index, dart, ok}`,
+>   `ok` meaning `checkDarts` does not reject dart `index` of the piece with that dart in place.
+> - `onUp`: `ok` → `commit('dart:move')`. Otherwise **nothing is committed**: the dart stays where it was and the status
+>   says `That would make the dart invalid — it stays where it was` (warn). An invalid drag previews in the error colour
+>   until release.
+> - `onDelete`: the selected dart → `commit('dart:delete')` and `selection.dart = null` (the tool returns `false` when no
+>   dart is selected, so the editor's fallback applies). `cancel` ends a drag or clears the edge marker.
+> - Undo labels: `dart:add`, `dart:move`, `dart:delete` (editor, undoable; rows of the §11.12.2 table).
+> - Hit testing (`hit.js`, new step 2b after the bezier handles, same `HIT_TOL_PX.handle`): the kinds `'dartApex'`,
+>   `'dartEnd'` (`which: 'a'|'b'`) and `'dartMouth'`, with `index` = the dart's index, are produced **only while the tool is
+>   `'dart'`**; vertices of the selected pieces still win over them.
+> - Drawing (`render2d.js`): every dart, valid or not (the working copy carries `dartOverride`, so a drag previews live),
+>   is drawn as its legs A→point→B (1.5 px, `STYLE.internalDart`), a wedge filled at 15 % in the same orange, and the drill
+>   mark (a ring with a cross, radius `max(2 px, 2·pxPerMm)`) at `dartDrillPoint`. A dart `checkDarts` rejects is drawn in
+>   `STYLE.seamWarn` with a red wedge. On a fold piece the mirrored copy is drawn dashed (`[5, 4]`). The selected dart shows
+>   four square handles (point, A, B, centre), whichever tool is active.
+> - Hint: `Dart: click an edge to add a dart · drag its point, a corner (width) or the middle of the mouth (slide) · Delete removes`.
+> - Toolbar and keyboard: `<button id="tool-dart" class="tool" data-tool="dart" title="Dart (T)">Dart</button>` after
+>   `tool-notch` (one id more than the 135 of §11.1.1), and the key `T` → `{action:'tool', tool:'dart'}` (guide label
+>   `Dart tool`). `'dart'` follows `'notch'` in `EDITOR_TOOLS`, `pattern.TOOL_NAMES` and `core/store.js` `TOOL_NAMES`, and in
+>   the `setTool` fallback list of the automation API.
+> - Every tool that selects a piece also clears `selection.dart` (where it clears `notch`), so a dart selected on one
+>   piece never survives selecting another.
+
 ---
 
 ### 11.11 `seams.js` and `validate.js`
@@ -5158,6 +5199,7 @@ export { runSelfTest } from './selftest.js';
 | `piece:add`, `piece:delete`, `piece:duplicate`, `piece:move`, `piece:splitEdge`, `piece:foldSet`, `piece:foldClear`, `piece:name`, `piece:cutQty`, `piece:layer`, `piece:meshSpacing`, `piece:allowance`, `piece:fabric`, `piece:simulate`, `piece:exportHidden`, `piece:placement`, `piece:grade`, `piece:pinnedEdges` | editor / pieces panel | yes |
 | `vertex:move`, `vertex:insert`, `vertex:delete`, `handle:move`, `edge:type`, `edge:label`, `edge:allowance` | editor | yes |
 | `notch:add`, `notch:move`, `notch:delete`, `notch:kind` | editor | yes |
+| `dart:add`, `dart:move`, `dart:delete` | editor (Dart tool, 11.10.10) | yes |
 | `seam:add`, `seam:delete`, `seam:flip` | editor / pieces panel | yes |
 | `grainline:set` | editor | yes |
 | `body:param`, `body:preset`, `body:fitSize` | body panel | yes |

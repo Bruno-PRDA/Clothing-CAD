@@ -51,7 +51,7 @@ export function createSeamTool(ctx) {
         const existing = seamOfEdge(doc, hit.pieceId, hit.index, hit.mirror === true);
         if (existing) {
           const ease = seamEase(doc, existing);
-          ctx.editor.select({ seams: [existing.id], pieces: [hit.pieceId], edge: hit.index, edgeMirror: hit.mirror === true });
+          ctx.editor.select({ seams: [existing.id], pieces: [hit.pieceId], edge: hit.index, edgeMirror: hit.mirror === true, dart: null });
           ctx.setSeamEase({
             a: existing.a,
             b: existing.b,

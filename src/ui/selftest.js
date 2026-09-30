@@ -315,6 +315,7 @@ export async function runSelfTest() {
       ['tool-split', { action: 'tool', tool: 'split' }],
       ['tool-seam', { action: 'tool', tool: 'seam' }],
       ['tool-notch', { action: 'tool', tool: 'notch' }],
+      ['tool-dart', { action: 'tool', tool: 'dart' }],
       ['tool-grainline', { action: 'tool', tool: 'grainline' }],
       ['tool-measure', { action: 'tool', tool: 'measure' }],
       ['btn-mirror', { action: 'mirror' }],
@@ -365,6 +366,7 @@ export async function runSelfTest() {
     want('Space', captureActions(bus, () => {
       window.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', code: 'Space', bubbles: true, cancelable: true }));
     }), { action: 'togglePlay' });
+    want('T', press('t'), { action: 'tool', tool: 'dart' });
     want('D', press('d'), { action: 'drape' });
     want('R', press('r'), { action: 'reset' });
     want('Ctrl+Z', press('z', { ctrlKey: true }), { action: 'undo' });

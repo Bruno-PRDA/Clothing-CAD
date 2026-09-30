@@ -3,7 +3,7 @@
 import { hashString } from '../core/ids.js';
 import { resolveFabric } from '../core/fabrics.js';
 import {
-  pointAtArcFraction, tangentAtArcFraction, offsetOutline, mirrorPoint, bbox as bboxOf,
+  pointAtArcFraction, tangentAtArcFraction, offsetOutline, mirrorPoint, bbox as bboxOf, checkDarts, dartMouth, dartDrillPoint,
 } from '../geometry/index.js';
 import { flattenCache, notchPoint } from './hit.js';
 import { seamEase, EASE_WARN_PCT } from './seams.js';
@@ -81,7 +81,8 @@ function applyOverrides(piece, t) {
   const ho = t.handleOverride && t.handleOverride.pieceId === piece.id ? t.handleOverride : null;
   const no = t.notchOverride && t.notchOverride.pieceId === piece.id ? t.notchOverride : null;
   const go = t.grainPreview && t.grainPreview.pieceId === piece.id ? t.grainPreview : null;
-  if (!moved && !vo && !ho && !no && !go) return piece;
+  const dov = t.dartOverride && t.dartOverride.pieceId === piece.id ? t.dartOverride : null;
+  if (!moved && !vo && !ho && !no && !go && !dov) return piece;
 
   const copy = /** @type {Piece} */ ({
     ...piece,
@@ -149,6 +150,7 @@ function applyOverrides(piece, t) {
   if (go) {
     copy.grainline = { a: [go.a[0], go.a[1]], b: [go.b[0], go.b[1]] };
   }
+  if (dov && copy.darts[dov.index]) copy.darts[dov.index] = { ...dov.dart, apex: [dov.dart.apex[0], dov.dart.apex[1]] };
   return copy;
 }
 
@@ -224,6 +226,32 @@ function ring(ctx, x, y, r) {
   ctx.beginPath();
   ctx.arc(x, y, r, 0, Math.PI * 2);
   ctx.stroke();
+}
+
+/**
+ * One dart: the wedge lightly filled, the legs, and the drill-hole mark. `bad` darts are drawn in the warning colour.
+ * @param {CanvasRenderingContext2D} ctx @param {View} view @param {Vec2} a @param {Vec2} b @param {Vec2} apex
+ * @param {boolean} bad @param {number|null} foldX mirror copy when not null
+ */
+function drawDart(ctx, view, a, b, apex, bad, foldX) {
+  const A = view.worldToScreen(...maybeMirror(a, foldX));
+  const B = view.worldToScreen(...maybeMirror(b, foldX));
+  const X = view.worldToScreen(...maybeMirror(apex, foldX));
+  const colour = bad ? STYLE.seamWarn : STYLE.internalDart;
+  ctx.save();
+  if (foldX !== null) ctx.setLineDash([5, 4]);
+  ctx.fillStyle = withAlpha(bad ? '#ff5a5a' : '#ff9f43', 0.15);
+  ctx.beginPath(); ctx.moveTo(A[0], A[1]); ctx.lineTo(X[0], X[1]); ctx.lineTo(B[0], B[1]); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = colour;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(A[0], A[1]); ctx.lineTo(X[0], X[1]); ctx.lineTo(B[0], B[1]); ctx.stroke();
+  const D = view.worldToScreen(...maybeMirror(dartDrillPoint(a, b, apex), foldX));
+  const r = Math.max(2, 2 * view.get().pxPerMm);
+  ctx.setLineDash([]);
+  ctx.lineWidth = 1;
+  ring(ctx, D[0], D[1], r);
+  ctx.beginPath(); ctx.moveTo(D[0] - r, D[1]); ctx.lineTo(D[0] + r, D[1]); ctx.moveTo(D[0], D[1] - r); ctx.lineTo(D[0], D[1] + r); ctx.stroke();
+  ctx.restore();
 }
 
 /** @param {string} hex @param {number} alpha @returns {string} */
@@ -558,6 +586,14 @@ export function render(ctx, view, doc, ui) {
       ctx.stroke();
       ctx.restore();
     }
+
+    const dartBad = checkDarts(piece).bad;
+    for (let k = 0; k < (piece.darts || []).length; k++) {
+      const dt = piece.darts[k];
+      if (!dt || !(dt.edge >= 0 && dt.edge < n) || !Array.isArray(dt.apex)) continue;
+      const m = dartMouth(piece, dt);
+      for (const fx of (foldX !== null ? [null, foldX] : [null])) drawDart(ctx, view, m.a, m.b, dt.apex, dartBad.has(k), fx);
+    }
   }
 
   // ---- 7. graded ghost -----------------------------------------------------------------------------
@@ -625,6 +661,22 @@ export function render(ctx, view, doc, ui) {
         ctx.strokeStyle = STYLE.selection;
         ctx.lineWidth = 2;
         ring(ctx, s[0], s[1], 7);
+      }
+    }
+    if (sel.dart && sel.dart.pieceId === piece.id && piece.darts && piece.darts[sel.dart.index]) {
+      const dt = piece.darts[sel.dart.index];
+      const n2 = piece.vertices.length;
+      if (dt.edge >= 0 && dt.edge < n2 && Array.isArray(dt.apex)) {
+        const m = dartMouth(piece, dt);
+        const c = pointAtArcFraction(piece.vertices[dt.edge], piece.edges[dt.edge], piece.vertices[(dt.edge + 1) % n2], dt.t);
+        ctx.fillStyle = STYLE.handleFill;
+        ctx.strokeStyle = STYLE.selection;
+        ctx.lineWidth = 1;
+        for (const w of [dt.apex, m.a, m.b, c]) {
+          const s = view.worldToScreen(w[0], w[1]);
+          ctx.fillRect(s[0] - 3.5, s[1] - 3.5, 7, 7);
+          ctx.strokeRect(s[0] - 3.5, s[1] - 3.5, 7, 7);
+        }
       }
     }
     // bezier handles

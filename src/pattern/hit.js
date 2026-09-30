@@ -1,6 +1,6 @@
 // src/pattern/hit.js — hit testing in screen px (SPEC 11.9.3). Pure apart from the WeakMap flatten cache.
 
-import { flattenPiece, pointAtArcFraction, distToPolyline, pointInPolygon, mirrorPoint } from '../geometry/index.js';
+import { flattenPiece, pointAtArcFraction, distToPolyline, pointInPolygon, mirrorPoint, dartMouth } from '../geometry/index.js';
 
 /** @typedef {import('../core/types.js').Vec2} Vec2 */
 /** @typedef {import('../core/types.js').Piece} Piece */
@@ -15,7 +15,7 @@ export const FLATTEN_TOL_MM = 0.25;
 
 /**
  * @typedef {Object} Hit
- * @property {'vertex'|'handle'|'notch'|'grainline'|'edge'|'piece'} kind
+ * @property {'vertex'|'handle'|'notch'|'grainline'|'edge'|'piece'|'dartApex'|'dartEnd'|'dartMouth'} kind
  * @property {string} pieceId
  * @property {number} index
  * @property {'c1'|'c2'|'a'|'b'} [which]
@@ -196,6 +196,31 @@ export function hitTest(doc, view, px, py, opts) {
           const d = Math.hypot(s[0] - px, s[1] - py);
           if (d <= HIT_TOL_PX.handle && (!best || d < best.dist_px)) {
             best = { kind: 'handle', pieceId: piece.id, index: e, which: /** @type {'c1'|'c2'} */ (which), mirror: false, dist_px: d };
+          }
+        }
+      }
+    }
+  }
+  if (best) return best;
+
+  // ---- 2b. dart handles (dart tool only): the point, the two mouth corners, the mouth centre ------------------
+  if (tool === 'dart') {
+    for (let i = last; i >= 0; i--) {
+      const piece = pieces[i];
+      if (!piece || !Array.isArray(piece.darts)) continue;
+      const n = piece.vertices.length;
+      for (let k = 0; k < piece.darts.length; k++) {
+        const dt = piece.darts[k];
+        if (!dt || !(dt.edge >= 0 && dt.edge < n) || !Array.isArray(dt.apex)) continue;
+        const m = dartMouth(piece, dt);
+        const c = pointAtArcFraction(piece.vertices[dt.edge], piece.edges[dt.edge], piece.vertices[(dt.edge + 1) % n], dt.t);
+        /** @type {[string, Vec2, ('a'|'b'|undefined)][]} */
+        const handles = [['dartApex', dt.apex, undefined], ['dartEnd', m.a, 'a'], ['dartEnd', m.b, 'b'], ['dartMouth', c, undefined]];
+        for (const [kind, w, which] of handles) {
+          const s = view.worldToScreen(w[0], w[1]);
+          const d = Math.hypot(s[0] - px, s[1] - py);
+          if (d <= HIT_TOL_PX.handle && (!best || d < best.dist_px)) {
+            best = /** @type {Hit} */ ({ kind, pieceId: piece.id, index: k, mirror: false, dist_px: d, ...(which ? { which } : {}) });
           }
         }
       }

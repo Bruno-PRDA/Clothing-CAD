@@ -53,7 +53,7 @@ export function createDrawTool(ctx) {
       return false;
     }
     reset();
-    ctx.editor.select({ pieces: [id], vertex: null, edge: null, notch: null, seamId: null });
+    ctx.editor.select({ pieces: [id], vertex: null, edge: null, notch: null, dart: null, seamId: null });
     ctx.status('Piece created');
     return true;
   }

@@ -59,7 +59,7 @@ export function createEditTool(ctx) {
       const hit = e.hit;
       if (!hit) return;
       if (hit.kind === 'vertex') {
-        ctx.editor.select({ pieces: [hit.pieceId], vertex: hit.index, edge: null, notch: null });
+        ctx.editor.select({ pieces: [hit.pieceId], vertex: hit.index, edge: null, notch: null, dart: null });
         const piece = pieceOf(hit.pieceId);
         state = 'DRAG_VERTEX';
         drag = { pieceId: hit.pieceId, index: hit.index, start: piece ? piece.vertices[hit.index].slice() : [0, 0], x0: e.px, y0: e.py };
@@ -83,17 +83,17 @@ export function createEditTool(ctx) {
               remapAfterEdgeChange(d, pieceId, res.map);
               d.pieces[i] = res.piece;
             });
-            ctx.editor.select({ pieces: [pieceId], vertex: edge + 1, edge: null, notch: null });
+            ctx.editor.select({ pieces: [pieceId], vertex: edge + 1, edge: null, notch: null, dart: null });
           } catch (err) {
             ctx.status(err && err.message ? err.message : 'Could not insert a vertex', 'warn');
           }
           return;
         }
-        ctx.editor.select({ pieces: [hit.pieceId], edge: hit.index, edgeMirror: hit.mirror === true, vertex: null, notch: null });
+        ctx.editor.select({ pieces: [hit.pieceId], edge: hit.index, edgeMirror: hit.mirror === true, vertex: null, notch: null, dart: null });
         return;
       }
       if (hit.kind === 'piece') {
-        ctx.editor.select({ pieces: [hit.pieceId], vertex: null, edge: null, notch: null });
+        ctx.editor.select({ pieces: [hit.pieceId], vertex: null, edge: null, notch: null, dart: null });
       }
     },
 

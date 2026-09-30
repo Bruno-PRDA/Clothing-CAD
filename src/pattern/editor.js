@@ -18,6 +18,7 @@ import { createEditTool } from './tools/edit.js';
 import { createSplitTool } from './tools/split.js';
 import { createSeamTool } from './tools/seam.js';
 import { createNotchTool } from './tools/notch.js';
+import { createDartTool } from './tools/dart.js';
 import { createGrainlineTool } from './tools/grainline.js';
 import { createMeasureTool } from './tools/measure.js';
 
@@ -29,10 +30,10 @@ import { createMeasureTool } from './tools/measure.js';
 /** @typedef {import('../core/types.js').Issue} Issue */
 /** @typedef {import('../core/types.js').ProjectDoc} ProjectDoc */
 /** @typedef {import('./hit.js').Hit} Hit */
-/** @typedef {'select'|'draw'|'edit'|'split'|'seam'|'notch'|'grainline'|'measure'} ToolName */
+/** @typedef {'select'|'draw'|'edit'|'split'|'seam'|'notch'|'dart'|'grainline'|'measure'} ToolName */
 
 /** Tool names in toolbar order. */
-export const EDITOR_TOOLS = Object.freeze(['select', 'draw', 'edit', 'split', 'seam', 'notch', 'grainline', 'measure']);
+export const EDITOR_TOOLS = Object.freeze(['select', 'draw', 'edit', 'split', 'seam', 'notch', 'dart', 'grainline', 'measure']);
 
 /** Movement in CSS px below which a down/up pair is a click, not a drag. */
 export const DRAG_THRESHOLD_PX = 3;
@@ -688,6 +689,7 @@ export function createEditor(canvas, store, bus, opts = {}) {
     split: createSplitTool(ctx),
     seam: createSeamTool(ctx),
     notch: createNotchTool(ctx),
+    dart: createDartTool(ctx),
     grainline: createGrainlineTool(ctx),
     measure: createMeasureTool(ctx),
   };

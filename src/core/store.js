@@ -53,7 +53,7 @@ import { EVENT } from './events.js';
  */
 
 export const HISTORY_LIMIT = 100;
-export const TOOL_NAMES = Object.freeze(['select', 'draw', 'edit', 'split', 'seam', 'notch', 'grainline', 'measure']);
+export const TOOL_NAMES = Object.freeze(['select', 'draw', 'edit', 'split', 'seam', 'notch', 'dart', 'grainline', 'measure']);
 
 /** @returns {TransientState} a fresh default TransientState */
 export function makeTransient() {

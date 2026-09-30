@@ -744,5 +744,98 @@ export async function runSelfTest() {
     return 'sewn ease, translate, split, delete, reflect, validate';
   });
 
+  await run('dart-tool', (h) => {
+    const id = addRect(h, -100, -150, 200, 300);
+    h.editor.setTool('dart');
+    clickWorld(h, 0, -150);
+    let p = pieceOf(h.doc(), id);
+    assert(Array.isArray(p.darts) && p.darts.length === 1, 'one dart added, got ' + (p.darts || []).length);
+    const dt = p.darts[0];
+    assert(dt.edge === 0, 'dart on the bottom edge, got edge ' + dt.edge);
+    near(dt.t, 0.5, 0.01, 'dart centred where clicked');
+    near(dt.width_mm, 20, 1e-9, 'default width');
+    near(Math.hypot(dt.apex[0], dt.apex[1] + 150), 80, 0.5, 'default length');
+    assert(dt.apex[1] > -150, 'the point is inside the piece');
+    dragWorld(h, dt.apex, [10, -40]);
+    p = pieceOf(h.doc(), id);
+    near(p.darts[0].apex[0], 10, 1e-6, 'apex x after the drag');
+    near(p.darts[0].apex[1], -40, 1e-6, 'apex y after the drag');
+    dragWorld(h, [10, -40], [10, 280]);
+    p = pieceOf(h.doc(), id);
+    near(p.darts[0].apex[1], -40, 1e-6, 'a drag outside the piece must not commit');
+    h.editor.deleteSelection();
+    assert(pieceOf(h.doc(), id).darts.length === 0, 'Delete removes the selected dart');
+    return 'add, drag, refuse, delete';
+  });
+
+  await run('dart-tool-handles', (h) => {
+    /** @type {any[]} */
+    const warnings = [];
+    h.bus.on(EVENT.UI_STATUS, (m) => { if (m.level !== 'info') warnings.push(m); });
+    const id = addRect(h, -100, -150, 200, 300);
+    const other = addRect(h, 300, -150, 200, 300);
+    h.editor.setTool('dart');
+    clickWorld(h, 0, -150);
+    const view = h.editor.view;
+    const hitAt = (w, tool) => {
+      const s = view.worldToScreen(w[0], w[1]);
+      return hitTest(h.doc(), view, s[0], s[1], { selection: h.editor.getSelection(), tool });
+    };
+    const dt0 = pieceOf(h.doc(), id).darts[0];
+    const hApex = hitAt(dt0.apex, 'dart');
+    assert(hApex && hApex.kind === 'dartApex' && hApex.index === 0, 'the point is a dartApex handle, got ' + JSON.stringify(hApex));
+    const hEnd = hitAt([10, -150], 'dart');
+    assert(hEnd && hEnd.kind === 'dartEnd' && hEnd.which === 'b', 'a mouth corner is a dartEnd handle, got ' + JSON.stringify(hEnd));
+    const hMid = hitAt([0, -150], 'dart');
+    assert(hMid && hMid.kind === 'dartMouth', 'the mouth centre is a dartMouth handle, got ' + JSON.stringify(hMid));
+    const hOther = hitAt(dt0.apex, 'select');
+    assert(!hOther || !/^dart/.test(hOther.kind), 'dart handles are hit only by the dart tool, got ' + JSON.stringify(hOther));
+
+    dragWorld(h, [0, -150], [40, -150]);
+    let dt = pieceOf(h.doc(), id).darts[0];
+    near(dt.t, 0.7, 1e-6, 'the mouth centre slides the dart');
+    near(dt.apex[0], 40, 1e-6, 'the point slides with the mouth');
+    near(dt.apex[1], -70, 1e-6, 'the point keeps its depth');
+    near(dt.width_mm, 20, 1e-9, 'sliding keeps the width');
+
+    dragWorld(h, [50, -150], [60, -150]);
+    dt = pieceOf(h.doc(), id).darts[0];
+    near(dt.width_mm, 40, 0.11, 'a corner sets the width symmetrically');
+    near(dt.t, 0.7, 1e-6, 'a corner drag keeps the centre');
+
+    dragWorld(h, [60, -150], [99.5, -150]);
+    near(pieceOf(h.doc(), id).darts[0].width_mm, 40, 0.11, 'a corner drag into the vertex must not commit');
+    assert(warnings.some((m) => /invalid/.test(m.text)), 'a refused drag says so, got ' + JSON.stringify(warnings));
+
+    const invalid = { id: 'bad', edge: 0, t: 0.3, width_mm: 20, apex: [0, 400] };
+    h.store.update((d) => { d.pieces.find((x) => x.id === id).darts.push(invalid); }, 'test:bad dart');
+    h.editor.select({ pieces: [id], dart: { pieceId: id, index: 1 } });
+    h.editor.renderNow();
+    assert(!warnings.some((m) => /render failed/.test(m.text)), 'rendering darts (one invalid, one selected) must not fail: ' + JSON.stringify(warnings));
+    h.store.undo();
+
+    h.editor.select({ pieces: [id], dart: { pieceId: id, index: 0 } });
+    h.editor.setTool('select');
+    clickWorld(h, 400, 0);
+    const sel = h.editor.getSelection();
+    assert(sel.pieces.length === 1 && sel.pieces[0] === other && sel.dart === null, 'selecting another piece drops the dart selection');
+
+    const fold = addRect(h, 50, 500, 100, 100);
+    h.editor.select({ pieces: [fold], edge: 3 });
+    h.editor.mirror();
+    h.editor.setTool('dart');
+    const fp = pieceOf(h.doc(), fold);
+    const fv = fp.vertices[fp.foldEdge];
+    const fw = fp.vertices[(fp.foldEdge + 1) % fp.vertices.length];
+    const before = warnings.length;
+    clickWorld(h, (fv[0] + fw[0]) / 2, (fv[1] + fw[1]) / 2);
+    assert(pieceOf(h.doc(), fold).darts.length === 0, 'no dart on the fold edge');
+    assert(warnings.length === before + 1 && /fold/.test(warnings[warnings.length - 1].text), 'the fold edge refusal is reported');
+
+    const dartLabels = h.labels.filter((l) => /^dart:/.test(l));
+    assert(dartLabels.join(',') === 'dart:add,dart:move,dart:move', 'undo labels, got ' + dartLabels.join(','));
+    return 'handles, slide, width, refusal, render, selection, fold';
+  });
+
   return results;
 }

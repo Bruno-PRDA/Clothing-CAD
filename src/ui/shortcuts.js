@@ -19,6 +19,7 @@ export const SHORTCUTS = Object.freeze([
   { key: 'x', ctrl: false, shift: false, action: 'tool', payload: { action: 'tool', tool: 'split' } },
   { key: 's', ctrl: false, shift: false, action: 'tool', payload: { action: 'tool', tool: 'seam' } },
   { key: 'n', ctrl: false, shift: false, action: 'tool', payload: { action: 'tool', tool: 'notch' } },
+  { key: 't', ctrl: false, shift: false, action: 'tool', payload: { action: 'tool', tool: 'dart' } },
   { key: 'g', ctrl: false, shift: false, action: 'tool', payload: { action: 'tool', tool: 'grainline' } },
   { key: 'm', ctrl: false, shift: false, action: 'tool', payload: { action: 'tool', tool: 'measure' } },
   { key: 'm', ctrl: false, shift: true, action: 'mirror', payload: { action: 'mirror' } },

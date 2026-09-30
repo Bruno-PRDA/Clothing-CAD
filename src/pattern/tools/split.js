@@ -53,7 +53,7 @@ export function createSplitTool(ctx) {
         return;
       }
       if (removed > 0) ctx.status('Seam removed by split (re-create it on the half you need)', 'warn');
-      ctx.editor.select({ pieces: [pieceId], vertex: edge + 1, edge: null, notch: null });
+      ctx.editor.select({ pieces: [pieceId], vertex: edge + 1, edge: null, notch: null, dart: null });
       marker = null;
     },
 

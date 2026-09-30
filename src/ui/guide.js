@@ -34,7 +34,7 @@ const DROP = Object.freeze(['SCRIPT', 'STYLE', 'IFRAME', 'OBJECT', 'EMBED', 'IMG
  */
 const SHORTCUT_LABELS = Object.freeze({
   'tool:select': 'Select tool', 'tool:draw': 'Draw tool', 'tool:edit': 'Edit points tool', 'tool:split': 'Split edge tool',
-  'tool:seam': 'Seam tool', 'tool:notch': 'Notch tool', 'tool:grainline': 'Grainline tool', 'tool:measure': 'Measure tool',
+  'tool:seam': 'Seam tool', 'tool:notch': 'Notch tool', 'tool:dart': 'Dart tool', 'tool:grainline': 'Grainline tool', 'tool:measure': 'Measure tool',
   mirror: 'Set or clear the fold edge of the selected piece',
   togglePlay: 'Play or pause the simulation',
   reset: 'Reset the simulation',

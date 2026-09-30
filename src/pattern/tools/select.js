@@ -53,6 +53,7 @@ export function createSelectTool(ctx) {
           edgeMirror: hit.mirror === true,
           vertex: hit.kind === 'vertex' ? hit.index : null,
           notch: hit.kind === 'notch' ? hit.index : null,
+          dart: null,
           seamId: seam ? seam.id : null,
         };
         if (e.shift) {
@@ -129,7 +130,7 @@ export function createSelectTool(ctx) {
           }
         }
         if (moved || !boxShift) {
-          ctx.editor.select({ pieces: inside, vertex: null, edge: null, notch: null, seamId: null }, { additive: boxShift });
+          ctx.editor.select({ pieces: inside, vertex: null, edge: null, notch: null, dart: null, seamId: null }, { additive: boxShift });
         }
       }
       void e;

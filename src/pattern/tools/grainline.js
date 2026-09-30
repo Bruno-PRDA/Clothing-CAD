@@ -40,7 +40,7 @@ export function createGrainlineTool(ctx) {
         preview = { pieceId: hit.pieceId, a: piece.grainline.a, b: piece.grainline.b };
         return;
       }
-      ctx.editor.select({ pieces: [hit.pieceId], vertex: null, edge: null, notch: null });
+      ctx.editor.select({ pieces: [hit.pieceId], vertex: null, edge: null, notch: null, dart: null });
       const a = ctx.snap([e.x_mm, e.y_mm], { ctrl: e.ctrl });
       state = 'DRAG_NEW';
       drag = { pieceId: hit.pieceId, a };

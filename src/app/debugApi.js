@@ -718,7 +718,7 @@ export function installDebugApi(ctx, wiring) {
 
     /** @param {string} name */
     setTool(name) {
-      const names = patternMod.TOOL_NAMES || ['select', 'draw', 'edit', 'split', 'seam', 'notch', 'grainline', 'measure'];
+      const names = patternMod.TOOL_NAMES || ['select', 'draw', 'edit', 'split', 'seam', 'notch', 'dart', 'grainline', 'measure'];
       if (typeof name !== 'string' || names.indexOf(name) < 0) {
         throw fail('E_BAD_ARG', 'setTool: unknown tool "' + String(name) + '"');
       }

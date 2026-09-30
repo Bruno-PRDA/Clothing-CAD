@@ -29,7 +29,7 @@ export {
 } from './seams.js';
 
 /** @type {ReadonlyArray<ToolName>} */
-export const TOOL_NAMES = Object.freeze(['select', 'draw', 'edit', 'split', 'seam', 'notch', 'grainline', 'measure']);
+export const TOOL_NAMES = Object.freeze(['select', 'draw', 'edit', 'split', 'seam', 'notch', 'dart', 'grainline', 'measure']);
 
 /** Status-bar hint per tool (SPEC 11.12.1). @type {Readonly<Record<string, string>>} */
 export const TOOL_HINTS = Object.freeze({
@@ -39,6 +39,7 @@ export const TOOL_HINTS = Object.freeze({
   split: 'Split: click an edge to split it at the cursor',
   seam: 'Seam: click edge A (click an existing seam to select it)',
   notch: 'Notch: click an edge · Shift = double notch · drag to move · Delete removes',
+  dart: 'Dart: click an edge to add a dart · drag its point, a corner (width) or the middle of the mouth (slide) · Delete removes',
   grainline: 'Grainline: drag inside a piece (arrow points a → b) · Shift = 45° · drag an end to adjust',
   measure: 'Measure: drag to measure · click an edge for its length',
 });

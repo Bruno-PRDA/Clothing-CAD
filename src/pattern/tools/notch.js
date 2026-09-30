@@ -36,7 +36,7 @@ export function createNotchTool(ctx) {
       const hit = e.hit;
       if (!hit) return;
       if (hit.kind === 'notch') {
-        ctx.editor.select({ pieces: [hit.pieceId], notch: hit.index, vertex: null, edge: null });
+        ctx.editor.select({ pieces: [hit.pieceId], notch: hit.index, vertex: null, edge: null, dart: null });
         state = 'DRAG_NOTCH';
         drag = { pieceId: hit.pieceId, index: hit.index, x0: e.px, y0: e.py };
         return;
@@ -53,7 +53,7 @@ export function createNotchTool(ctx) {
         p.notches.push({ edge, t, kind });
         index = p.notches.length - 1;
       });
-      if (index >= 0) ctx.editor.select({ pieces: [pieceId], notch: index, vertex: null, edge: null });
+      if (index >= 0) ctx.editor.select({ pieces: [pieceId], notch: index, vertex: null, edge: null, dart: null });
       marker = null;
     },
 
