@@ -3664,8 +3664,12 @@ export function seamEaseDrift(doc: ProjectDoc, sizeName: string): Issue[]
 > vertices (step 5 therefore maps every `darts[k].apex` too; a plain deep copy when `sx === sy === 1`). No vertex rule
 > (step 6) touches an apex. `seamEasePct` and so `seamEaseDrift`, the status bar and the Sizes panel compare *sewn*
 > lengths: `sewnLength(piece, e)` (§5.10), the arc length of edge `e` minus the widths of its valid darts, which is
-> `edgeLength` for an edge without darts, so pieces without darts grade and drift exactly as before. A 200 mm edge with a
-> 20 mm dart sewn to a plain 180 mm edge reads ease 0% in every size.
+> `edgeLength` for an edge without darts, so pieces without darts grade and drift exactly as before. Because
+> `width_mm` stays fixed while edges scale with `T`, a darted side and a plain side match only at the base size: a
+> 200 mm edge with a 20 mm dart sewn to a plain 180 mm edge reads ease 0% at the base size, then drifts with the scale
+> `s` (sewn lengths `200·s − 20` and `180·s`: about 1.0% at `s = 1.1`, 2.6% at `s = 1.3`), and `seamEaseDrift` reports it
+> past 3 percentage points. Two sides whose darts have equal widths and whose edges grade identically stay matched in
+> every size; that is what keeps a garment's darted seams (the dress's waist seams) matched.
 
 ### 10.3 `src/export/svg.js` — 1:1 SVG
 
