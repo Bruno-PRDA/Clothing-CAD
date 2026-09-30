@@ -5057,6 +5057,10 @@ Automation: `__app.pattern.setFold(pieceId, edge|null)` (section 12) calls the s
 >   centre stays; **mouth centre** → `t = t′` and the point moves by the same displacement as the centre, so the dart
 >   slides along its edge without changing shape. The result is `transient.dartOverride = {pieceId, index, dart, ok}`,
 >   `ok` meaning `checkDarts` does not reject dart `index` of the piece with that dart in place.
+> - An edit is refused if it makes the edited dart **or any other dart** invalid (`acceptsDartEdit(before, k, dart)`: `checkDarts`
+>   blames the later dart of an overlapping or crossing pair, so the edited dart alone is not enough; darts that were already
+>   invalid elsewhere do not block it). The same helper gates `proposeDart`, and both are exported by `pattern/index.js`
+>   for the Pieces panel's numeric edits.
 > - `onUp`: `ok` → `commit('dart:move')`. Otherwise **nothing is committed**: the dart stays where it was and the status
 >   says `That would make the dart invalid — it stays where it was` (warn). An invalid drag previews in the error colour
 >   until release.

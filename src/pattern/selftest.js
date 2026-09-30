@@ -9,6 +9,8 @@ import { validateDoc } from './validate.js';
 import { seamEase, seamEaseOf, formatEase, edgeLengthOf, sewnLengthOf } from './seams.js';
 import { hitTest } from './hit.js';
 import { STYLE } from './render2d.js';
+import { acceptsDartEdit } from './tools/dart.js';
+import { checkDarts } from '../geometry/index.js';
 
 /** @typedef {import('../core/types.js').SelfTestResult} SelfTestResult */
 /** @typedef {import('../core/types.js').Vec2} Vec2 */
@@ -835,6 +837,39 @@ export async function runSelfTest() {
     const dartLabels = h.labels.filter((l) => /^dart:/.test(l));
     assert(dartLabels.join(',') === 'dart:add,dart:move,dart:move', 'undo labels, got ' + dartLabels.join(','));
     return 'handles, slide, width, refusal, render, selection, fold';
+  });
+
+  await run('dart-edit-refused-when-it-breaks-another', async (h) => {
+    /** @type {any[]} */
+    const warnings = [];
+    h.bus.on(EVENT.UI_STATUS, (m) => { if (m.level !== 'info') warnings.push(m); });
+    const id = addRect(h, -100, -150, 200, 300);
+    h.store.update((d) => {
+      d.pieces[0].darts = [
+        { id: 'd0', edge: 0, t: 0.3, width_mm: 20, apex: [-40, -70] },
+        { id: 'd1', edge: 0, t: 0.7, width_mm: 20, apex: [40, -70] },
+      ];
+    }, 'test:two darts');
+    const piece = pieceOf(h.doc(), id);
+    const [d0, d1] = piece.darts;
+    const moved = { ...d0, t: 0.7, apex: [40, -70] };
+    assert(acceptsDartEdit(piece, 0, moved) === false, 'sliding dart 0 onto dart 1 must be refused');
+    assert(acceptsDartEdit(piece, 1, { ...d1, t: 0.3, apex: [-40, -70] }) === false, 'sliding dart 1 onto dart 0 must be refused');
+    assert(acceptsDartEdit(piece, 0, { ...d0, apex: [-40, -60] }) === true, 'a harmless edit of dart 0 is accepted');
+    const withBad = { ...piece, darts: [...piece.darts, { id: 'd2', edge: 0, t: 0.5, width_mm: 20, apex: [0, 400] }] };
+    assert(checkDarts(withBad).bad.has(2), 'the third dart is invalid to begin with');
+    assert(acceptsDartEdit(withBad, 0, { ...d0, apex: [-40, -60] }) === true, 'a dart that was already invalid elsewhere does not block an edit');
+
+    const before = JSON.stringify(piece.darts);
+    h.editor.setTool('dart');
+    dragWorld(h, [-40, -150], [40, -150]);
+    assert(JSON.stringify(pieceOf(h.doc(), id).darts) === before, 'the slide onto the other dart must not commit');
+    assert(warnings.some((m) => /invalid/.test(m.text)), 'the refusal is reported, got ' + JSON.stringify(warnings));
+    dragWorld(h, [-40, -150], [-50, -150]);
+    near(pieceOf(h.doc(), id).darts[0].t, 0.25, 1e-6, 'a slide that breaks nothing still commits');
+    const idx = await import('./index.js');
+    assert(idx.acceptsDartEdit === acceptsDartEdit && typeof idx.proposeDart === 'function', 'pattern/index.js re-exports acceptsDartEdit and proposeDart');
+    return 'slide refused both ways, unrelated bad dart tolerated, re-exports';
   });
 
   return results;

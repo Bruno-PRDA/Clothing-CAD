@@ -14,6 +14,8 @@ export {
   makeCcw, snapPoint, clonePieceLocal, EDITOR_TOOLS, DRAG_THRESHOLD_PX, SNAP_VERTEX_PX,
 } from './editor.js';
 
+export { acceptsDartEdit, proposeDart } from './tools/dart.js';
+
 export { createView, docBbox, MIN_PX_PER_MM, MAX_PX_PER_MM, FIT_MARGIN_PX } from './view.js';
 
 export { hitTest, flattenCache, notchPoint, edgeOfSegment, HIT_TOL_PX, FLATTEN_TOL_MM } from './hit.js';

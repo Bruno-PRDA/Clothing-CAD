@@ -21,9 +21,19 @@ function withDart(piece, k, dart) {
   return /** @type {Piece} */ ({ ...piece, darts });
 }
 
-/** @param {Piece} piece @param {number} k @returns {boolean} */
-function dartOk(piece, k) {
-  return !checkDarts(piece).bad.has(k);
+/**
+ * The one rule for changing a dart (dragging, adding, and the Pieces panel's numeric edits): dart k of `before` becomes
+ * `dart` (k = `before.darts.length` appends). Refused when the result leaves dart k invalid OR makes any other dart
+ * invalid that was valid before (checkDarts blames the LATER dart of an overlapping or crossing pair, so testing dart k
+ * alone would let a slide onto an earlier dart through). Darts that were already invalid elsewhere do not block it.
+ * @param {Piece} before @param {number} k @param {Dart} dart @returns {boolean}
+ */
+export function acceptsDartEdit(before, k, dart) {
+  const was = checkDarts(before).bad;
+  const now = checkDarts(withDart(before, k, dart)).bad;
+  if (now.has(k)) return false;
+  for (const j of now) if (!was.has(j)) return false;
+  return true;
 }
 
 /** Edge point at t and the inward normal there. @param {Piece} piece @param {number} e @param {number} t @returns {{p: Vec2, d: Vec2, nIn: Vec2}} */
@@ -62,7 +72,7 @@ export function proposeDart(piece, e, t) {
     for (let len = DART_DEFAULT_LENGTH_MM; len >= DART_MIN_LENGTH_MM; len -= 10) {
       /** @type {Dart} */
       const dart = { id, edge: e, t, width_mm: width, apex: [p[0] + nIn[0] * len, p[1] + nIn[1] * len] };
-      if (dartOk(withDart(piece, k, dart), k)) return dart;
+      if (acceptsDartEdit(piece, k, dart)) return dart;
     }
   }
   return null;
@@ -153,7 +163,7 @@ export function createDartTool(ctx) {
         const dt = piece && piece.darts ? piece.darts[drag.index] : null;
         if (!piece || !dt) return;
         const moved = movedDart(piece, dt, state, [e.x_mm, e.y_mm]);
-        preview = { pieceId: drag.pieceId, index: drag.index, dart: moved, ok: dartOk(withDart(piece, drag.index, moved), drag.index) };
+        preview = { pieceId: drag.pieceId, index: drag.index, dart: moved, ok: acceptsDartEdit(piece, drag.index, moved) };
         return;
       }
       const hit = e.hit;
