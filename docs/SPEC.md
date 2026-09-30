@@ -2047,6 +2047,22 @@ Algorithm of `remeshPiece` (all in mm):
 
 Costs (T-shirt front at h = 15: full outline 480 × 620 mm → V ≈ 1500): step 4 ≈ 2 ms, step 5 ≈ 40 ms, rest < 5 ms. `remeshPiece` must finish in ≤ 200 ms for the largest sample piece (acceptance).
 
+> **Amendment (lead, 2026-09-30) — Darts: meshing.** `seamSampleFractions` returns *sewn* fractions `u` (§3.1
+> amendment "Darts: contracts"): `L` and every `L_i` of the seam component are sewn lengths. The forced samples are the
+> notches (as `edgeToSewn(t)`; a notch inside a mouth is ignored) and the dart mouths (`mouthFractions`) of every edge
+> of the component, this edge's own included, each mapped through the pairing (`u ↦ 1 − u` per reversed link). A
+> uniform fraction within 0.35/n of a forced one is dropped as before, so partners still compute identical `u` sets.
+> In step 3 each `u` maps back through `sewnToEdge`. A plain `u` gives one point. A `u` that is a mouth of one of the
+> edge's own valid darts gives A, the leg A → apex, the apex, the leg apex → B, and B, in that order along the
+> boundary (the fold copy is mirrored and walked backwards like every other sample). Both legs are sampled uniformly
+> with `nLeg = max(2, ceil(max(|A − apex|, |B − apex|) / h))` segments and share the apex vertex.
+> `edgeVerts[m][e]` lists A and B both, so the step-9 invariant becomes `F_e.length +` the number of the edge's own
+> valid darts. `edgeFrac[m][e]` gives each listed vertex's `u` (A and B share one). `dartVerts[m][k] = {a, b}` lists
+> dart k's leg ids from the mouth to the apex (equal lengths, same last id), with empty arrays for an ignored dart and
+> `dartVerts[1] = []` for non-fold pieces. `notchVerts` takes the edge sample nearest `edgeToSewn(t)`. A dart that
+> `checkDarts` rejects is left out of the mesh, and each of its error issues is recorded as the warning
+> `'dart-ignored: ' + message`. Pieces without darts mesh exactly as before.
+
 ### 5.7 `offset.js` — seam allowance
 
 ```js

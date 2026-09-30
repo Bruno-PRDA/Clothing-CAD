@@ -1,5 +1,5 @@
-// src/geometry/selftest.js — the 15 cases of SPEC 5.9 plus two regression cases (remesh.allSamples, remesh.sleeve) and the
-// four darts cases of SPEC 5.10.
+// src/geometry/selftest.js — the 15 cases of SPEC 5.9 plus two regression cases (remesh.allSamples, remesh.sleeve), the
+// four darts cases of SPEC 5.10 and the two darted-mesh cases (remesh.dartNarrow, remesh.dartSeam).
 // Pure and DOM-free; this is the only file of src/geometry/ allowed to import ../samples/index.js (as a fixture source).
 import {
   segmentLength, sampleSegment, splitEdge,
@@ -7,7 +7,7 @@ import {
   fullOutline,
   mulberry32,
   delaunay, recoverEdges, buildAdjacency, edgeKey,
-  remeshPiece,
+  remeshPiece, seamSampleFractions,
   offsetPolygon, offsetOutline,
   packRects,
   dartMouth, checkDarts, validDartIndices, sewnLength, edgeToSewn, sewnToEdge, mouthFractions, applyDarts, mirrorPiece, edgeLength,
@@ -576,6 +576,52 @@ function caseDartsCarry() {
   return { name: 'darts.carry', pass: splitOk && mirrorOk, details: `split: edge ${moved.edge} t ${f(moved.t)}; mirror: ${m.darts.length} darts, twin apex ${twin ? twin.apex.join(',') : 'none'}` };
 }
 
+/** @returns {SelfTestResult} */
+function caseRemeshDartNarrow() {
+  const p = makePiece({ id: 'nd', vertices: [[0, 0], [200, 0], [200, 300], [0, 300]],
+    darts: [{ id: 'd', edge: 0, t: 0.5, width_mm: 20, apex: [100, 100] }] });
+  const m = remeshPiece(p, { pieces: [p], seams: [] });
+  const { euler } = eulerOf(m);
+  const legs = m.dartVerts[0][0];
+  const F = seamSampleFractions(p, 0, { pieces: [p], seams: [] });
+  const apexShared = legs.a.length === legs.b.length && legs.a.length >= 3 && legs.a[legs.a.length - 1] === legs.b[legs.b.length - 1] && legs.a[0] !== legs.b[0];
+  const counts = m.edgeVerts[0][0].length === F.length + 1 && m.edgeFrac[0][0].length === F.length + 1;
+  const area = Math.abs(m.area_mm2 - (60000 - 1000)) < 50;
+  const pass = euler === 1 && m.quality.pctAbove20 >= 98 && apexShared && counts && area;
+  return { name: 'remesh.dartNarrow', pass, details: `Euler ${euler}, pctAbove20 ${f(m.quality.pctAbove20, 1)}, legs ${legs.a.length}/${legs.b.length}, edge samples ${m.edgeVerts[0][0].length} (F ${F.length}), area ${f(m.area_mm2, 0)}` };
+}
+
+/** @returns {SelfTestResult} */
+function caseRemeshDartSeam() {
+  // A's top edge (e2, right -> left) carries a dart; B's bottom edge (e0, left -> right) is 180 mm = A's sewn length
+  const A = makePiece({ id: 'A', vertices: [[0, 0], [200, 0], [200, 100], [0, 100]],
+    darts: [{ id: 'd', edge: 2, t: 0.4, width_mm: 20, apex: [120, 40] }] });
+  const B = makePiece({ id: 'B', vertices: [[0, 150], [180, 150], [180, 250], [0, 250]] });
+  const seams = [{ id: 's', kind: 'plain', a: { pieceId: 'A', edge: 2, mirror: false, reverse: false }, b: { pieceId: 'B', edge: 0, mirror: false, reverse: true } }];
+  const doc = { pieces: [A, B], seams };
+  const FA = seamSampleFractions(A, 2, doc);
+  const FB = seamSampleFractions(B, 0, doc);
+  const mirrored = FA.length === FB.length && FA.every((u, i) => Math.abs(u - (1 - FB[FB.length - 1 - i])) < 1e-9);
+  const mA = remeshPiece(A, doc);
+  const mB = remeshPiece(B, doc);
+  const fr = Array.from(mA.edgeFrac[0][2]);
+  const doubled = fr.filter((u, i) => i > 0 && Math.abs(u - fr[i - 1]) < 1e-12).length;
+  // a dart on B too, somewhere else: both sides get one extra vertex, and the u sets still agree
+  const B2 = { ...B, darts: [{ id: 'e', edge: 0, t: 0.25, width_mm: 10, apex: [45, 200] }] };
+  const A2 = { ...A, vertices: [[0, 0], [210, 0], [210, 100], [0, 100]], darts: [{ id: 'd', edge: 2, t: 0.4, width_mm: 20, apex: [126, 40] }] };
+  const doc2 = { pieces: [A2, B2], seams };
+  const mA2 = remeshPiece(A2, doc2);
+  const mB2 = remeshPiece(B2, doc2);
+  /** @param {ArrayLike<number>} fa @returns {number[]} the distinct fractions (a mouth's two corners share one) */
+  const distinct = (fa) => Array.from(fa).filter((u, i, all) => i === 0 || Math.abs(u - all[i - 1]) > 1e-12);
+  const uA = distinct(mA2.edgeFrac[0][2]);
+  const uB = distinct(mB2.edgeFrac[0][0]).map((u) => 1 - u).reverse();
+  const both = mA2.edgeVerts[0][2].length === uA.length + 1 && mB2.edgeVerts[0][0].length === uB.length + 1
+    && uA.length === uB.length && uA.every((u, i) => Math.abs(u - uB[i]) < 1e-9);
+  const pass = mirrored && mA.edgeVerts[0][2].length === mB.edgeVerts[0][0].length + 1 && doubled === 1 && both;
+  return { name: 'remesh.dartSeam', pass, details: `fractions mirror ${mirrored}; A ${mA.edgeVerts[0][2].length} vs B ${mB.edgeVerts[0][0].length}; doubled u ${doubled}; darts on both sides agree ${both}` };
+}
+
 // ----------------------------------------------------------------------------------------------------------------- run
 
 /** @type {(() => SelfTestResult)[]} */
@@ -601,14 +647,16 @@ const CASES = [
   caseDartsApply,
   caseDartsCheck,
   caseDartsCarry,
+  caseRemeshDartNarrow,
+  caseRemeshDartSeam,
 ];
 
-/** Names in declaration order (the 15 of SPEC 5.9, remesh.allSamples, remesh.sleeve, then the four darts cases). @returns {string[]} */
+/** Names in declaration order (the 15 of SPEC 5.9, remesh.allSamples, remesh.sleeve, the four darts cases, then the two darted-mesh cases). @returns {string[]} */
 export function listSelfTests() {
   return ['bezier.length', 'bezier.split', 'polygon.predicates', 'mirror.fullOutline', 'delaunay.basic',
     'delaunay.recover', 'remesh.square', 'remesh.seamParity', 'remesh.fold', 'remesh.notch', 'offset.square',
     'offset.discontinuity', 'offset.fold', 'pack.shelf', 'remesh.performance', 'remesh.allSamples', 'remesh.sleeve',
-    'darts.mouth', 'darts.apply', 'darts.check', 'darts.carry'];
+    'darts.mouth', 'darts.apply', 'darts.check', 'darts.carry', 'remesh.dartNarrow', 'remesh.dartSeam'];
 }
 
 /** @returns {Promise<SelfTestResult[]>} */
