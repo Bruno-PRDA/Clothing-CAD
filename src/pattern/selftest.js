@@ -765,9 +765,20 @@ export async function runSelfTest() {
     dragWorld(h, [10, -40], [10, 280]);
     p = pieceOf(h.doc(), id);
     near(p.darts[0].apex[1], -40, 1e-6, 'a drag outside the piece must not commit');
+    // selecting another piece by id (the Pieces panel, __app.pattern.select) drops the dart: Delete must not reach it
+    const other = addRect(h, 300, -150, 200, 300);
+    h.editor.select({ pieces: [other] });
+    assert(h.editor.getSelection().dart === null, 'selecting another piece must drop the dart selection');
+    h.editor.select({ pieces: [id], dart: { pieceId: id, index: 0 } });
+    h.editor.select({ seams: [] });
+    assert(h.editor.getSelection().dart !== null, 'a selection change that keeps the dart\'s piece keeps the dart');
+    h.editor.select({ pieces: [other] });
+    h.editor.deleteSelection();
+    assert(pieceOf(h.doc(), id).darts.length === 1, 'Delete removed a dart on a piece that is no longer selected');
+    h.editor.select({ pieces: [id], dart: { pieceId: id, index: 0 } });
     h.editor.deleteSelection();
     assert(pieceOf(h.doc(), id).darts.length === 0, 'Delete removes the selected dart');
-    return 'add, drag, refuse, delete';
+    return 'add, drag, refuse, selection moves away, delete';
   });
 
   await run('dart-tool-handles', (h) => {

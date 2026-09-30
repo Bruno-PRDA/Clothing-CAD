@@ -139,7 +139,7 @@ acceptsDartEdit(before, k, dart) → boolean   // the one rule for changing dart
 proposeDart(piece, e, t) → Dart|null         // a 20 mm wide, 80 mm long dart centred at t on edge e; shortened in 10 mm steps to 20 mm, then half as wide once; null when nothing fits
 // tools/dart.js (not re-exported by index.js): createDartTool(ctx), nearestT(piece, e, q), DART_DEFAULT_WIDTH_MM = 20, DART_DEFAULT_LENGTH_MM = 80, DART_MIN_LENGTH_MM = 20
 ```
-Store: writes only with `store.update(fn, label)` / `store.batch(label)` on pointer-up (labels 11.12.2: `piece:*`, `vertex:*`, `handle:*`, `edge:*`, `notch:*`, `seam:*`, `grainline:*`, `dart:add` / `dart:move` / `dart:delete` (the Dart tool) and `dart:edit` (the Darts list)); writes `store.transient.{tool, selection, hover, seamPick}`. Emits: `selection:changed`, `tool:changed`, `hover:changed`, `seam:preview`, `view2d:changed`, `pattern:issues`, `ui:status`. Listens: `doc:changed` (via `store.subscribe`; repaint; validate unless `drag`; fit on `replace`), `size:active` (graded ghost), `fabric:changed` (fill colour), `ui:layout` (frame). Element ids owned: `canvas-2d`. Error codes: `PATTERN_BAD_TOOL, PATTERN_FOLD_SPLIT, PATTERN_MIN_VERTICES, PATTERN_FOLD_NOT_ON_AXIS, PATTERN_BAD_OUTLINE, SEAM_SAME_EDGE, SEAM_ON_FOLD_EDGE, SEAM_MIRROR_WITHOUT_FOLD, SEAM_EDGE_TAKEN, SEAM_DANGLING, PATTERN_SPLIT_IN_DART`; `validatePiece` also reports the `DART_*` issues of `checkDarts`. `selftest.js`: 29 cases (the last four: `darts-model`, `dart-tool`, `dart-tool-handles`, `dart-edit-refused-when-it-breaks-another`). SPEC amendments "Darts: pattern model", "Darts: the Dart tool".
+Store: writes only with `store.update(fn, label)` / `store.batch(label)` on pointer-up (labels 11.12.2: `piece:*`, `vertex:*`, `handle:*`, `edge:*`, `notch:*`, `seam:*`, `grainline:*`, `dart:add` / `dart:move` / `dart:delete` (the Dart tool; `dart:delete` also from the Darts list's delete button, in `src/ui/panels/pieces.js`) and `dart:edit` (the Darts list)); writes `store.transient.{tool, selection, hover, seamPick}`. Emits: `selection:changed`, `tool:changed`, `hover:changed`, `seam:preview`, `view2d:changed`, `pattern:issues`, `ui:status`. Listens: `doc:changed` (via `store.subscribe`; repaint; validate unless `drag`; fit on `replace`), `size:active` (graded ghost), `fabric:changed` (fill colour), `ui:layout` (frame). Element ids owned: `canvas-2d`. Error codes: `PATTERN_BAD_TOOL, PATTERN_FOLD_SPLIT, PATTERN_MIN_VERTICES, PATTERN_FOLD_NOT_ON_AXIS, PATTERN_BAD_OUTLINE, SEAM_SAME_EDGE, SEAM_ON_FOLD_EDGE, SEAM_MIRROR_WITHOUT_FOLD, SEAM_EDGE_TAKEN, SEAM_DANGLING, PATTERN_SPLIT_IN_DART`; `validatePiece` also reports the `DART_*` issues of `checkDarts`. `selftest.js`: 29 cases (the last four: `darts-model`, `dart-tool`, `dart-tool-handles`, `dart-edit-refused-when-it-breaks-another`). SPEC amendments "Darts: pattern model", "Darts: the Dart tool".
 
 ---
 
@@ -236,7 +236,7 @@ Errors: `ValidationError` with codes `SIZE_*`, `GRADE_*`. Emits/listens: nothing
 ## src/export (A6) — `index.js` exports (SPEC 10.3–10.7); pure except `download.js`
 
 ```js
-buildPieceGeometry(piece, sizeName, opts?) → PieceGeometry {piece, sizeName, stitch, stitchEdgeOf, allowances, cut, notches, bbox, labelAnchor, area_mm2, labelLines}
+buildPieceGeometry(piece, sizeName, opts?) → PieceGeometry {piece, sizeName, stitch, stitchEdgeOf, allowances, cut, notches, darts /* valid darts: {a, b, apex, drill}[] */, bbox, labelAnchor, area_mm2, labelLines}
 layoutSheet(geoms, opts?) → SheetLayout   renderSheet(layout, opts?) → SheetResult {svg, inner, layout}
 exportSheet(pieces, sizeName, opts?) → SheetResult   exportSheetSvg(pieces, sizeName, opts?) → string   exportPieceSvg(piece, opts?) → string
 exportGradeNestSvg(pieceBySize, baseSize, opts?) → string   SIZE_COLORS   fmt(n)   escapeXml(s)
@@ -279,7 +279,7 @@ createDock(store, bus, root?) → {setTab(name), getTab(), destroy()}
 createStatusbar(bus, root?) → {setMessage(text, level?, ttl_ms?), setToolHint(text), setCursor(x_mm|null, y_mm?), setSeamEase(text|null, warn?), setQuality(text|null, level?), setSim(stats|null), getLog(), destroy()}
 createShortcuts(bus, root?) → {enable(), disable(), isEnabled(), destroy()}   SHORTCUTS   // Tab never handled; 1/2/3 layouts, F1–F4 dock tabs
 createPiecesPanel / createBodyPanel / createFabricPanel / createSizesPanel (store, bus, root?) → {refresh(), destroy()}
-REQUIRED_IDS   // the 163 static ids (135 of 11.1.1 + fit banner 4 + guide 8 + scene control 4 + recovery banner 4 + DXF 4 + the Dart tool's `tool-dart` and the Darts list's `piece-darts`, `list-darts`; kept in src/ui/ids.js)
+REQUIRED_IDS   // the 163 static ids (135 of 11.1.1 + the body estimate button `btn-body-estimate` 1 + fit banner 4 + guide 8 + scene control 4 + recovery banner 4 + DXF 4 + the Dart tool's `tool-dart` and the Darts list's `piece-darts`, `list-darts` 3; kept in src/ui/ids.js)
 createRecoveryBanner(store, bus, root?) → {show({name, savedAt}), hide(), isShown(), destroy()}   // emits ui:action recoverRestore / recoverDiscard
 createSceneControls(store, bus, root?) → {refresh(), setPresetBackground(hex), destroy()}   // writes doc.ui.scene
 createFitWarning(store, bus, root?) → {refresh(), report(), destroy()}

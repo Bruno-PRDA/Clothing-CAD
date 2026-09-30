@@ -2096,7 +2096,10 @@ Costs (T-shirt front at h = 15: full outline 480 × 620 mm → V ≈ 1500): step
 > dart k's leg ids from the mouth to the apex (equal lengths, same last id), with empty arrays for an ignored dart and
 > `dartVerts[1] = []` for non-fold pieces. `notchVerts` takes the edge sample nearest `edgeToSewn(t)`. A dart that
 > `checkDarts` rejects is left out of the mesh, and each of its error issues is recorded as the warning
-> `'dart-ignored: ' + message`. Pieces without darts mesh exactly as before.
+> `'dart-ignored: ' + message`. A piece's boundary samples depend on the seam components of its edges, not on the
+> piece alone: a mouth on any edge of a component is a forced sample of every edge in it, and every edge's sewn length
+> counts in `n`. So a piece without darts meshes exactly as before only when no edge sewn to one of its own (directly or
+> through other seams) carries a valid dart.
 
 > **Amendment (lead, 2026-09-30) — Darts: two mouths on one edge (tests).** `geometry/remesh.twoMouths`, after
 > `remesh.dartSeam` (the geometry self-test has 25 cases): a 300 × 120 mm piece with two 20 mm darts on its bottom edge,
@@ -4019,7 +4022,7 @@ Header (exact):
 
 For every size (chart row order) → `pieces = gradeDoc(doc, size)` filtered to `exportHidden === false`, in doc order:
 
-1. one line per outline edge `i`: `size, piece.name, cutQty, on_fold (1|0), i, edges[i].label ?? '', length (edgeLength, 1 decimal), allowances[i], seamId|'', partner 'pieceId:edge'|'', partner length|'', ease_pct (seamEasePct, 1 decimal)|'', '', ''` — the seam is the first `doc.seams` entry whose `a` or `b` is `{pieceId, edge}` (mirror flag ignored; the mirrored copy has equal length);
+1. one line per outline edge `i`: `size, piece.name, cutQty, on_fold (1|0), i, edges[i].label ?? '', sewn length (sewnLength, 1 decimal; amendment "Darts: sewn lengths in the CSV" below), allowances[i], seamId|'', partner 'pieceId:edge'|'', partner length|'', ease_pct (seamEasePct, 1 decimal)|'', '', ''` — the seam is the first `doc.seams` entry whose `a` or `b` is `{pieceId, edge}` (mirror flag ignored; the mirrored copy has equal length);
 2. one summary line per piece: `edge = 'total'`, `length_mm` = perimeter (sum of edge lengths, doubled minus 2×fold-edge length for fold pieces), `area_cm2` = `area_mm2 / 100` of one **cut** piece (fold pieces doubled), other cells empty;
 3. one line per size after its pieces: `piece = '*'`, `edge = 'fabric'`, `area_cm2` = Σ area × cutQty, `fabric_length_m` = `fabricEstimate(...).length_m` (2 decimals).
 
@@ -5218,7 +5221,7 @@ Automation: `__app.pattern.setFold(pieceId, edge|null)` (section 12) calls the s
 >   (`t′` = arc fraction of the edge point nearest the cursor, `L` the edge length; rounded to 0.1 mm, at least 1 mm), the
 >   centre stays; **mouth centre** → `t = t′` and the point moves by the same displacement as the centre, so the dart
 >   slides along its edge without changing shape. The result is `transient.dartOverride = {pieceId, index, dart, ok}`,
->   `ok` meaning `checkDarts` does not reject dart `index` of the piece with that dart in place.
+>   `ok` = `acceptsDartEdit(piece, index, dart)` (next bullet): the edit makes neither that dart nor any other invalid.
 > - An edit is refused if it makes the edited dart **or any other dart** invalid (`acceptsDartEdit(before, k, dart)`: `checkDarts`
 >   blames the later dart of an overlapping or crossing pair, so the edited dart alone is not enough; darts that were already
 >   invalid elsewhere do not block it). The same helper gates `proposeDart`, and both are exported by `pattern/index.js`
@@ -5242,8 +5245,10 @@ Automation: `__app.pattern.setFold(pieceId, edge|null)` (section 12) calls the s
 >   `tool-notch` (one id more than the 135 of §11.1.1), and the key `T` → `{action:'tool', tool:'dart'}` (guide label
 >   `Dart tool`). `'dart'` follows `'notch'` in `EDITOR_TOOLS`, `pattern.TOOL_NAMES` and `core/store.js` `TOOL_NAMES`, and in
 >   the `setTool` fallback list of the automation API.
-> - Every tool that selects a piece also clears `selection.dart` (where it clears `notch`), so a dart selected on one
->   piece never survives selecting another.
+> - Every tool that selects a piece also clears `selection.dart` (where it clears `notch`), and `editor.select` keeps
+>   `selection.dart` only while the dart's piece is in `selection.pieces`, so selecting another piece by id (the Pieces
+>   panel's `selectPiece`, `__app.pattern.select`) drops it too: a dart selected on one piece never survives selecting
+>   another, and Delete never removes a dart on a piece the user has left. Self-test `pattern/dart-tool`.
 
 ---
 
@@ -5322,7 +5327,7 @@ export const ISSUE_CODES  // the table below, code -> {level, message template}
 | `SEAM_EASE_HIGH` | warn | `8 < easePct <= 50` | `Seam ${id}: A ${lenA} mm / B ${lenB} mm - ease ${e}% (> 8%)` |
 | `SEAM_EASE_EXTREME` | error | `easePct > 50` | `Seam ${id}: seam lengths differ by ${e}%` |
 
-Issues carry `pieceId`, `seamId`, `edge` where applicable. The editor runs `validateDoc` after every store notification, coalesced to the next animation frame, and emits `EVENT.PATTERN_ISSUES {issues}` (3.2.2); the status bar shows `n issues` (level `error` if any error) only when the count changes. `error`-level issues do not block editing; the wiring layer (section 12) decides which pieces are excluded from meshing (`PIECE_*`/`FOLD_*` errors exclude the piece; `SEAM_*` errors exclude the seam).
+Issues carry `pieceId`, `seamId`, `edge` where applicable. The editor runs `validateDoc` after every store notification, coalesced to the next animation frame, and emits `EVENT.PATTERN_ISSUES {issues}` (3.2.2); the status bar shows `n issues` (level `error` if any error) only when the count changes. `error`-level issues do not block editing; the wiring layer (section 12) decides which pieces are excluded from meshing (§12.2.2: an error-level piece issue excludes the piece, except a `DART_*` one, whose dart the mesher ignores instead; `SEAM_*` errors exclude the seam).
 
 > **Amendment (lead, 2026-09-30) — Darts: pattern model.** A seam compares *sewn* lengths. `seams.js` exports
 > `sewnLengthOf(piece, e)` beside `edgeLengthOf`: `geometry.sewnLength(piece, e)`, the arc length of edge `e` minus the
@@ -5718,7 +5723,7 @@ The debounced remesh job (`runPendingRemesh`):
 ```
 runPendingRemesh():
   issues = validateDoc(doc) ; ui.statusbar.setIssues(issues) ; editor.setIssues(issues)
-  excluded = pieces with an issue of level 'error'
+  excluded = pieces with an issue of level 'error', except a DART_* code (amendment "Darts: an invalid dart does not exclude its piece")
   meshes = remesh([...pending.remeshSet] minus excluded, {force:false})   // RemeshError per piece → ctx.mesh.failed, status warn, piece excluded
   applyVertexCap()                                                          // 12.2.5
   newState = rebuildCloth()                                                 // throws → keep ctx.cloth.state, stale=true, status error, return
@@ -5735,8 +5740,8 @@ runPendingRemesh():
 > and sews as if that dart were not there: §5.10's "one bad dart never stops a drape". Excluding the piece contradicted
 > this. After a load the piece was missing from the drape. After an edit it kept its old mesh with the dart's mouth
 > while its partners were remeshed without it, and the build failed with `seam-parity`; a vertex drag that shortens
-> the waist edge is enough to raise `DART_MOUTH`. Every other error-level piece issue still excludes its piece, so the
-> last sentence of §11.11.2 (only `PIECE_*` and `FOLD_*` exclude) is superseded by this rule. Regression test:
+> the waist edge is enough to raise `DART_MOUTH`. Every other error-level piece issue still excludes its piece; the
+> last sentence of §11.11.2, which named only `PIECE_*` and `FOLD_*`, now states this rule. Regression test:
 > acceptance check 26j `invalid_dart` (§13 amendment "Darts: the fix wave").
 
 "Keep the old cloth running until the new one is built" means exactly: `ctx.cloth.state` and the viewer's cloth geometry are replaced **only** at the swap line, after `rebuildCloth()` and `arrange()` succeeded; frames rendered meanwhile (the debounce window, and any frame in which a reaction threw) show and step the previous state. The rebuild itself is synchronous (< 200 ms for the samples) inside one task.
@@ -6196,8 +6201,11 @@ Store contract (section 3.3, authoritative): `update(mutator, label)` emits `doc
 > | # | name | timeout | what passes |
 > |---|---|---|---|
 > | 26i | `incremental_remesh` | 20 s | the dress at sizes S and then XL: 6 of 6 pieces meshed, no mesh warning, `seamPairsEqual`, no new error line (`geometry/remesh.dress` sees the base size only); back at M, the dress with a dart added on `bodice_back_r`'s shoulder (`{edge: 3, t: 0.5, width_mm: 10, apex: [140, 320]}`) is rebuilt; the T-shirt with the front armhole notch moved to `t = 0.43` is rebuilt; at size L a notch added on the front hem is rebuilt and replaces the front's mesh alone, and a placement change then leaves the live `ClothState` the same object (re-arranged, not rebuilt). §12.2.3 amendment "Darts: the mesh fingerprint is the seam sampling"; before it, the first two failed with `seam-parity` and the last rebuilt. |
-> | 26j | `invalid_dart` | 20 s | the dress with `bodice_back_r`'s waist dart pointing outside the piece (`apex [89, −50]`, `DART_APEX`), once through `__app.load` and once through `__app.update` on the loaded dress: all 6 pieces meshed, `bodice_back_r`'s mesh warnings include a `dart-ignored:` line, `seamPairsEqual`, no new error line, and a live `ClothState` of 6 pieces whose `V` equals `mesh.stats().verts` (after the edit, a new one). §12.2.2 amendment "Darts: an invalid dart does not exclude its piece"; before it, the load meshed 5 pieces and the edit failed with `seam-parity`. |
+> | 26j | `invalid_dart` | 20 s | the dress with `bodice_back_r`'s waist dart pointing outside the piece (`apex [89, −50]`, `DART_APEX`), once through `__app.load` and once through `__app.update` on a freshly loaded dress: all 6 pieces meshed, `bodice_back_r`'s mesh warnings include a `dart-ignored:` line, `seamPairsEqual`, no new error line, and a live `ClothState` of 6 pieces whose `V` equals `mesh.stats().verts` (after the edit, a new one). §12.2.2 amendment "Darts: an invalid dart does not exclude its piece"; before it, the load meshed 5 pieces and the edit failed with `seam-parity`. |
 > | 26k | `pinned_dart` | 20 s | `reloadSample('skirt')` plus a front waist dart on the pinned waist (`{edge: 2, t: 0.5, width_mm: 20, apex: [125, 460]}`): no validation error, `seamPairsEqual`; after `sim.reset()` both corners of each of the 2 mouths (the dart and its mirrored twin) are pinned, to targets less than 1 µm apart; `s = step(120)`: `s.nanCount === 0` and every dart leg pair closer than 3 mm (as in 26g). §7.1 amendment "Darts: a dart on a pinned edge". 120 frames because the dart is shut when the sewing ends (0.29 mm at frame 60, 0.000 at 120). |
+>
+> Measured in a full run on the Intel Iris Xe laptop (GPU): 26i 1.3 s, 26j 0.8 s, 26k 2.6 s; the suite took 109.5 s
+> against the unchanged 130 s limit of check 27.
 >
 > An invalid document is error-level by design, and the status bar reports it as an error-level `N issues` line that
 > `console.error` echoes into `__app.log()`. The runner (§13.1 rule 4) would count that line as a failure of the run, so a

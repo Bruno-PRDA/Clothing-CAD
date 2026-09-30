@@ -587,7 +587,8 @@ export function createEditor(canvas, store, bus, opts = {}) {
       edgeMirror: ('edgeMirror' in p) ? !!p.edgeMirror : !!prev.edgeMirror,
       handle: (handle && known.has(handle.pieceId)) ? handle : null,
       notch: (notch && known.has(notch.pieceId)) ? notch : null,
-      dart: (dart && known.has(dart.pieceId)) ? dart : null,
+      // a dart stays selected only while its piece is: Delete must never reach a dart on a piece the user left
+      dart: (dart && known.has(dart.pieceId) && pieces.indexOf(dart.pieceId) >= 0) ? dart : null,
     };
     applySelection(next);
   }

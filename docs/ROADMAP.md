@@ -22,7 +22,7 @@ dependency, everything running in the browser.
 | Size chart and grading (darts keep their width); drapes the size you pick; warns before a size too small tears, checking each part of a garment against the body it covers | Men's and children's size charts (the default chart is a women's S–XL) |
 | 7 fabric presets, 6 procedural textures, 7 scene presets; three built-in garments (T-shirt, A-line skirt, fitted dress) | Fabric textures from image files; warp/weft anisotropy |
 | Export: 1:1 SVG, tiled print, CSV/JSON, OBJ, DXF-AAMA in and out; darts included | More than one garment at a time; collars, cuffs, plackets, pockets |
-| 205 self-tests and 34 acceptance checks on every push | A cloth solver off the main thread (it is designed for a Web Worker but does not use one) |
+| 206 self-tests and 37 acceptance checks on every push | A cloth solver off the main thread (it is designed for a Web Worker but does not use one) |
 
 Visible limits of the drape today:
 

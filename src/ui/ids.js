@@ -5,8 +5,8 @@
 import { PARAM_KEYS } from '../body/index.js';
 
 /**
- * Every STATIC id of SPEC 11.1.1: the 135 of 11.1.1, the Dart tool's 1, the fit banner's 4, the guide's 8, the scene control's 4 and
- * the recovery banner's 4, and DXF import/export's 4.
+ * Every STATIC id of SPEC 11.1.1: the 135 of 11.1.1, the body estimate button's 1, the fit banner's 4, the guide's 8, the
+ * scene control's 4, the recovery banner's 4, DXF import/export's 4, and the Dart tool's and Darts list's 3 (163).
  * The 48 generated body-parameter ids live in
  * `BODY_PARAM_IDS`; `ALL_IDS` is the concatenation and is what `checkIds()` verifies.
  * @type {ReadonlyArray<string>}
