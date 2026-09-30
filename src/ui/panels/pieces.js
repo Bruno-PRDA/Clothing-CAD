@@ -5,8 +5,8 @@
 import { EVENT } from '../../core/events.js';
 import { uid } from '../../core/ids.js';
 import { clamp } from '../../core/units.js';
-import { bbox } from '../../geometry/index.js';
-import { formatSeamRow, hueOf, edgeLengthOf, seamEase, formatEase } from '../../pattern/index.js';
+import { bbox, edgeLength, pointAtArcFraction, tangentAtArcFraction } from '../../geometry/index.js';
+import { formatSeamRow, hueOf, edgeLengthOf, seamEase, formatEase, acceptsDartEdit } from '../../pattern/index.js';
 import { byId } from '../ids.js';
 
 /** @typedef {import('../../core/store.js').Store} Store */
@@ -34,6 +34,8 @@ export function createPiecesPanel(store, bus, root = document) {
   const fsPlacement = /** @type {HTMLFieldSetElement|null} */ (byId(root, 'piece-placement'));
   const fsGrade = /** @type {HTMLFieldSetElement|null} */ (byId(root, 'piece-grade'));
   const fsEdge = /** @type {HTMLFieldSetElement|null} */ (byId(root, 'edge-props'));
+  const fsDarts = /** @type {HTMLFieldSetElement|null} */ (byId(root, 'piece-darts'));
+  const listDarts = byId(root, 'list-darts');
 
   const el = /** @param {string} id */ (id) => byId(root, id);
   const inpName = /** @type {HTMLInputElement|null} */ (el('inp-piece-name'));
@@ -491,6 +493,99 @@ export function createPiecesPanel(store, bus, root = document) {
     }
   }
 
+  // ------------------------------------------------------------------ darts (SPEC 11.8.1 amendment "Darts")
+
+  /** Edge frame of a dart: centre point, tangent, inward normal, edge length. @param {any} p @param {any} dt */
+  function dartFrame(p, dt) {
+    const n = p.vertices.length;
+    const p0 = p.vertices[dt.edge], edge = p.edges[dt.edge], p1 = p.vertices[(dt.edge + 1) % n];
+    const c = pointAtArcFraction(p0, edge, p1, dt.t);
+    const d = tangentAtArcFraction(p0, edge, p1, dt.t);
+    return { c, d, nIn: [-d[1], d[0]], L: edgeLength(p, dt.edge) };
+  }
+
+  /** Field values of a dart: position (mm), width, length, angle (deg; 0 = inward normal, + toward the edge end). */
+  function dartFields(p, dt) {
+    const f = dartFrame(p, dt);
+    const v = [dt.apex[0] - f.c[0], dt.apex[1] - f.c[1]];
+    return {
+      position: dt.t * f.L,
+      width: dt.width_mm,
+      length: Math.hypot(v[0], v[1]),
+      angle: Math.atan2(v[0] * f.d[0] + v[1] * f.d[1], v[0] * f.nIn[0] + v[1] * f.nIn[1]) * 180 / Math.PI,
+    };
+  }
+
+  /** The dart rebuilt from edited field values; position moves the mouth, length/angle place the point. */
+  function dartFromFields(p, dt, vals) {
+    const L = edgeLength(p, dt.edge);
+    const t = vals.position / L;
+    const f = dartFrame(p, { ...dt, t });
+    const a = vals.angle * Math.PI / 180;
+    const dir = [Math.cos(a) * f.nIn[0] + Math.sin(a) * f.d[0], Math.cos(a) * f.nIn[1] + Math.sin(a) * f.d[1]];
+    return { ...dt, t, width_mm: vals.width, apex: [f.c[0] + dir[0] * vals.length, f.c[1] + dir[1] * vals.length] };
+  }
+
+  /** @param {any} doc */
+  function renderDarts(doc) {
+    if (!listDarts) return;
+    const p = primaryPiece();
+    if (fsDarts) fsDarts.disabled = !p;
+    const focused = doc0.activeElement;
+    if (focused && listDarts.contains(focused)) return; // never rebuild under the user's cursor
+    listDarts.textContent = '';
+    if (!p) return;
+    (p.darts || []).forEach((dt, k) => {
+      const li = doc0.createElement('li');
+      li.dataset.testid = 'dart-row';
+      li.dataset.index = String(k);
+      const lab = p.edges[dt.edge] && p.edges[dt.edge].label ? p.edges[dt.edge].label : 'edge ' + dt.edge;
+      const title = doc0.createElement('span');
+      title.textContent = 'Dart ' + (k + 1) + ' · ' + lab + ' ';
+      li.appendChild(title);
+      let vals;
+      try { vals = dartFields(p, dt); } catch { vals = { position: 0, width: dt.width_mm, length: 0, angle: 0 }; }
+      for (const [field, label, step] of [['position', 'Pos', 1], ['width', 'W', 0.5], ['length', 'Len', 1], ['angle', '∠', 1]]) {
+        const lab2 = doc0.createElement('label');
+        lab2.textContent = label + ' ';
+        const inp = doc0.createElement('input');
+        inp.type = 'number';
+        inp.step = String(step);
+        inp.dataset.field = field;
+        inp.value = String(Math.round(vals[field] * 10) / 10);
+        inp.addEventListener('change', () => {
+          const cur = primaryPiece();
+          const now = cur && cur.darts ? cur.darts[k] : null;
+          if (!now) return;
+          const next = { ...dartFields(cur, now), [field]: Number(inp.value) };
+          let cand;
+          try { cand = dartFromFields(cur, now, next); } catch { cand = null; }
+          // refused when it would make this dart OR any other dart invalid (acceptsDartEdit, the rule the Dart tool uses)
+          if (!cand || inp.value.trim() === '' || !Number.isFinite(Number(inp.value)) || !acceptsDartEdit(cur, k, cand)) {
+            inp.dataset.invalid = 'true';
+            inp.value = String(Math.round(dartFields(cur, now)[field] * 10) / 10);
+            bus.emit(EVENT.UI_STATUS, { level: 'warn', text: 'That would make the dart invalid', source: 'ui/pieces' });
+            return;
+          }
+          delete inp.dataset.invalid;
+          updatePiece((piece) => { piece.darts[k] = cand; }, 'dart:edit');
+        });
+        lab2.appendChild(inp);
+        li.appendChild(lab2);
+      }
+      const del = doc0.createElement('button');
+      del.type = 'button';
+      del.dataset.action = 'delete';
+      del.textContent = 'Delete';
+      del.addEventListener('click', () => {
+        del.blur(); // a focused button inside the list would stop renderDarts from rebuilding it
+        updatePiece((piece) => { piece.darts.splice(k, 1); }, 'dart:delete');
+      });
+      li.appendChild(del);
+      listDarts.appendChild(li);
+    });
+  }
+
   function refresh() {
     if (destroyed) return;
     const doc = store.get();
@@ -498,6 +593,7 @@ export function createPiecesPanel(store, bus, root = document) {
     renderSeams(doc);
     renderIssues();
     renderFields(doc);
+    renderDarts(doc);
   }
 
   /** @param {any} sel */

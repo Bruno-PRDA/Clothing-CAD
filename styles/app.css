@@ -152,6 +152,9 @@ output { font-family: var(--mono); color: var(--fg-dim); min-width: 3.5em; text-
 .list li[data-level="warn"] { color: var(--warn); }
 .list li button { height: 20px; padding: 0 6px; font-size: 11px; }
 .list .swatch { width: 10px; height: 10px; border-radius: 2px; flex: 0 0 auto; }
+#list-darts li { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; cursor: default; }
+#list-darts input { width: 5em; user-select: text; }
+#list-darts input[data-invalid="true"] { outline: 1px solid #ff5a5a; }
 .badge {
   font-size: 10px;
   padding: 1px 4px;

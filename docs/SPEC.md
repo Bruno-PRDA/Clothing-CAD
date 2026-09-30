@@ -4660,6 +4660,28 @@ Common rules: numeric inputs commit on `change` (not on `input`) with the value 
 - Issues list: from the last `EVENT.PATTERN_ISSUES {issues}` (3.2.2); rows show `⛔`/`⚠` + message; `data-code` = `issue.code`.
 - `btn-piece-delete`: `store.update(d => { d.pieces = d.pieces.filter(p => !ids.has(p.id)); d.seams = d.seams.filter(s => !ids.has(s.a.pieceId) && !ids.has(s.b.pieceId)); }, 'piece:delete')`.
 
+> **Amendment (lead, 2026-09-30) — Darts: the Darts list.** A `#piece-darts` fieldset (`disabled` when there is no primary
+> piece) follows `#edge-props` and holds `#list-darts`: one row `li[data-testid="dart-row"][data-index=k]` per entry of
+> the primary piece's `darts`, in order, titled `Dart k+1 · <edge label, or "edge e">`. Each row has four
+> `input[type=number][data-field=...]` and a `button[data-action="delete"]`:
+>
+> | `data-field` | Meaning |
+> |---|---|
+> | `position` | mm along the edge from its start to the mouth centre (`t · L`, `L` = `edgeLength`) |
+> | `width` | `width_mm` |
+> | `length` | mm from the mouth centre to the point (`apex`) |
+> | `angle` | degrees of the centre-to-point direction from the inward normal (the left-hand normal of the edge direction at `t`), positive toward the end of the edge |
+>
+> Values show rounded to 0.1. On `change`, the dart is rebuilt from all four fields with the edited one replaced:
+> `position` moves the mouth (`t = position / L`) and the point is placed from `length` and `angle` in the edge frame at
+> the new `t`, so sliding keeps the dart's shape. The edit is **committed or refused, never clamped**: it is refused when
+> the field is empty or not a finite number, or when it would make this or any other dart invalid
+> (`acceptsDartEdit(piece, k, candidate)` from `pattern/index.js`, the rule the Dart tool uses; testing the edited dart
+> alone would let a slide onto a neighbour through). A refused edit writes nothing, reverts the field, sets
+> `data-invalid="true"` on it and emits a `warn` status `That would make the dart invalid`; an accepted one clears the mark
+> and is one undo step labelled `dart:edit`. `button[data-action="delete"]` removes dart `k` as one `dart:delete` step.
+> The list is not rebuilt while one of its controls has focus (Delete blurs itself first so the row does disappear).
+
 #### 11.8.2 `panels/body.js`
 
 - On creation builds `#body-params` rows from `PARAM_DEFS` (section 6.1; `unit` is `'cm'|'deg'|''`): `<div class="param-row" data-param="<key>"><label for="body-<key>">${label} (${unit})</label><input id="body-<key>" type="range" min max step><input id="body-<key>-num" type="number" min max step></div>`; unit = `cm` for `_cm`, `°` for `_deg`, empty for `bustFullness`.

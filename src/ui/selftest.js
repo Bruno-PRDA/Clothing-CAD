@@ -12,6 +12,7 @@ import { GUIDE_SECTIONS } from './guideContent.js';
 import { sanitizeGuideHtml, shortcutRows } from './guide.js';
 import { SHORTCUTS } from './shortcuts.js';
 import { SIZE_NAMES } from './panels/sizes.js';
+import { checkDarts, edgeLength, pointAtArcFraction } from '../geometry/index.js';
 
 /** @typedef {import('../core/types.js').SelfTestResult} SelfTestResult */
 
@@ -495,6 +496,77 @@ export async function runSelfTest() {
     assert(!g.isOpen() && overlay.hidden, 'Escape must close the guide');
     assert(!overlay.contains(document.activeElement), 'focus left inside the closed guide');
     return ids.length + ' sections, ' + keys + ' shortcut bindings, sanitizer, search, open/close';
+  });
+
+  // 18 ----------------------------------------------------------------- the Darts list (SPEC 11.8.1 amendment "Darts")
+  await run('darts-panel', async () => {
+    const doc = structuredClone(store.get());
+    const idx = doc.pieces.findIndex((p) => p.foldEdge === null);
+    assert(idx >= 0, 'need a piece without a fold in the live document');
+    const pid = doc.pieces[idx].id;
+    const n = doc.pieces[idx].vertices.length;
+    const v0 = doc.pieces[idx].vertices[0];
+    const v1 = doc.pieces[idx].vertices[1 % n];
+    const mid = [(v0[0] + v1[0]) / 2, (v0[1] + v1[1]) / 2];
+    const cx = doc.pieces[idx].vertices.reduce((s, v) => s + v[0], 0) / n;
+    const cy = doc.pieces[idx].vertices.reduce((s, v) => s + v[1], 0) / n;
+    store.update((d) => { d.pieces[idx].darts = [{ id: 'dt', edge: 0, t: 0.5, width_mm: 12, apex: [(mid[0] + cx) / 2, (mid[1] + cy) / 2] }]; }, 'selftest:dart');
+    ui.dock.setTab('pieces'); // a hidden panel cannot take focus, and the delete check below needs it
+    ui.panels.pieces.setSelection({ pieces: [pid], seams: [], vertex: null, edge: null });
+    await nextFrame(2);
+    const row = document.querySelector('#list-darts li[data-testid="dart-row"]');
+    assert(!!row, 'a dart row renders for the selected piece');
+    const width = /** @type {HTMLInputElement} */ (row.querySelector('input[data-field="width"]'));
+    assert(Math.abs(Number(width.value) - 12) < 1e-6, 'width field shows 12, got ' + width.value);
+    width.value = '8';
+    width.dispatchEvent(new Event('change', { bubbles: true }));
+    await nextFrame(1);
+    assert(store.get().pieces[idx].darts[0].width_mm === 8, 'a valid width edit commits');
+    const apexBefore = store.get().pieces[idx].darts[0].apex.slice();
+    const len = /** @type {HTMLInputElement} */ (document.querySelector('#list-darts input[data-field="length"]'));
+    len.value = '5000';
+    len.dispatchEvent(new Event('change', { bubbles: true }));
+    await nextFrame(1);
+    const apexAfter = store.get().pieces[idx].darts[0].apex;
+    assert(apexAfter[0] === apexBefore[0] && apexAfter[1] === apexBefore[1], 'an invalid length is refused (the point did not move)');
+    assert(len.dataset.invalid === 'true', 'the refused field is marked invalid');
+
+    // an edit is refused when it breaks ANOTHER dart: a second dart 40 mm along the same edge, then slide the first onto it
+    // (checkDarts blames the later dart of an overlapping pair, so dart 1 alone still looks valid)
+    const piece0 = store.get().pieces[idx];
+    const L = edgeLength(piece0, 0);
+    const t1 = 0.5 + 40 / L;
+    const c1 = pointAtArcFraction(v0, piece0.edges[0], v1, t1);
+    const before = piece0.darts.length;
+    store.update((d) => { d.pieces[idx].darts.push({ id: 'dt2', edge: 0, t: t1, width_mm: 6, apex: [(c1[0] + cx) / 2, (c1[1] + cy) / 2] }); }, 'selftest:dart2');
+    await nextFrame(2);
+    assert(checkDarts(store.get().pieces[idx]).bad.size === 0 && store.get().pieces[idx].darts.length === before + 1, 'setup: both darts are valid');
+    assert(document.querySelectorAll('#list-darts li[data-testid="dart-row"]').length === 2, 'two dart rows render');
+    const pos = /** @type {HTMLInputElement} */ (document.querySelector('#list-darts li[data-index="0"] input[data-field="position"]'));
+    const dartsBefore = JSON.stringify(store.get().pieces[idx].darts);
+    pos.value = String(t1 * L);
+    pos.dispatchEvent(new Event('change', { bubbles: true }));
+    await nextFrame(1);
+    assert(JSON.stringify(store.get().pieces[idx].darts) === dartsBefore, 'sliding a dart onto another is refused (document unchanged)');
+    assert(pos.dataset.invalid === 'true', 'the refused position field is marked invalid');
+    // a cleared field is refused, not read as 0
+    const ang = /** @type {HTMLInputElement} */ (document.querySelector('#list-darts li[data-index="0"] input[data-field="angle"]'));
+    ang.value = '';
+    ang.dispatchEvent(new Event('change', { bubbles: true }));
+    await nextFrame(1);
+    assert(JSON.stringify(store.get().pieces[idx].darts) === dartsBefore && ang.dataset.invalid === 'true', 'a cleared field is refused');
+    // undo labels; delete focused first, as a real click does (the list must still rebuild)
+    assert(store.history().undo.includes('dart:edit'), 'the width edit is a dart:edit undo step: ' + JSON.stringify(store.history().undo.slice(-4)));
+    const del = /** @type {HTMLButtonElement} */ (document.querySelector('#list-darts li[data-index="1"] button[data-action="delete"]'));
+    del.focus();
+    assert(document.activeElement === del, 'focus did not land on the delete button: ' + (document.activeElement && document.activeElement.tagName));
+    del.click();
+    await nextFrame(1);
+    const left = store.get().pieces[idx].darts;
+    assert(left.length === 1 && left[0].id === 'dt', 'delete removes that dart only');
+    assert(document.querySelectorAll('#list-darts li[data-testid="dart-row"]').length === 1, 'the row of the deleted dart is gone');
+    assert(store.history().undo.slice(-1)[0] === 'dart:delete', 'delete is one dart:delete undo step');
+    return 'row, valid edit, refused edits (value, slide onto another dart, cleared), delete, undo labels';
   });
 
   // ------------------------------------------------------------------ restore

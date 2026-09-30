@@ -24,7 +24,7 @@ export const REQUIRED_IDS = Object.freeze([
   'chk-piece-exporthidden', 'piece-placement', 'sel-placement-anchor', 'sel-placement-side', 'num-placement-dx',
   'num-placement-dy', 'range-placement-wrap', 'range-placement-wrap-val', 'chk-placement-flip', 'piece-grade',
   'sel-grade-width', 'sel-grade-length', 'sel-grade-anchorx', 'sel-grade-anchory', 'edge-props', 'edge-index',
-  'inp-edge-label', 'edge-labels', 'num-edge-allowance', 'chk-edge-pinned', 'list-seams', 'seam-ease', 'btn-seam-flip',
+  'inp-edge-label', 'edge-labels', 'num-edge-allowance', 'chk-edge-pinned', 'piece-darts', 'list-darts', 'list-seams', 'seam-ease', 'btn-seam-flip',
   'btn-seam-delete', 'list-issues', 'panel-body', 'sel-body-preset', 'body-params', 'body-measured', 'body-closest-size',
   'btn-body-estimate', 'btn-body-fit-size', 'body-build-ms', 'panel-fabric', 'sel-fabric-piece', 'fabric-id', 'sel-fabric-preset', 'input-color',
   'sel-texture', 'input-color2', 'range-texture-scale', 'range-texture-scale-val', 'range-bend-scale', 'range-bend-scale-val',
