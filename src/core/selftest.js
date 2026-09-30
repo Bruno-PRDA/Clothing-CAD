@@ -102,7 +102,7 @@ async function loadSamples() {
     const mod = await import('../samples/index.js');
     /** @type {{id:string, doc:object}[]} */
     const docs = [];
-    for (const id of ['tshirt', 'skirt']) {
+    for (const id of ['tshirt', 'skirt', 'dress']) {
       let doc = null;
       if (typeof mod.getSample === 'function') doc = mod.getSample(id);
       else if (Array.isArray(mod.SAMPLES)) {

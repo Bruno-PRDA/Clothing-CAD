@@ -1876,6 +1876,41 @@ Consumers: `src/app/wiring.js` calls `getSample(DEFAULT_SAMPLE_ID)` at start-up 
 
 **PROPOSED types.js amendment:** none. (Section 13 note: the T-shirt encodes 8 garment seams as 10 `Seam` records — see rule 4.1-14; any acceptance item counting seams must use 10.)
 
+> **Amendment (lead, 2026-09-30) — Darts: the fitted dress (`id: 'dress'`, "Fitted dress").** A third built-in sample, in
+> `src/samples/dress.js`, listed in `SAMPLE_IDS`, `SAMPLES`, `listSamples()` (so the assertion 4.5-2 list has three
+> entries: `tshirt`, `skirt`, `dress`) and the `#sel-sample` menu. A sleeveless fitted dress with a waist seam, drafted for
+> `female_m` at size M with wearing ease +6 cm at the bust (94), +3 cm at the waist (73) and +5 cm at the hips (101).
+> Pure data, fully normalised (`normalizeDoc(getSample('dress'))` deep-equals it), `doc.version === 2`.
+> **Pieces (6).** `bodice_front` (on the fold), `bodice_back_r` and `bodice_back_l` (centre-back halves, CB on `x = 0`),
+> `skirt_front` (on the fold), `skirt_back_r` and `skirt_back_l`. The `_l` pieces are mirrored duplicates of the `_r`
+> pieces (`exportHidden: true`, `placement.flip: true`, `offset_mm` negated; both `cutQty: 2`, the same outline and darts).
+> Placement follows the §4.1-10 outside-view rule: the front fold piece's stored half is the model's left, an unflipped back
+> half with `offset_mm[0] = +cx` lies on the model's right and the flipped duplicate with `−cx` on the left. The bodice
+> shares the T-shirt's neck and shoulder draft, shifted so the waist is `y = 0`; edge labels are `waist`, `side`, `armhole`,
+> `shoulder`, `neck`, `fold`, `zip` (bodice centre back), `hem` and `cb` (skirt centre back, with a double notch).
+> **Darts (7 records).** `bodice_front` has a waist dart on edge 0 and a bust dart on edge 1 (the side seam); every other
+> piece has one waist dart (bodice backs on edge 0, skirt panels on edge 3), all 25 mm wide and opening onto an edge.
+> Each bodice panel's waist intake equals its skirt panel's (25 mm), so a waist seam is matched with and without the
+> darts. The mesher therefore cuts the V of every dart (no `dart-ignored` warning) and the darted edges carry one extra
+> vertex per mouth.
+> **Seams (14, all `plain`).** Shoulders (2), bodice sides (2, the front's sewn length is 25 mm short of its cut length
+> by the bust dart), waists (4: `bodice_front` ↔ `skirt_front` for both halves, each `bodice_back_*` ↔ its `skirt_back_*`,
+> with `reverse: true` because the bodice waist runs toward the side and the skirt waist toward the centre), skirt sides
+> (4: a low `hem → hip` and an upper `hip → waist` record on each side, the skirt front's edges 1 and 2) and centre back
+> (2: `cb_bodice`, the zip, closed in the simulation, and `cb_skirt`). Neckline, armholes and hem are free; no edge is pinned.
+> **Grading.** Bodice pieces `widthRef 'chest_cm'`, `lengthRef 'torsoLength_cm'`; skirt pieces `widthRef 'hips_cm'`,
+> `lengthRef 'height_cm'`; the waist corner of every panel (vertex 1 on the bodice pieces, vertex 3 on the skirt pieces)
+> and the bodice shoulder tip (vertex 3) carry a per-vertex rule with `ref: 'waist_cm'` / `'shoulderWidth_cm'`, `refAxis 'x'`,
+> so both sides of a waist seam grade with the waist. One cotton fabric `main`; the same S–XL chart rows as the other samples.
+> **Checked by** `geometry/remesh.dress` (every piece Euler 1 and `pctAbove20 ≥ 98`, every dart leg at least 3 vertices,
+> no `dart-ignored` warning, 4 500 to 7 000 vertices in all; measured 4 574), `sizing/dress.seams` (every seam ≤ 3 % ease at
+> M and ≤ 1 pp drift at S, L and XL, sewn lengths; measured worst 0.12 % at M, worst drift 0.50 pp) and `remesh.allSamples`
+> (now three samples). Because a dart's mouth lists two vertices at one sewn fraction, `remesh.allSamples` compares the
+> number of *distinct* sewn fractions on the two sides of a seam, not the raw vertex counts.
+> **Known limitation.** `checkFit` (§10.4, unchanged) sums only the torso-anchored panels (the bodice, 94 cm at M) against
+> the largest of chest, waist and hips (96 cm), so the dress at M reports "2 cm smaller than the body". The skirt (101 cm
+> at the hips) is not counted: a fit check for the skirt part of a dress is out of scope.
+
 ---
 
 ## 5. 2D geometry (`src/geometry/`) — agent A1

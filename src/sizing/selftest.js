@@ -337,5 +337,21 @@ export async function runSelfTest() {
     return 'apex ' + d.apex.map((x) => x.toFixed(2)).join(', ');
   }));
 
+  out.push(runCase('dress.seams', () => {
+    const doc = normalizeDoc(getSample('dress'));
+    const base = gradeDoc(doc, 'M');
+    const worst = [];
+    for (const seam of doc.seams) {
+      const e0 = seamEasePct(base, seam).easePct;
+      assert(e0 <= 3, `seam ${seam.id}: ${e0.toFixed(2)}% at M (> 3%)`);
+      for (const size of ['S', 'L', 'XL']) {
+        const e1 = seamEasePct(gradeDoc(doc, size), seam).easePct;
+        assert(Math.abs(e1 - e0) <= 1, `seam ${seam.id}: ease drifts ${(e1 - e0).toFixed(2)} pp at ${size} (> 1)`);
+      }
+      worst.push(e0);
+    }
+    return doc.seams.length + ' seams, worst ease ' + Math.max(...worst).toFixed(2) + '% at M';
+  }));
+
   return out;
 }

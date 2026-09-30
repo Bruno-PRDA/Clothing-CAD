@@ -1,5 +1,5 @@
 // src/geometry/selftest.js — the 15 cases of SPEC 5.9 plus two regression cases (remesh.allSamples, remesh.sleeve), the
-// four darts cases of SPEC 5.10 and the two darted-mesh cases (remesh.dartNarrow, remesh.dartSeam).
+// four darts cases of SPEC 5.10 and the two darted-mesh cases (remesh.dartNarrow, remesh.dartSeam), and remesh.dress (the fitted dress sample).
 // Pure and DOM-free; this is the only file of src/geometry/ allowed to import ../samples/index.js (as a fixture source).
 import {
   segmentLength, sampleSegment, splitEdge,
@@ -400,6 +400,13 @@ function caseRemeshPerformance() {
   return { name: 'remesh.performance', pass, details: 'ms ' + ms + ' (want < 200) for ' + mesh.vertexCount + ' vertices' };
 }
 
+/** @param {ArrayLike<number>} fr sewn fractions along an edge @returns {number} how many of them differ from their predecessor */
+function distinctFractions(fr) {
+  let n = 0;
+  for (let i = 0; i < fr.length; i++) if (i === 0 || Math.abs(fr[i] - fr[i - 1]) > 1e-12) n++;
+  return n;
+}
+
 /** @returns {SelfTestResult} */
 function caseRemeshAllSamples() {
   const spacings = [8, 15, 40];
@@ -407,7 +414,7 @@ function caseRemeshAllSamples() {
   const failures = [];
   let worstPct = 100;
   let checked = 0;
-  for (const sampleId of ['tshirt', 'skirt']) {
+  for (const sampleId of ['tshirt', 'skirt', 'dress']) {
     const base = getSample(sampleId);
     for (const spacing of spacings) {
       const doc = { ...base, pieces: base.pieces.map((p) => ({ ...p, meshSpacing_mm: spacing })) };
@@ -432,8 +439,9 @@ function caseRemeshAllSamples() {
         const ma = meshes.get(seam.a.pieceId);
         const mb = meshes.get(seam.b.pieceId);
         if (!ma || !mb) continue;
-        const na = ma.edgeVerts[seam.a.mirror ? 1 : 0][seam.a.edge].length;
-        const nb = mb.edgeVerts[seam.b.mirror ? 1 : 0][seam.b.edge].length;
+        // a dart's mouth lists two vertices at one sewn fraction: count distinct fractions, the seam's real sample count
+        const na = distinctFractions(ma.edgeFrac[seam.a.mirror ? 1 : 0][seam.a.edge]);
+        const nb = distinctFractions(mb.edgeFrac[seam.b.mirror ? 1 : 0][seam.b.edge]);
         if (na !== nb) failures.push(sampleId + '/' + seam.id + '@' + spacing + ': ' + na + ' vs ' + nb + ' seam vertices');
       }
     }
@@ -622,6 +630,24 @@ function caseRemeshDartSeam() {
   return { name: 'remesh.dartSeam', pass, details: `fractions mirror ${mirrored}; A ${mA.edgeVerts[0][2].length} vs B ${mB.edgeVerts[0][0].length}; doubled u ${doubled}; darts on both sides agree ${both}` };
 }
 
+/** @returns {SelfTestResult} */
+function caseRemeshDress() {
+  const doc = getSample('dress');
+  let V = 0;
+  const notes = [];
+  let ok = true;
+  for (const p of doc.pieces) {
+    const m = remeshPiece(p, doc);
+    V += m.vertexCount;
+    const { euler } = eulerOf(m);
+    const legsOk = (p.darts || []).every((_, k) => m.dartVerts[0][k].a.length >= 3);
+    if (euler !== 1 || m.quality.pctAbove20 < 98 || !legsOk || m.warnings.some((w) => w.startsWith('dart-ignored'))) ok = false;
+    notes.push(`${p.id} ${m.vertexCount}v ${f(m.quality.pctAbove20, 1)}%`);
+  }
+  const pass = ok && V >= 4500 && V <= 7000;
+  return { name: 'remesh.dress', pass, details: `total ${V} vertices (want 4500..7000); ` + notes.join(', ') };
+}
+
 // ----------------------------------------------------------------------------------------------------------------- run
 
 /** @type {(() => SelfTestResult)[]} */
@@ -649,14 +675,15 @@ const CASES = [
   caseDartsCarry,
   caseRemeshDartNarrow,
   caseRemeshDartSeam,
+  caseRemeshDress,
 ];
 
-/** Names in declaration order (the 15 of SPEC 5.9, remesh.allSamples, remesh.sleeve, the four darts cases, then the two darted-mesh cases). @returns {string[]} */
+/** Names in declaration order (the 15 of SPEC 5.9, remesh.allSamples, remesh.sleeve, the four darts cases, then the two darted-mesh cases, then the dress). @returns {string[]} */
 export function listSelfTests() {
   return ['bezier.length', 'bezier.split', 'polygon.predicates', 'mirror.fullOutline', 'delaunay.basic',
     'delaunay.recover', 'remesh.square', 'remesh.seamParity', 'remesh.fold', 'remesh.notch', 'offset.square',
     'offset.discontinuity', 'offset.fold', 'pack.shelf', 'remesh.performance', 'remesh.allSamples', 'remesh.sleeve',
-    'darts.mouth', 'darts.apply', 'darts.check', 'darts.carry', 'remesh.dartNarrow', 'remesh.dartSeam'];
+    'darts.mouth', 'darts.apply', 'darts.check', 'darts.carry', 'remesh.dartNarrow', 'remesh.dartSeam', 'remesh.dress'];
 }
 
 /** @returns {Promise<SelfTestResult[]>} */

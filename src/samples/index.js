@@ -1,6 +1,7 @@
 // src/samples/index.js — registry of built-in sample garments (SPEC section 4.4). Imports nothing outside src/samples/.
 import { TSHIRT } from './tshirt.js';
 import { SKIRT } from './skirt.js';
+import { DRESS } from './dress.js';
 
 /** @typedef {import('../core/types.js').ProjectDoc} ProjectDoc */
 /** @typedef {{id:string, name:string, doc:ProjectDoc}} SampleEntry */
@@ -23,7 +24,7 @@ export function deepFreeze(o) {
 export const DEFAULT_SAMPLE_ID = 'tshirt';
 
 /** Ids of all built-in samples, in menu order. */
-export const SAMPLE_IDS = Object.freeze(['tshirt', 'skirt']);
+export const SAMPLE_IDS = Object.freeze(['tshirt', 'skirt', 'dress']);
 
 /**
  * Ordered list of built-in samples; order = order in the toolbar "Samples" menu (section 11).
@@ -33,6 +34,7 @@ export const SAMPLE_IDS = Object.freeze(['tshirt', 'skirt']);
 export const SAMPLES = Object.freeze([
   Object.freeze({ id: 'tshirt', name: 'Basic T-shirt', doc: deepFreeze(TSHIRT) }),
   Object.freeze({ id: 'skirt', name: 'A-line skirt', doc: deepFreeze(SKIRT) }),
+  Object.freeze({ id: 'dress', name: 'Fitted dress', doc: deepFreeze(DRESS) }),
 ]);
 
 /**
@@ -47,7 +49,7 @@ export function listSamples() {
  * Deep clone of a sample ProjectDoc, safe to hand to store.load(). Every call returns a new, unfrozen object
  * graph (structuredClone drops the freeze). The literals are authored fully normalised, so
  * normalizeDoc(getSample(id)) (section 3.3) is deep-equal to getSample(id).
- * @param {string} id  'tshirt' | 'skirt'
+ * @param {string} id  'tshirt' | 'skirt' | 'dress'
  * @returns {ProjectDoc}
  * @throws {Error & {code:'UNKNOWN_SAMPLE'}} when id is not a registered sample
  */
