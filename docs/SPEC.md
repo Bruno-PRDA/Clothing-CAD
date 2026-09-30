@@ -5732,6 +5732,25 @@ Cost: one `JSON.stringify` of the pieces/seams per `doc:changed` — < 1 ms for 
 > the dress left it draped on its darted meshes (waist band 10.875 mm from the body with and without darts). Found by
 > acceptance check 26h (§13 amendment "Darts: acceptance"), which is its regression test.
 
+> **Amendment (lead, 2026-09-30) — Darts: the mesh fingerprint is the seam sampling.** `mesh[pieceId]` also covers
+> `u`: for every edge of the piece but the fold edge, `seamSampleFractions(piece, e, doc, spacingFactor)` (§5.6) with
+> each fraction rounded to 1e-9 (`null` when it throws). An edge's samples come from its whole seam component —
+> partners of partners, a fold piece's two sides, their notches, the sewn length and spacing of every member, and which
+> of their darts are valid — and since §7.1 pairs by sewn fraction, any difference is `seam-parity`, where before only a
+> different count was. `seamsTouching` sees only the direct partners' lengths and raw `[t, width_mm]`, so a dart on
+> `bodice_back_r`'s shoulder left `bodice_back_l` (sewn to the front alone) on its old mesh, moving the T-shirt front's
+> armhole notch left both sleeves on theirs, and a partner dart turning invalid left its mouth in this piece's samples;
+> every build then failed until an edit touched the stale piece or the page was reloaded. `seamsTouching` stays in the
+> key. The mesh keys are taken on the pieces graded to the active size (`simDoc`), the ones `remesh` builds from and
+> records keys for. `onDocChanged` used to compare keys of the ungraded pieces with them, so at any size but the base
+> every pieces or seams change rebuilt the cloth: a placement change rebuilt it instead of re-arranging it, and
+> renaming a dress piece at XL took 55 ms instead of 2.7. (`remesh` checked the key again on the graded pieces, so only
+> the pieces that changed were remeshed.) `computeKeys(doc, {mesh?})`: `{mesh: false}` skips the mesh keys, which
+> cost a seam sampling of every edge (about 1 ms for the dress). `onDocChanged` takes them only for a pieces or seams
+> change that is not a drag (step 2's "restricted to groups"), and the load path never does: it clears them, and
+> `remesh` records them. Regression test: acceptance check 26i `incremental_remesh` (§13 amendment "Darts: the fix
+> wave").
+
 #### 12.2.4 Debounce, throttle and flush rules
 
 | Job | Trigger | Timing | Coalescing |
@@ -6135,6 +6154,15 @@ Store contract (section 3.3, authoritative): `update(mutator, label)` emits `doc
 > the runner's timing pattern for 27 is now `the suite took [\d.]+ s \(limit \d+ s`. The runner also writes its console
 > with `errors='backslashreplace'`, so a failure message with a character outside the Windows code page (26h's "2π")
 > cannot crash it before `results.json` is written.
+
+> **Amendment (lead, 2026-09-30) — Darts: the fix wave.** Checks after 26h that guard the fixes of the branch's final
+> review; the suite has **35 checks** (01–27 plus 26b–26i). "Rebuilt" below means: one `__app.update`, `await idle()`, no
+> new `errorsNow()` line, `mesh.stats().seamPairsEqual`, and a new live `ClothState` whose `V` equals
+> `mesh.stats().verts`.
+>
+> | # | name | timeout | what passes |
+> |---|---|---|---|
+> | 26i | `incremental_remesh` | 20 s | the dress with a dart added on `bodice_back_r`'s shoulder (`{edge: 3, t: 0.5, width_mm: 10, apex: [140, 320]}`) is rebuilt; the T-shirt with the front armhole notch moved to `t = 0.43` is rebuilt; at size L a notch added on the front hem is rebuilt and replaces the front's mesh alone, and a placement change then leaves the live `ClothState` the same object (re-arranged, not rebuilt). §12.2.3 amendment "Darts: the mesh fingerprint is the seam sampling"; before it, the first two failed with `seam-parity` and the last rebuilt. |
 
 > **Amendment (lead, 2026-09-24) — continuous integration.** `.github/workflows/tests.yml` runs on every push and
 > pull request: `tests/ci/run_browser_tests.py` starts `serve.py`, boots the app in headless Chromium (WebGL through

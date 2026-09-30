@@ -84,7 +84,7 @@ import * as dxfMod from '../dxf/index.js';
  * @property {(name: string) => void} setActiveSize
  * @property {(n: number) => SimStats|null} stepFrames
  * @property {(dtMs: number, frame: number) => void} tick
- * @property {(doc: ProjectDoc) => Keys} computeKeys
+ * @property {(doc: ProjectDoc, opts?: {mesh?: boolean}) => Keys} computeKeys
  */
 
 const REMESH_DEBOUNCE_MS = 120;
@@ -289,20 +289,42 @@ export function createWiring(ctx) {
     return d;
   }
 
-  /** @param {ProjectDoc} d @param {Piece} p @returns {number} */
+  /**
+   * The sewn fractions every sewable edge of a piece is sampled at (SPEC 5.6 `seamSampleFractions`), rounded to 1e-9.
+   * They come from the edge's whole seam component — partners of partners, a fold piece's two sides, their notches and
+   * which of their darts are valid — none of which the rest of the mesh key sees (SPEC 12.2.3 amendment "Darts: the mesh
+   * fingerprint is the seam sampling").
+   * @param {ProjectDoc} d the document the mesh is built from (graded, see simDoc) @param {Piece} p @returns {(number[]|null)[]}
+   */
+  function edgeSamplesOf(d, p) {
+    /** @type {(number[]|null)[]} */
+    const out = [];
+    const n = Array.isArray(p.vertices) ? p.vertices.length : 0;
+    for (let e = 0; e < n; e++) {
+      if (e === p.foldEdge) { out.push(null); continue; }
+      try {
+        out.push(geometryMod.seamSampleFractions(p, e, d, ctx.mesh.spacingFactor).map((u) => Math.round(u * 1e9)));
+      } catch (_) { out.push(null); }   // an outline the mesher rejects anyway; the key still follows its vertices
+    }
+    return out;
+  }
+
+  /** @param {ProjectDoc} d the document the mesh is built from (graded, see simDoc) @param {Piece} p @returns {number} */
   function meshKeyOf(d, p) {
     return keyOf({
       v: p.vertices, e: p.edges, f: p.foldEdge, n: p.notches, dt: p.darts,
-      h: p.meshSpacing_mm, sf: ctx.mesh.spacingFactor, s: seamsTouching(d, p.id),
+      h: p.meshSpacing_mm, sf: ctx.mesh.spacingFactor, s: seamsTouching(d, p.id), u: edgeSamplesOf(d, p),
       z: (d.ui && d.ui.activeSize) || '', g: p.grade,
     });
   }
 
   /**
-   * Fingerprints of the whole document (12.2.3).
-   * @param {ProjectDoc} d @returns {Keys}
+   * Fingerprints of the whole document (12.2.3). The mesh keys are taken on the pieces graded to the active size, the
+   * ones `remesh` builds from and records keys for; they cost a seam sampling of every edge, so `{mesh: false}` skips
+   * them (`onDocChanged` compares them only for a pieces or seams change).
+   * @param {ProjectDoc} d @param {{mesh?: boolean}} [opts] @returns {Keys}
    */
-  function computeKeys(d) {
+  function computeKeys(d, opts) {
     /** @type {Keys} */
     const keys = {
       mesh: new Map(), build: new Map(), arrange: new Map(),
@@ -310,8 +332,9 @@ export function createWiring(ctx) {
     };
     if (!d) return keys;
     const pieces = Array.isArray(d.pieces) ? d.pieces : [];
+    const graded = (opts && opts.mesh === false) ? null : simDoc(d);
     for (const p of pieces) {
-      keys.mesh.set(p.id, meshKeyOf(d, p));
+      if (graded) keys.mesh.set(p.id, meshKeyOf(graded, graded.pieces.find((x) => x.id === p.id) || p));
       keys.build.set(p.id, keyOf({
         fabricId: p.fabricId, layer: p.layer, pinnedEdges: p.pinnedEdges, simulate: p.simulate,
       }));
@@ -1011,10 +1034,11 @@ export function createWiring(ctx) {
       if (change && typeof change[g] !== 'undefined' && change[g] !== false) groups.add(g);
     }
     const drag = origin === 'drag';
-    const keys = computeKeys(d);
+    const meshStep = !drag && (groups.has('pieces') || groups.has('seams'));
+    const keys = computeKeys(d, { mesh: meshStep });
     autosaveNote(d, !(groups.size === 1 && groups.has('ui')));
 
-    if (!drag && (groups.has('pieces') || groups.has('seams'))) {
+    if (meshStep) {
       /** @type {string[]} */
       const remeshSet = [];
       let rebuild = false;
@@ -1276,7 +1300,7 @@ export function createWiring(ctx) {
     ctx.cloth.nanEvents.length = 0;
     ctx.cloth.userPaused = !!ctx.params.nosim;
 
-    const keys = computeKeys(d);
+    const keys = computeKeys(d, { mesh: false });   // the mesh keys were just cleared; remesh records them
     const bodyChanged = keys.body !== ctx.keys.body || !ctx.body.model;
     ctx.keys = keys;
     ctx.keys.fabrics = keys.fabrics;

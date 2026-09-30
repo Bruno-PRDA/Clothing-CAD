@@ -1405,6 +1405,68 @@ async function checkDartShaping() {
   return `waist band ${fmt(withDarts)} mm with darts, ${fmt(without)} without (need ${fmt(need)} closer)`;
 }
 
+/**
+ * Apply one edit through `__app.update` and check the pipeline took it: no error logged, every seam's two sides still
+ * pair (the rule buildCloth sews by), and the live cloth was rebuilt from the new meshes rather than left stale.
+ * @param {string} what @param {(d: any) => void} fn
+ */
+async function editRebuilds(what, fn) {
+  const before = stateOf();
+  const errs = errorsNow().length;
+  app().update(fn, 'acceptance: ' + what);
+  await app().idle();
+  app().sim.pause();
+  const fresh = errorsNow().slice(errs).map((e) => e.message);
+  expect(fresh.length === 0, `${what}: ${fresh.join(' | ')}`);
+  const st = app().mesh.stats();
+  expect(st.seamPairsEqual, `${what}: the two sides of a seam no longer pair`);
+  const now = stateOf();
+  expect(now !== before && now.V === st.verts, `${what}: the cloth was not rebuilt from the new meshes`);
+}
+
+/**
+ * An edit remeshes every piece whose boundary it changes, and only those (SPEC 12.2.3 amendment "Darts: the mesh
+ * fingerprint is the seam sampling"). A piece's edge samples come from the edge's whole seam component: partners of
+ * partners, their notches, and which of their darts are valid. A fingerprint that listed only the direct partners' edge
+ * lengths and raw darts left a stale mesh behind, and the next build failed with 'seam-parity' until a reload. At a size
+ * other than the base the fingerprints were compared across the ungraded and the graded pieces, so every edit rebuilt
+ * the cloth, even one that only moves a piece.
+ * @returns {Promise<string>}
+ */
+async function checkIncrementalRemesh() {
+  /** @returns {Map<string, any>} live meshes by piece id */
+  const meshes = () => new Map(app().mesh.all().map((m) => [m.pieceId, m]));
+  // The dress: bodice_back_l's shoulder is sewn only to the front, but the front's shoulder is also sewn to
+  // bodice_back_r's, so a mouth cut there is a sample of all three.
+  await reloadSample('dress');
+  await editRebuilds('a dart on the right back shoulder', (d) => {
+    pieceOf(d, 'bodice_back_r').darts.push({ id: 'shoulder_dart', edge: 3, t: 0.5, width_mm: 10, apex: [140, 320] });
+  });
+  // The T-shirt: the sleeve caps are sewn to the front armhole, whose notch is a sample of theirs (t 0.43 is off the
+  // uniform sampling; 0.4 is on it and would change nothing).
+  await reloadSample('tshirt');
+  await editRebuilds('the front armhole notch moved', (d) => {
+    pieceOf(d, 'front').notches.find((n) => n.edge === 2).t = 0.43;
+  });
+  // At size L: a notch on the front hem, a free edge, remeshes the front alone; a placement change re-arranges the
+  // live cloth, as it does at the base size, instead of rebuilding it.
+  app().sizes.setActive('L');
+  await app().idle();
+  app().sim.pause();
+  const m0 = meshes();
+  await editRebuilds('a hem notch at size L', (d) => { pieceOf(d, 'front').notches.push({ edge: 0, t: 0.5, kind: 'single' }); });
+  const m1 = meshes();
+  const remeshed = [...m1.keys()].filter((id) => m1.get(id) !== m0.get(id));
+  expect(remeshed.join() === 'front', `a notch on the front hem at size L remeshed ${remeshed.join(', ') || 'nothing'}, expected the front only`);
+  const s0 = stateOf();
+  app().update((d) => { pieceOf(d, 'front').placement.offset_mm = [5, 0]; }, 'acceptance: placement at size L');
+  await app().idle();
+  app().sim.pause();
+  expect(stateOf() === s0, 'a placement change at size L rebuilt the cloth instead of re-arranging it');
+  drapeStage = 0;
+  return 'dress back shoulder dart, T-shirt armhole notch: rebuilt, seams pair; size L: a hem notch remeshed the front only, a move re-arranged';
+}
+
 /** How long the runner waits for a timed-out check's abandoned work to settle before starting the next one. */
 const SETTLE_AFTER_TIMEOUT_MS = 30000;
 
@@ -1445,6 +1507,7 @@ export const CHECKS = Object.freeze([
   { id: '26f', name: 'dxf', timeoutMs: 20000, fn: checkDxf },
   { id: '26g', name: 'dress_drape', timeoutMs: 40000, fn: checkDressDrape },
   { id: '26h', name: 'dart_shaping', timeoutMs: 40000, fn: checkDartShaping },
+  { id: '26i', name: 'incremental_remesh', timeoutMs: 20000, fn: checkIncrementalRemesh },
   { id: '27', name: 'runtime', timeoutMs: 5000, fn: checkRuntime },
 ]);
 
