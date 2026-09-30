@@ -2640,6 +2640,21 @@ export function buildCloth({meshes, doc, fabrics})
 
 Also exported from `state.js`: `setFabricParams(state, pieceIndex, fabric)` (rewrites `invMass` (keeping 0 for pins), `clearance`, `mu`, `damp`, `eAlpha`, `bAlpha` of that piece in place), `setSettings(state, simSettings)` (substeps, gravity, sewTime, selfCollision, collisionOffset → clearance rewrite, bendScale/stretchScale → `setScale`), `setScale(state, bend, stretch)` (rewrites every `bAlpha`/`eAlpha` from the fabric values), `setPin(state, v, target)`.
 
+> **Amendment (lead, 2026-09-30) — Darts: sewing.** Step 5 pairs the two sides of a seam by **sewn fraction** when both
+> meshes carry `edgeFrac` (§5 amendment "Darts: meshing"), else by index exactly as before (the lattice fixtures have no
+> `edgeFrac`). `pairing.js` (pure, no imports) exports `pairByIndex(va, vb, reverse)`, `pairByFraction(va, fa, vb, fb,
+> reverse)` and `FRACTION_EPS = 1e-6`; each returns the flat local-id pair list `[a, b, a, b, …]` or `null`. Side `b` is
+> read backwards with `u ↦ 1 − u` when the seam is reversed, and the two sides are walked together: fractions within
+> `FRACTION_EPS` are one position. One vertex against one vertex gives one pair. A dart mouth (two vertices at one `u`, its
+> corners A and B) against one vertex pairs both corners with that vertex. A mouth against a mouth pairs corner to corner
+> in walk order. A fraction without a partner, or vertices left over, gives `null` and `ClothBuildError 'seam-parity'`
+> (the equal-length rule of step 5 holds only for index pairing). After the seams, every dart of every piece
+> (`mesh.dartVerts[m][k]`, legs of equal length, mouth → apex) contributes `a[i] ↔ b[i]` for each `i`, pairs whose ids are
+> equal (the shared apex) skipped, appended to `sIdx` after all the seam pairs. Dart pairs are ordinary seam pairs from
+> there on: the sewing ramp of §7.2 (`sRest0`, `sStart`), the self-collision exclusions and seam-neighbour mask of step 7,
+> the seam-gap statistics of §7.9 and tear detection all treat them like any other. `__app.mesh.stats().seamPairsEqual`
+> (§12) uses the same rule: `false` when the pairing returns `null` or a side is missing.
+
 ### 7.2 Constraints (`constraints.js`)
 
 XPBD update for a constraint `C` with gradient `∇_i C`, compliance `α`, `α̃ = α/h²`, λ reset to 0 each substep (so `Δλ = −C / (Σ_i w_i|∇_iC|² + α̃)`), `Δx_i = w_i · Δλ · ∇_iC`.
@@ -5680,7 +5695,7 @@ window.__app = {
       spacingFactor: number,
       perPiece: {pieceId:string, verts:number, tris:number, minAngleDeg:number, pctAbove20:number, medianEdge_mm:number, area_mm2:number, warnings:string[]}[],
       failed: {pieceId:string, message:string}[],
-      seamPairsEqual: boolean,     // for every seam: edgeVerts[a.mirror][a.edge].length === edgeVerts[b.mirror][b.edge].length
+      seamPairsEqual: boolean,     // for every seam: the two sides pair up (by sewn fraction when both meshes have edgeFrac, else by equal length; section 7.1 amendment "Darts: sewing")
     },
     remesh(pieceId?: string): PieceMesh[],   // live meshes; forces remesh (ignores fingerprints) of one or all simulate pieces, then rebuild+arrange(+drape unless paused); E_NO_PIECE
     get(pieceId: string): PieceMesh|null,    // live cached mesh or null (not meshed / failed)

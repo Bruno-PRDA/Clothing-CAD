@@ -5,7 +5,7 @@ import { makeSphereGrid } from '../core/sdf.js';
 import {
   buildCloth, arrange, step, stats, setFabricParams, snapshot, restore, selfMaskedPairCount,
   bendingCoefficients, bendingC, solveDistance, solveBending,
-  makeHangingSheet, makeSphereDrape, makeSeamFixture, makeSlopeFixture, makeLatticeMesh,
+  makeHangingSheet, makeSphereDrape, makeSeamFixture, makeSlopeFixture, makeLatticeMesh, pairByFraction, pairByIndex, makeDartTubeFixture,
   findTears, TEAR_STRAIN, TEAR_GAP_M, CLUSTER_M, sewGravityScale, contactRoundsAt, convexifyRow,
 } from './index.js';
 import { G_SEW_FLOOR, G_SEW_POWER, CONTACT_ROUNDS, CONTACT_ROUNDS_SEW, MU_RELEASE_TIME } from './solver.js';
@@ -356,6 +356,40 @@ export async function runSelfTest() {
     for (let a = 0; a < ang; a++) assert(r[a] === 0, 'row 0 must be untouched');
     for (let a = 0; a < ang; a++) assert(r[ang + a] >= notched[a] - 1e-12, 'a radius may only grow (angle ' + a + ')');
     return 'hollow 0.12 -> ' + r[ang + 16].toFixed(4) + ' m, bump kept, convex row unchanged';
+  });
+  check('seam.pairByFraction', () => {
+    const p0 = pairByFraction([0, 1, 2], [0, 0.5, 1], [10, 11, 12], [0, 0.5, 1], false);
+    assert(!!p0 && p0.join() === '0,10,1,11,2,12', 'plain: ' + p0);
+    assert(pairByFraction([0, 1, 2], [0, 0.5, 1], [10, 11, 12], [0, 0.25, 1], true) === null, 'mismatched fractions must not pair');
+    const p2 = pairByFraction([0, 1, 2], [0, 0.25, 1], [10, 11, 12], [0, 0.75, 1], true);
+    assert(!!p2 && p2.join() === '0,12,1,11,2,10', 'reversed: ' + p2);
+    const p3 = pairByFraction([0, 1, 2, 3], [0, 0.5, 0.5, 1], [10, 11, 12], [0, 0.5, 1], false);
+    assert(!!p3 && p3.join() === '0,10,1,11,2,11,3,12', 'mouth on a: ' + p3);
+    const p4 = pairByFraction([0, 1, 2, 3], [0, 0.5, 0.5, 1], [10, 11, 12, 13], [0, 0.5, 0.5, 1], false);
+    assert(!!p4 && p4.join() === '0,10,1,11,2,12,3,13', 'mouths on both: ' + p4);
+    const p5 = pairByFraction([0, 1, 2], [0, 0.4, 1], [10, 11, 12, 13], [0, 0.6, 0.6, 1], true);
+    assert(!!p5 && p5.join() === '0,13,1,12,1,11,2,10', 'mouth on reversed b: ' + p5);
+    assert(pairByIndex([0, 1], [5, 6, 7], false) === null, 'index pairing needs equal lengths');
+    return '6 pairings';
+  });
+
+  check('dart.tube', () => {
+    const { state, legs } = makeDartTubeFixture({ fabric: fab('cotton'), spacing_mm: 10 });
+    const S = state.sIdx.length / 2;
+    assert(S === legs.a.length, 'dart legs give ' + S + ' seam pairs, want ' + legs.a.length);
+    for (let i = 0; i < 120; i++) step(state, null);
+    let worst = 0;
+    for (let s = 0; s < S; s++) {
+      const a = state.sIdx[2 * s]; const b = state.sIdx[2 * s + 1];
+      const d = Math.hypot(state.pos[3 * a] - state.pos[3 * b], state.pos[3 * a + 1] - state.pos[3 * b + 1], state.pos[3 * a + 2] - state.pos[3 * b + 2]);
+      if (d > worst) worst = d;
+    }
+    let zMin = Infinity; let zMax = -Infinity;
+    for (let v = 0; v < state.V; v++) { const z = state.pos[3 * v + 2]; if (z < zMin) zMin = z; if (z > zMax) zMax = z; }
+    assert(state.nanCount === 0 && allFinite(state), 'NaN in the tube');
+    assert(worst < 0.002, 'dart legs still ' + f(worst * 1000) + ' mm apart at frame 120 (want < 2)');
+    assert(zMax - zMin > 0.010, 'the sheet stayed flat: out-of-plane spread ' + f((zMax - zMin) * 1000) + ' mm (want > 10)');
+    return 'gap ' + f(worst * 1000) + ' mm, spread ' + f((zMax - zMin) * 1000) + ' mm';
   });
   return results;
 }

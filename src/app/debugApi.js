@@ -848,9 +848,17 @@ export function installDebugApi(ctx, wiring) {
           const ma = byPiece.get(s.a.pieceId);
           const mb = byPiece.get(s.b.pieceId);
           if (!ma || !mb) continue;
-          const va = ma.edgeVerts && ma.edgeVerts[s.a.mirror ? 1 : 0] && ma.edgeVerts[s.a.mirror ? 1 : 0][s.a.edge];
-          const vb = mb.edgeVerts && mb.edgeVerts[s.b.mirror ? 1 : 0] && mb.edgeVerts[s.b.mirror ? 1 : 0][s.b.edge];
-          if (!va || !vb || va.length !== vb.length) { seamPairsEqual = false; break; }
+          const ia = s.a.mirror ? 1 : 0;
+          const ib = s.b.mirror ? 1 : 0;
+          const va = ma.edgeVerts && ma.edgeVerts[ia] && ma.edgeVerts[ia][s.a.edge];
+          const vb = mb.edgeVerts && mb.edgeVerts[ib] && mb.edgeVerts[ib][s.b.edge];
+          if (!va || !vb) { seamPairsEqual = false; break; }
+          // the same rule buildCloth sews by (SPEC 7.1, amendment "Darts"): sewn fractions when both meshes carry them
+          const fa = ma.edgeFrac && ma.edgeFrac[ia] && ma.edgeFrac[ia][s.a.edge];
+          const fb = mb.edgeFrac && mb.edgeFrac[ib] && mb.edgeFrac[ib][s.b.edge];
+          const reverse = !!(s.a.reverse || s.b.reverse);
+          const paired = (fa && fb) ? clothMod.pairByFraction(va, fa, vb, fb, reverse) : clothMod.pairByIndex(va, vb, reverse);
+          if (!paired) { seamPairsEqual = false; break; }
         }
       }
       return {

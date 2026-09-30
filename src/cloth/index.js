@@ -15,7 +15,8 @@ export { FRICTION_FLOOR } from './collide.js';
 export { LRA_ANCHORS, LRA_RINGS, LRA_SLACK, solveLra } from './lra.js';
 export { TEAR_STRAIN, TEAR_GAP_M, CLUSTER_M, MAX_MARKS, findTears } from './tears.js';
 export { sphereField, capsuleField, floorField } from './testfields.js';
-export { makeHangingSheet, makeSphereDrape, makeSeamFixture, makeSlopeFixture, makeLatticeMesh } from './fixtures.js';
+export { makeHangingSheet, makeSphereDrape, makeSeamFixture, makeDartTubeFixture, makeSlopeFixture, makeLatticeMesh } from './fixtures.js';
+export { pairByFraction, pairByIndex, FRACTION_EPS } from './pairing.js';
 
 /** Last computed SimStats (or a zeroed one before the first step). @param {ClothState} state @returns {SimStats} */
 export function stats(state) {

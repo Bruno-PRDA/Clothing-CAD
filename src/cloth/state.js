@@ -6,6 +6,7 @@ import { bendingCoefficients } from './constraints.js';
 import { createHash } from './hash.js';
 import { createStats } from './stats.js';
 import { buildRestGraph, pickAnchors, geodesicToAnchors } from './lra.js';
+import { pairByFraction, pairByIndex } from './pairing.js';
 
 /** @typedef {import('../core/types.js').ClothState} ClothState */
 /** @typedef {import('../core/types.js').PieceMesh} PieceMesh */
@@ -300,7 +301,8 @@ export function buildCloth(args) {
   }
   if (!Number.isFinite(hMin)) hMin = 0.015;
 
-  // 5. seams
+  // 5. seams — paired by sewn fraction when the meshes carry it (SPEC 7.1, amendment "Darts"), else by index; then
+  //    every dart's legs, corner to corner, down to the shared apex (identical ids are skipped)
   /** @type {number[]} */
   const seamPairs = [];
   for (const seam of docSeams) {
@@ -310,21 +312,39 @@ export function buildCloth(args) {
     if (ka === undefined || kb === undefined) continue; // a side is not simulated
     const ma = pieces[ka].mesh;
     const mb = pieces[kb].mesh;
-    const va = (ma.edgeVerts[seam.a.mirror ? 1 : 0] || [])[seam.a.edge];
-    const vb = (mb.edgeVerts[seam.b.mirror ? 1 : 0] || [])[seam.b.edge];
+    const ia = seam.a.mirror ? 1 : 0;
+    const ib = seam.b.mirror ? 1 : 0;
+    const va = (ma.edgeVerts[ia] || [])[seam.a.edge];
+    const vb = (mb.edgeVerts[ib] || [])[seam.b.edge];
     if (!va || !vb) {
       throw clothError('seam-edge', 'buildCloth: seam ' + seam.id + ' references a missing edge sample list', { seamId: seam.id });
     }
-    if (va.length !== vb.length || va.length < 2) {
-      throw clothError('seam-parity', 'buildCloth: seam ' + seam.id + ' sides have ' + va.length + ' / ' + vb.length + ' vertices', { seamId: seam.id });
-    }
+    const fa = ma.edgeFrac ? (ma.edgeFrac[ia] || [])[seam.a.edge] : null;
+    const fb = mb.edgeFrac ? (mb.edgeFrac[ib] || [])[seam.b.edge] : null;
     const reverse = !!(seam.a.reverse || seam.b.reverse);
-    const N = va.length;
-    for (let i = 0; i < N; i++) {
-      const gi = pieces[ka].start + va[i];
-      const gj = pieces[kb].start + vb[reverse ? N - 1 - i : i];
+    const local = (fa && fb) ? pairByFraction(va, fa, vb, fb, reverse) : pairByIndex(va, vb, reverse);
+    if (!local) {
+      throw clothError('seam-parity', 'buildCloth: seam ' + seam.id + ' sides have ' + va.length + ' / ' + vb.length + ' vertices at different sewn positions', { seamId: seam.id });
+    }
+    for (let i = 0; i < local.length; i += 2) {
+      const gi = pieces[ka].start + local[i];
+      const gj = pieces[kb].start + local[i + 1];
       if (gi === gj) continue;
       seamPairs.push(gi, gj);
+    }
+  }
+  for (const pc of pieces) {
+    const dv = pc.mesh.dartVerts;
+    if (!Array.isArray(dv)) continue;
+    for (const list of dv) {
+      for (const legs of (list || [])) {
+        if (!legs || legs.a.length < 2 || legs.a.length !== legs.b.length) continue;
+        for (let i = 0; i < legs.a.length; i++) {
+          const gi = pc.start + legs.a[i];
+          const gj = pc.start + legs.b[i];
+          if (gi !== gj) seamPairs.push(gi, gj);
+        }
+      }
     }
   }
   const S = seamPairs.length / 2;

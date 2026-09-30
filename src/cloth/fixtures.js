@@ -233,6 +233,35 @@ export function makeSeamFixture(args) {
 }
 
 /**
+ * A 100 × 150 mm sheet whose left and right columns are declared as the two legs of one dart (`dartVerts`), floating
+ * with gravity 0: sewing the legs rolls the sheet into a tube. Dart fixture — the legs must meet and the sheet must stop
+ * being flat. A 1 mm sine bulge picks the side it rolls to. Self-collision off.
+ * @param {{fabric: FabricResolved, spacing_mm: number}} args
+ * @returns {{state: ClothState, legs: {a: Uint32Array, b: Uint32Array}}}
+ */
+export function makeDartTubeFixture(args) {
+  const { fabric, spacing_mm } = args;
+  const nx = Math.round(100 / spacing_mm) + 1;
+  const ny = Math.round(150 / spacing_mm) + 1;
+  const base = makeLatticeMesh({ nx, ny, spacing_mm, x0_mm: -50, y0_mm: 75, pieceId: 'tube', stagger: false });
+  const a = new Uint32Array(ny);
+  const b = new Uint32Array(ny);
+  for (let r = 0; r < ny; r++) { a[r] = r * nx; b[r] = r * nx + nx - 1; }
+  const legs = { a, b };
+  const mesh = /** @type {PieceMesh} */ ({ ...base, dartVerts: [[legs], []] });
+  const state = buildFromLattices([mesh], fabric, { selfCollision: false, sewTime_s: 1, gravity_ms2: 0 }, []);
+  const pos = state.pos;
+  const p2 = mesh.positions2d;
+  for (let v = 0; v < mesh.vertexCount; v++) {
+    pos[3 * v] = p2[2 * v] / 1000;
+    pos[3 * v + 1] = p2[2 * v + 1] / 1000;
+    pos[3 * v + 2] = 0.001 * Math.sin(Math.PI * (v % nx) / (nx - 1));
+  }
+  commitPositions(state, null);
+  return { state, legs };
+}
+
+/**
  * A size_m × size_m sheet resting on a horizontal floor field (y = 0) with gravity rotated by `angle_rad` about z
  * (tilted floor) and the fabric's friction overridden by `mu` — friction fixture.
  * @param {{fabric: FabricResolved, mu: number, size_m?: number, spacing_mm?: number, angle_rad?: number}} args
