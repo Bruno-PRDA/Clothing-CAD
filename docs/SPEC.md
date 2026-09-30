@@ -6076,6 +6076,37 @@ Store contract (section 3.3, authoritative): `update(mutator, label)` emits `doc
 
 ## 13. Acceptance suite (`tests/acceptance.js`)
 
+> **Amendment (lead, 2026-09-30) — Darts: acceptance.** Two checks on the fitted dress (§4.1 amendment "Darts: the fitted
+> dress"), after 26f; the suite has **34 checks** (01–27 plus 26b–26h).
+>
+> | # | name | timeout | what passes |
+> |---|---|---|---|
+> | 26g | `dress_drape` | 40 s | `reloadSample('dress'); sim.reset(); step(300); step(240); s = step(60)` (as 8 + 9 do for the T-shirt): `s.nanCount === 0`, `s.maxPenetration_mm < 5`, `s.seamGapMax_mm < 8`, `s.seamGapMean_mm < 3`, and **every dart closed**: the largest distance between the two vertices of any leg pair of the live cloth (`state.pieces[k].mesh.dartVerts`, offset by `.start`; the shared apex counts as a pair at 0) is `< 3 mm`. |
+> | 26h | `dart_shaping` | 40 s | on 26g's drape (re-draped the same way when 26g did not run): `W₁` = mean `body.sdf(x, y, z).d` over the vertices of the `bodice*` pieces within 30 mm (in y) of `body.modelLive().rings.waist.y`; `I` = the bodice waist intake around the body, Σ `width_mm` of the darts on `bodice*` edges labelled `waist`, twice on a fold piece (100 mm on the dress). Then every dart is removed in one `__app.update` and the dress re-draped the same way: `W₀`. Passes when `W₀ − W₁ ≥ ½ · I / 2π` (7.958 mm): taking `I` out of a round band's circumference brings it `I / 2π` closer to the body, and at least half of that must show on the drape. |
+>
+> Measured in a full run on an Intel Iris Xe laptop (GPU): 26g pen 4.374 mm, seam gap max 2.191 / mean 0.027 mm, dart
+> gap 0.000 mm (28.4 mm open at frame 0), 15.2 s; 26h waist band 10.875 mm with the darts, 23.337 without (12.46 mm
+> closer; need 7.958), 15.0 s. The penetration bar is the tight one (4.37 of 5 mm); it is never raised to make the check
+> pass — a failure is fixed in the draft (`src/samples/dress.js`). Writing 26h found that a dart edit never reached the
+> cloth (the mesh fingerprint ignored darts; §12.2.3 amendment "Darts: the mesh fingerprint"): without that fix it
+> measured 0.000 mm.
+>
+> Existing checks also run on the dress: **19** `export_svg` — the dress sheet at M has one `path.dart` per dart of
+> every exported piece, 5 (bodice front 2 on its stored half, bodice back 1, skirt front 1, skirt back 1; the mirrored
+> backs are `exportHidden`), computed from the document and asserted equal to 5; **23** `json_roundtrip` — the dress's
+> `save()` is a fixed point of `serializeDoc(normalizeDoc(parse(…)))` and `load(save())` then `save()` is
+> byte-identical; **26f** `dxf` — the dress exported and imported back: every exported piece returns with as many
+> points and as many darts as it had (a fold piece: its stored half's), and one undo removes the import. The dress round
+> trip found the skirt's straight side refitted as one curve with its hip curve (§10 amendment "Darts: a straight edge
+> ends at a turn point").
+>
+> **Runtime (27):** the limit is `LIMIT_S = 90 + ceil((ms₂₆g + ms₂₆h) / 10 000) · 10` = 90 + ceil(30 132 / 10 000) · 10
+> = **130 s** — the two dress drapes measured 15 165 + 14 967 ms in a full run on the Intel Iris Xe laptop (GPU); the
+> suite took 110.6 s. The details string says why (`total … s (limit 130 s: 90 + the dress drapes of 26g/26h, …)`), and
+> the runner's timing pattern for 27 is now `the suite took [\d.]+ s \(limit \d+ s`. The runner also writes its console
+> with `errors='backslashreplace'`, so a failure message with a character outside the Windows code page (26h's "2π")
+> cannot crash it before `results.json` is written.
+
 > **Amendment (lead, 2026-09-24) — continuous integration.** `.github/workflows/tests.yml` runs on every push and
 > pull request: `tests/ci/run_browser_tests.py` starts `serve.py`, boots the app in headless Chromium (WebGL through
 > SwiftShader), runs `__app.selftest.run()` and then the acceptance suite without check 03 (which only re-runs the

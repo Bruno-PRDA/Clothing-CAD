@@ -76,6 +76,7 @@ async function reloadSample(id) {
   await app().idle();
   app().sim.pause();
   drapeStage = 0;
+  dressDraped = false;
   return app().doc();
 }
 
@@ -215,6 +216,67 @@ function landmark(name) {
   return l;
 }
 
+/** Largest distance between the two vertices of any dart pair in the live cloth, mm. */
+function dartGapMax_mm() {
+  const st = stateOf();
+  let worst = 0;
+  for (const pc of st.pieces) {
+    for (const list of (pc.mesh.dartVerts || [])) {
+      for (const legs of (list || [])) {
+        for (let i = 0; i < legs.a.length; i++) {
+          const a = pc.start + legs.a[i];
+          const b = pc.start + legs.b[i];
+          const d = Math.hypot(st.pos[3 * a] - st.pos[3 * b], st.pos[3 * a + 1] - st.pos[3 * b + 1], st.pos[3 * a + 2] - st.pos[3 * b + 2]);
+          if (d > worst) worst = d;
+        }
+      }
+    }
+  }
+  return worst * 1000;
+}
+
+/** Mean distance from the body of the bodice's vertices within 30 mm of the waist ring, mm. */
+function waistBandGap_mm() {
+  const st = stateOf();
+  const y0 = app().body.modelLive().rings.waist.y;
+  let sum = 0;
+  let count = 0;
+  for (const pc of st.pieces) {
+    if (!String(pc.pieceId).startsWith('bodice')) continue;
+    for (let v = pc.start; v < pc.start + pc.count; v++) {
+      const y = st.pos[3 * v + 1];
+      if (Math.abs(y - y0) > 0.03) continue;
+      sum += app().body.sdf(st.pos[3 * v], y, st.pos[3 * v + 2]).d;
+      count++;
+    }
+  }
+  expect(count > 0, 'no bodice vertex within 30 mm of the waist ring');
+  return (sum / count) * 1000;
+}
+
+/** Total bodice waist intake around the body, mm (a fold piece's darts count twice). @param {any} doc */
+function bodiceWaistIntake_mm(doc) {
+  let I = 0;
+  for (const p of doc.pieces) {
+    if (!String(p.id).startsWith('bodice') || !Array.isArray(p.darts)) continue;
+    for (const d of p.darts) {
+      if (p.edges[d.edge] && p.edges[d.edge].label === 'waist') I += d.width_mm * (p.foldEdge !== null ? 2 : 1);
+    }
+  }
+  return I;
+}
+
+/** Load the dress and drape it 300 + 240 + 60 frames, as drape_tshirt + drape_rest do. @returns {Promise<any>} last stats */
+async function drapeDress() {
+  await reloadSample('dress');
+  app().sim.reset();
+  app().sim.step(300);
+  app().sim.step(240);
+  const s = app().sim.step(60);
+  dressDraped = true;
+  return s;
+}
+
 /** @param {any} doc @param {string} id @returns {any} */
 function pieceOf(doc, id) {
   const p = (doc.pieces || []).find((x) => x.id === id);
@@ -231,6 +293,8 @@ function hasNaN(arr) {
 // ------------------------------------------------------------------ shared drape state (checks 8–11)
 
 let drapeStage = 0;
+/** true while the app holds the dress draped by drapeDress() (checks 26g → 26h) */
+let dressDraped = false;
 
 /** Bring the app to the state check 9 leaves behind (T-shirt, reset, 300 + 240 + 60 frames). */
 async function prepareDrapedState() {
@@ -813,7 +877,15 @@ async function checkExportSvg() {
   // material, which shows up as a taller sheet. Assert area growth, not growth on both axes.
   expect(xl.w >= s.w && xl.h > s.h && xl.w * xl.h > s.w * s.h,
     `XL sheet ${fmt(xl.w)}x${fmt(xl.h)} does not need more material than S ${fmt(s.w)}x${fmt(s.h)} mm`);
-  return `${fmt(size.w)}×${fmt(size.h)} mm, ${groups.length} piece groups, XL ${fmt(xl.w)}×${fmt(xl.h)} > S ${fmt(s.w)}×${fmt(s.h)}`;
+  // The dress sheet prints one dart path per dart of every EXPORTED piece: the mirrored duplicates are hidden, and a
+  // fold piece prints its stored half (bodice front 2 + bodice back 1 + skirt front 1 + skirt back 1 = 5).
+  const dress = await reloadSample('dress');
+  const dressSvg = app().export.sheetSvg('M');
+  const legs = (dressSvg.match(/class="dart"/g) || []).length;
+  const wantLegs = dress.pieces.filter((p) => !p.exportHidden).reduce((n, p) => n + p.darts.length, 0);
+  expect(legs === wantLegs && wantLegs === 5,
+    `dress sheet has ${legs} dart paths; the exported pieces carry ${wantLegs} darts; both must be 5`);
+  return `${fmt(size.w)}×${fmt(size.h)} mm, ${groups.length} piece groups, XL ${fmt(xl.w)}×${fmt(xl.h)} > S ${fmt(s.w)}×${fmt(s.h)}; dress sheet ${legs} dart paths`;
 }
 
 /** @returns {Promise<string>} */
@@ -902,8 +974,14 @@ async function checkJsonRoundtrip() {
   expect(o.version === 2, `version ${o.version} !== 2`);
   const keys = Object.keys(o);
   expect(keys.join() === keys.slice().sort().join(), 'root keys are not sorted: ' + keys.join(','));
+  await reloadSample('dress');
+  const d1 = app().save();
+  expect(d1 === serializeDoc(normalizeDoc(JSON.parse(d1))), 'dress: save() is not a fixed point');
+  app().load(d1);
+  await app().idle();
+  expect(app().save() === d1, 'dress: load(save()) then save() is not byte-identical');
   drapeStage = 0;
-  return `${s1.length} bytes, byte-identical round trip, sorted keys`;
+  return `${s1.length} bytes, byte-identical round trip, sorted keys; dress ${d1.length} bytes, byte-identical`;
 }
 
 /** @returns {Promise<string>} */
@@ -1042,10 +1120,16 @@ function domOrder(a, b) {
 /** filled by the runner just before check 27 runs */
 let suiteElapsedMs = 0;
 
+/**
+ * The whole-suite budget, s: 90 + ceil((26g + 26h ms) / 10 s) * 10. The dress drapes of 26g and 26h measured
+ * 15165 + 14967 ms in a full run on an Intel Iris Xe laptop (GPU), so 90 + 40 (SPEC 13 amendment "Darts: acceptance").
+ */
+const LIMIT_S = 130;
+
 /** @returns {Promise<string>} */
 async function checkRuntime() {
-  expect(suiteElapsedMs < 90000, `the suite took ${(suiteElapsedMs / 1000).toFixed(1)} s (limit 90 s)`);
-  return `total ${(suiteElapsedMs / 1000).toFixed(1)} s`;
+  expect(suiteElapsedMs < LIMIT_S * 1000, `the suite took ${(suiteElapsedMs / 1000).toFixed(1)} s (limit ${LIMIT_S} s)`);
+  return `total ${(suiteElapsedMs / 1000).toFixed(1)} s (limit ${LIMIT_S} s: 90 + the dress drapes of 26g/26h, measured on an Intel Iris Xe laptop, GPU)`;
 }
 
 // ================================================================== the check table
@@ -1259,8 +1343,66 @@ async function checkDxf() {
   app().undo();
   await app().idle();
   expect(app().doc().pieces.length === before.pieces.length, 'one undo must remove the whole import');
+
+  // The dress: every exported piece comes back with as many darts as it had (a fold piece exports its stored half),
+  // and with its points: the skirt's straight side runs into the hip curve almost tangentially, which a reader must
+  // not refit as one curve (SPEC 13 amendment "Darts: acceptance").
+  const dress = await reloadSample('dress');
+  const dressOut = dress.pieces.filter((p) => p.exportHidden !== true);
+  const dressReport = app().dxf.import(app().dxf.export(), 'dress.dxf');
+  await app().idle();
+  const dressAdded = app().doc().pieces.slice(dress.pieces.length);
+  expect(!!dressReport && dressReport.added.length === dressOut.length && dressAdded.length === dressOut.length,
+    `dress: the import added ${dressReport ? dressReport.added.length : 0} pieces, ${dressAdded.length} in the document, for ${dressOut.length} exported`);
+  let dressDarts = 0;
+  for (const src of dressOut) {
+    const got = dressAdded.find((p) => p.name === src.name);
+    expect(!!got, 'dress: ' + src.name + ' was not imported');
+    const want = (src.darts || []).length;
+    const have = (got.darts || []).length;
+    expect(have === want && got.vertices.length === src.vertices.length,
+      `dress: ${src.name} came back with ${have} darts and ${got.vertices.length} points, had ${want} and ${src.vertices.length}`);
+    dressDarts += want;
+  }
+  app().undo();
+  await app().idle();
+  expect(app().doc().pieces.length === dress.pieces.length, 'dress: one undo must remove the whole import');
   drapeStage = 0;
-  return `${exported.length} pieces exported and read back with their points, notches, folds and allowances; one undo step`;
+  return `${exported.length} pieces exported and read back with their points, notches, folds and allowances; one undo step; `
+    + `dress: ${dressOut.length} pieces with their points and ${dressDarts} darts`;
+}
+
+/** @returns {Promise<string>} */
+async function checkDressDrape() {
+  const s = await drapeDress();
+  expect(s.nanCount === 0, `nanCount ${s.nanCount}`);
+  expect(s.maxPenetration_mm < 5, `maxPenetration_mm ${fmt(s.maxPenetration_mm)} >= 5`);
+  expect(s.seamGapMax_mm < 8, `seamGapMax_mm ${fmt(s.seamGapMax_mm)} >= 8`);
+  expect(s.seamGapMean_mm < 3, `seamGapMean_mm ${fmt(s.seamGapMean_mm)} >= 3`);
+  const dart = dartGapMax_mm();
+  expect(dart < 3, `a dart is still ${fmt(dart)} mm open (>= 3)`);
+  return `pen ${fmt(s.maxPenetration_mm)} mm, seam gap max ${fmt(s.seamGapMax_mm)} / mean ${fmt(s.seamGapMean_mm)} mm, dart gap ${fmt(dart)} mm`;
+}
+
+/** @returns {Promise<string>} */
+async function checkDartShaping() {
+  if (!dressDraped) await drapeDress();
+  const withDarts = waistBandGap_mm();
+  const I = bodiceWaistIntake_mm(app().doc());
+  expect(I > 0, 'the dress has no bodice waist darts');
+  app().update((d) => { for (const p of d.pieces) p.darts = []; }, 'acceptance: no darts');
+  await app().idle();
+  app().sim.pause();
+  app().sim.reset();
+  app().sim.step(300);
+  app().sim.step(240);
+  app().sim.step(60);
+  const without = waistBandGap_mm();
+  dressDraped = false;
+  const need = 0.5 * I / (2 * Math.PI);
+  expect(without - withDarts >= need,
+    `darts bring the waist ${fmt(without - withDarts)} mm closer (need >= ${fmt(need)}: half of intake ${fmt(I)} / 2π)`);
+  return `waist band ${fmt(withDarts)} mm with darts, ${fmt(without)} without (need ${fmt(need)} closer)`;
 }
 
 /** How long the runner waits for a timed-out check's abandoned work to settle before starting the next one. */
@@ -1301,6 +1443,8 @@ export const CHECKS = Object.freeze([
   { id: '26d', name: 'body_template', timeoutMs: 20000, fn: checkBodyTemplate },
   { id: '26e', name: 'autosave', timeoutMs: 20000, fn: checkAutosave },
   { id: '26f', name: 'dxf', timeoutMs: 20000, fn: checkDxf },
+  { id: '26g', name: 'dress_drape', timeoutMs: 40000, fn: checkDressDrape },
+  { id: '26h', name: 'dart_shaping', timeoutMs: 40000, fn: checkDartShaping },
   { id: '27', name: 'runtime', timeoutMs: 5000, fn: checkRuntime },
 ]);
 

@@ -46,7 +46,7 @@ TIMING_ACCEPTANCE = {
     '07': r'buildMs [\d.]+ >= 1500',
     '11': r'msAvg [\d.]+ ms >= 16',
     '15': r"took [\d.]+ ms \(>= 500\)",
-    '27': r'the suite took [\d.]+ s \(limit 90 s\)',
+    '27': r'the suite took [\d.]+ s \(limit \d+ s',
 }
 TIMING_SELFTESTS = {
     'body/perf.full': r'(full|coarse) build \d+ ms',
@@ -120,6 +120,13 @@ def esc(s: str) -> str:
 
 
 def main() -> int:
+    # A failure message can carry any character (26h's says "2π"); a Windows console's code page must not crash the
+    # run before results.json is written.
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(errors='backslashreplace')
+        except (AttributeError, ValueError):
+            pass
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--url', help='app URL to test (default: http://127.0.0.1:<port>/ with --serve)')
     ap.add_argument('--serve', action='store_true', help='start serve.py on a free port and test it')
