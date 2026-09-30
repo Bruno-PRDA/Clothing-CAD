@@ -523,8 +523,15 @@ function caseDartsApply() {
   const { piece: d, map } = applyDarts(p);
   const legs = map.filter((x) => 'dart' in x).length;
   const area = signedArea(d.vertices);
-  const pass = d.vertices.length === 7 && legs === 2 && area > 0 && isSimplePolygon(d.vertices) && Math.abs(area - (10000 - 600)) < 1e-6;
-  return { name: 'darts.apply', pass, details: `${d.vertices.length} vertices, ${legs} legs, area ${f(area)} (want 9400)` };
+  // the derived piece is outline-only: no edge-indexed field survives, and it shares no array with its input
+  const full = dartedSquare({ pinnedEdges: [2], internalLines: [{ kind: 'mark', points: [[10, 10], [20, 20]] }], grainline: { a: [50, 20], b: [50, 80] } });
+  const o = applyDarts(full).piece;
+  const outlineOnly = o.pinnedEdges.length === 0 && o.internalLines.length === 0 && o.darts.length === 0 && o.notches.length === 0
+    && o.pinnedEdges !== full.pinnedEdges && o.internalLines !== full.internalLines && o.grainline.a !== full.grainline.a
+    && full.pinnedEdges.length === 1 && full.internalLines.length === 1;
+  const pass = d.vertices.length === 7 && legs === 2 && area > 0 && isSimplePolygon(d.vertices) && Math.abs(area - (10000 - 600)) < 1e-6
+    && outlineOnly;
+  return { name: 'darts.apply', pass, details: `${d.vertices.length} vertices, ${legs} legs, area ${f(area)} (want 9400); outline-only ${outlineOnly}` };
 }
 
 /** @returns {SelfTestResult} */

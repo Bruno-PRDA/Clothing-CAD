@@ -96,10 +96,18 @@ function subEdge(p0, edge, p1, t0, t1) {
   return out;
 }
 
+/** A fresh copy of a point (left alone when it is not an array). @param {Vec2} v @returns {Vec2} */
+function copyVec(v) {
+  return Array.isArray(v) ? [v[0], v[1]] : v;
+}
+
 /**
  * The outline with darts cut in: every mouth becomes A → apex → B. `ks` picks the darts (default: the valid ones); the
  * caller vouches for them. `map[j]` says what derived edge j is: part of original edge `edge` from arc-length fraction
- * `t0` to `t1`, or leg 'a' / 'b' of dart `dart`. `foldEdge` follows the fold edge (which carries no darts).
+ * `t0` to `t1`, or leg 'a' / 'b' of dart `dart`. The derived piece is OUTLINE-ONLY: its edges no longer line up with the
+ * input's, so `foldEdge` is remapped (the fold edge carries no darts) and every other index-bearing field is emptied
+ * (`darts`, `notches`, `pinnedEdges`, `internalLines`, `grade.vertexRules`); callers map edges through `map`. It shares
+ * no array or object with `piece`.
  * @param {Piece} piece @param {number[]} [ks]
  * @returns {{piece: Piece, map: Array<{edge:number, t0:number, t1:number}|{dart:number, leg:'a'|'b'}>}}
  */
@@ -138,7 +146,10 @@ export function applyDarts(piece, ks) {
     edges.push(subEdge(p0, edge, p1, t0, 1));
     map.push({ edge: e, t0, t1: 1 });
   }
-  const out = /** @type {Piece} */ ({ ...piece, vertices, edges, foldEdge, darts: [], notches: [] });
+  const out = /** @type {Piece} */ ({ ...piece, vertices, edges, foldEdge, darts: [], notches: [], pinnedEdges: [], internalLines: [] });
+  if (piece.grainline) out.grainline = { a: copyVec(piece.grainline.a), b: copyVec(piece.grainline.b) };
+  if (piece.placement) out.placement = { ...piece.placement, offset_mm: copyVec(piece.placement.offset_mm) };
+  if (piece.grade) out.grade = { ...piece.grade, vertexRules: [] };
   return { piece: out, map };
 }
 
