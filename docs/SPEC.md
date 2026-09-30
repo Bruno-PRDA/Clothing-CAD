@@ -1882,7 +1882,7 @@ Consumers: `src/app/wiring.js` calls `getSample(DEFAULT_SAMPLE_ID)` at start-up 
 
 Pure module: imports only `src/core/types.js`, `src/core/ids.js` (`hashString`) and `src/core/fabrics.js` (`effectiveMeshSpacing`); `selftest.js` may additionally import `src/samples/index.js` as a fixture source. No DOM, no three.js, no allocation-heavy per-frame paths (everything here runs on edits, not per frame). All coordinates are **mm, y up**; outlines are **CCW (signedArea > 0)**; the outward normal of edge direction `d` is `[d[1], -d[0]]`. Every function is synchronous. Errors are `Error` objects with a `code` property (`'RemeshError'`, `'GeometryError'`). Consumers: `pattern/` (drawing, hit-testing, validation, seam readouts), `sizing/` and `export/` (offset, packing, flattening), `cloth/state.js` (via `PieceMesh`), `app/wiring.js` (`remeshPiece`).
 
-Files: `bezier.js`, `polygon.js`, `mirror.js`, `prng.js`, `delaunay.js`, `remesh.js`, `offset.js`, `pack.js`, `index.js` (re-exports everything below), `selftest.js`.
+Files: `bezier.js`, `polygon.js`, `mirror.js`, `prng.js`, `delaunay.js`, `remesh.js`, `offset.js`, `pack.js`, `darts.js` *(amendment 2026-09-30, Darts)*, `index.js` (re-exports everything below), `selftest.js`.
 
 ### 5.1 `bezier.js` — edges, arc length, sampling
 
@@ -1917,7 +1917,7 @@ export function splitCubic(p0, c1, c2, p1, u)
  * Split outline edge `edgeIndex` of a piece at arc-length fraction t (0 < t < 1). Returns a NEW piece (deep copy) with
  * one more vertex and edge, and an `edgeMap` old → new index for edges ≥ edgeIndex + 1 (shifted by +1). Notches on the
  * split edge are re-parametrised (t' = t/tSplit on the first part or (t - tSplit)/(1 - tSplit) on the second); notches on
- * later edges get edge + 1; foldEdge, pinnedEdges and seams referencing later edges must be shifted by the CALLER using
+ * later edges get edge + 1 (the piece's darts follow the same rule, section 5.10); foldEdge, pinnedEdges and seams referencing later edges must be shifted by the CALLER using
  * edgeMap (the editor does this in tools/split.js; seams live in doc.seams, not on the piece).
  * @returns {{piece: Piece, edgeMap: number[], newVertex: number}}
  */
@@ -1974,7 +1974,7 @@ A fold piece stores the half with `x ≥ foldX` where `foldX = vertices[foldEdge
  */
 export function fullOutline(piece)
 export function mirrorPoint(p, foldX)           // M(p)
-export function mirrorPiece(piece)              // NEW non-fold piece whose vertices/edges are the full outline (used by export for CUT-2 previews and by the 2D ghost)
+export function mirrorPiece(piece)              // NEW non-fold piece whose vertices/edges are the full outline (used by export for CUT-2 previews and by the 2D ghost); notches, darts (mirrored copies get id + '_m', section 5.10) and pinned edges are duplicated onto the mirrored copies
 ```
 
 ### 5.4 `prng.js`
@@ -2108,6 +2108,56 @@ export function packRects(items, sheetWidth, opts)
 13. `offset.fold` — T-shirt front: `offsetOutline` keeps `minX ≥ −0.05` (no allowance across the fold).
 14. `pack.shelf` — 5 items on a 1000 mm sheet: no overlaps, `height` ≤ sum of the two tallest.
 15. `remesh.performance` — T-shirt front `remeshPiece` < 200 ms (details: ms).
+
+### 5.10 `darts.js` — darts on an outline edge (amendment 2026-09-30 "Darts")
+
+*(Amendment, lead, 2026-09-30.)* Pure; imports only its siblings `bezier.js` and `polygon.js`. A dart `{id, edge, t, width_mm, apex}` (section 3.1 amendment) is stored against the **clean** outline. With `L` the arc length of its edge and `c = t·L`, its **mouth** is the stretch of that edge from arc length `c − width_mm/2` (point A) to `c + width_mm/2` (point B), and its legs are the segments A→apex and B→apex. The fabric inside the V is folded away, not cut, so everything that compares seam lengths uses the **sewn length** of an edge, `L` less the widths of its valid darts, and a **sewn fraction** `u` measured along it. Converting between the arc-length fraction `t` of an edge point and its `u` is `edgeToSewn` / `sewnToEdge`; a whole mouth is one `u`, carried by two points.
+
+**Only valid darts are used anywhere.** `checkDarts` decides which darts are valid. The mesher, the seam sampling and the exports ignore the rest, and so do `mouthsOn`, `sewnLength`, `edgeToSewn`, `sewnToEdge`, `mouthFractions`, `insideMouth` and `applyDarts` without `ks`; the validators report them, so one bad dart never stops a drape. `dartMouth` and `dartDrillPoint` work on any dart, valid or not, because the editor previews an invalid dart while it is dragged.
+
+Constants (mm), exported from `index.js`:
+
+| Name | Value | Meaning |
+|---|---|---|
+| `DART_CORNER_MM` | 2 | a mouth keeps at least this far from both corners of its edge |
+| `DART_GAP_MM` | 2 | two mouths on one edge keep at least this far apart |
+| `DART_APEX_CLEAR_MM` | 1 | the apex keeps at least this far inside the outline |
+| `DART_MIN_WIDTH_MM` | 1 | narrowest dart |
+| `DART_DRILL_BACK_MM` | 10 | the drill hole sits this far back from the point (at most half way to the mouth) |
+
+```js
+/** @typedef {{k:number, dart:Dart, s0:number, s1:number, ta:number, tb:number, a:Vec2, b:Vec2, apex:Vec2}} Mouth  k = index in piece.darts; s0/s1 = arc length of A/B in mm; ta/tb = s0/L, s1/L */
+export function dartMouth(piece, dart)            // {a, b, ta, tb, L}: mouth points and their arc-length fractions on dart.edge (valid or not)
+export function dartDrillPoint(a, b, apex)        // Vec2: on the centre line (mouth midpoint -> apex), min(DART_DRILL_BACK_MM, half the length) back from the apex
+export function checkDarts(piece)                 // {issues: Issue[], bad: Set<number>}: every problem below, and the indices to ignore; cached per piece object and content
+export function validDartIndices(piece)           // number[]: the indices checkDarts accepts, ascending
+export function mouthsOn(piece, e)                // Mouth[]: the valid darts of edge e, sorted along the edge
+export function sewnLength(piece, e)              // edgeLength(piece, e) less the widths of the valid darts on e (mm)
+export function edgeToSewn(piece, e, t)           // sewn fraction u of the edge point at arc-length fraction t; a t inside a mouth gives the mouth's u
+export function sewnToEdge(piece, e, u)           // [t], or [tA, tB] when u is exactly a mouth of this edge (relative tolerance 1e-9)
+export function mouthFractions(piece, e)          // number[]: the sewn fractions of the valid mouths of e, in order
+export function insideMouth(piece, e, t)          // true when t lies strictly between ta and tb of a valid mouth of e
+export function applyDarts(piece, ks)             // {piece, map}: the DERIVED piece, see below
+```
+
+`applyDarts(piece, ks?)` returns the outline with every mouth replaced by A → apex → B; `ks` picks the darts (default `validDartIndices(piece)`; a caller that passes it vouches for it). Each stretch of an original edge between mouths becomes an edge of the derived piece, and a cubic edge is cut at the mouth points exactly, by de Casteljau subdivision at the arc-length parameters, so the derived outline follows the original curve. The two legs are `{type: 'line', label: 'dart'}`. `map[j]` says what derived edge `j` is: `{edge, t0, t1}` (the part of original edge `edge` from arc-length fraction `t0` to `t1`) or `{dart, leg: 'a' | 'b'}` (`dart` is the index in `piece.darts`; leg `'a'` runs A → apex, leg `'b'` apex → B). The derived piece has `darts: []` and `notches: []`, and its `foldEdge` follows the fold edge (which carries no dart); everything else is copied from `piece`.
+
+Validation (`checkDarts`). Each dart is checked in this order; a dart that fails a check is `bad` and the geometric checks that follow skip it. Every issue has level `'error'` except `DART_NOTCH`, carries `pieceId` and, when it is an integer, the dart's `edge`, and reads `<piece name>: dart <k + 1> ...`.
+
+| Code | Level | Condition |
+|---|---|---|
+| `DART_ID` | error | `id` is empty, not a string, or repeats an earlier dart's id (the later one is flagged) |
+| `DART_EDGE` | error | `edge` is not an integer in `[0, n)`, or is the piece's `foldEdge` |
+| `DART_WIDTH` | error | `width_mm` is not finite or is below `DART_MIN_WIDTH_MM` |
+| `DART_MOUTH` | error | `t` is not in `(0, 1)`, or `c − w/2 < DART_CORNER_MM`, or `c + w/2 > L − DART_CORNER_MM` |
+| `DART_APEX` | error | `apex` is not a finite point, is outside the outline (flattened at 0.5 mm), or is within `DART_APEX_CLEAR_MM` of it |
+| `DART_OVERLAP` | error | two mouths on one edge overlap or are closer than `DART_GAP_MM` (the later dart is flagged) |
+| `DART_CROSSES` | error | cutting the dart in makes the derived outline (flattened at 0.5 mm) non-simple, alone or together with an earlier valid dart (the later dart is flagged) |
+| `DART_NOTCH` | warn | a notch lies strictly inside a valid mouth; the notch is ignored when meshing and exporting, and the dart stays valid |
+
+`splitEdge` (section 5.1) and `mirrorPiece` (section 5.3) carry darts: a split re-parametrises `t` like a notch's, a mirror duplicates every dart onto the mirrored copies, with id `id + '_m'`, `t` → `1 − t` and the apex reflected.
+
+Self-tests (in `selftest.js`, after the cases above): `darts.mouth` (mouth points, sewn length 80 on a 100 mm edge with a 20 mm dart, `edgeToSewn(0.3) = 0.375`, `sewnToEdge(0.5) = [0.4, 0.6]`, and on a cubic edge the mouth lies on the curve and the pieces either side sum to `L − 20`); `darts.apply` (a square with one dart becomes a simple CCW 7-vertex polygon of area 9400); `darts.check` (each of the eight codes fired by its own fixture, a clean piece is clean, and `validDartIndices` drops only the bad dart); `darts.carry` (`splitEdge` remaps `edge` and `t`, `mirrorPiece` adds the `_m` twin).
 
 ---
 

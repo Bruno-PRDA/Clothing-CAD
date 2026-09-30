@@ -227,7 +227,7 @@ export function clonePiece(piece) {
 
 /**
  * Split outline edge `edgeIndex` at arc-length fraction t (0 < t < 1). NEW piece with one more vertex/edge; edgeMap old → new
- * index (edges ≥ edgeIndex + 1 shift by +1); notches re-parametrised. foldEdge, pinnedEdges and seams referencing later edges
+ * index (edges ≥ edgeIndex + 1 shift by +1); notches and darts re-parametrised. foldEdge, pinnedEdges and seams referencing later edges
  * are shifted by the CALLER using edgeMap (SPEC 5.1) — this function copies them unchanged.
  * @param {Piece} piece @param {number} edgeIndex @param {number} t
  * @returns {{piece: Piece, edgeMap: number[], newVertex: number}}
@@ -277,6 +277,17 @@ export function splitEdge(piece, edgeIndex, t) {
       copy.t = Math.min(1 - 1e-6, Math.max(1e-6, copy.t));
     } else if (nt.edge > e) {
       copy.edge = nt.edge + 1;
+    }
+    return copy;
+  });
+  // darts follow their edge like notches: a mouth's centre keeps its arc length, so t rescales (SPEC 5.10)
+  out.darts = (piece.darts || []).map((dt) => {
+    const copy = { id: dt.id, edge: dt.edge, t: dt.t, width_mm: dt.width_mm, apex: /** @type {Vec2} */ ([dt.apex[0], dt.apex[1]]) };
+    if (dt.edge === e) {
+      if (dt.t <= tt) copy.t = tt > 0 ? dt.t / tt : 0;
+      else { copy.edge = e + 1; copy.t = (dt.t - tt) / (1 - tt); }
+    } else if (dt.edge > e) {
+      copy.edge = dt.edge + 1;
     }
     return copy;
   });

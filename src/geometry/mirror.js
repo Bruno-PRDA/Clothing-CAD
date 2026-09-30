@@ -86,7 +86,7 @@ export function fullOutline(piece) {
   return { vertices, edges, fullEdgeOf: [of0, of1], fullEdgeReversed: reversed, foldX };
 }
 
-/** NEW non-fold piece whose vertices/edges are the full outline (notches/pinned edges duplicated onto the mirrored copies). @param {Piece} piece @returns {Piece} */
+/** NEW non-fold piece whose vertices/edges are the full outline (notches, darts and pinned edges duplicated onto the mirrored copies). @param {Piece} piece @returns {Piece} */
 export function mirrorPiece(piece) {
   const full = fullOutline(piece);
   const out = /** @type {Piece} */ (JSON.parse(JSON.stringify(piece)));
@@ -102,6 +102,15 @@ export function mirrorPiece(piece) {
     if (of1[nt.edge] !== undefined && of1[nt.edge] >= 0) notches.push({ edge: of1[nt.edge], t: 1 - nt.t, kind: nt.kind });
   }
   out.notches = notches;
+  /** @type {import('../core/types.js').Dart[]} */
+  const darts = [];
+  for (const dt of (piece.darts || [])) {
+    if (of0[dt.edge] !== undefined && of0[dt.edge] >= 0) darts.push({ ...dt, edge: of0[dt.edge], apex: [dt.apex[0], dt.apex[1]] });
+    if (full.foldX !== null && of1[dt.edge] !== undefined && of1[dt.edge] >= 0) {
+      darts.push({ ...dt, id: dt.id + '_m', edge: of1[dt.edge], t: 1 - dt.t, apex: mirrorPoint(dt.apex, full.foldX) });
+    }
+  }
+  out.darts = darts;
   /** @type {number[]} */
   const pinned = [];
   for (const e of (piece.pinnedEdges || [])) {

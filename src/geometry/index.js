@@ -15,6 +15,11 @@ export {
 
 export { fullOutline, mirrorPoint, mirrorPiece } from './mirror.js';
 
+export {
+  dartMouth, dartDrillPoint, checkDarts, validDartIndices, mouthsOn, sewnLength, edgeToSewn, sewnToEdge, mouthFractions,
+  insideMouth, applyDarts, DART_CORNER_MM, DART_GAP_MM, DART_APEX_CLEAR_MM, DART_MIN_WIDTH_MM, DART_DRILL_BACK_MM,
+} from './darts.js';
+
 export { mulberry32, jitterSeed } from './prng.js';
 
 export { delaunay, recoverEdges, buildAdjacency, edgeKey } from './delaunay.js';

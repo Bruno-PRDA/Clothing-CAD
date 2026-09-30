@@ -1,4 +1,5 @@
-// src/geometry/selftest.js — the 15 cases of SPEC 5.9 plus two regression cases (remesh.allSamples, remesh.sleeve).
+// src/geometry/selftest.js — the 15 cases of SPEC 5.9 plus two regression cases (remesh.allSamples, remesh.sleeve) and the
+// four darts cases of SPEC 5.10.
 // Pure and DOM-free; this is the only file of src/geometry/ allowed to import ../samples/index.js (as a fixture source).
 import {
   segmentLength, sampleSegment, splitEdge,
@@ -9,6 +10,7 @@ import {
   remeshPiece,
   offsetPolygon, offsetOutline,
   packRects,
+  dartMouth, checkDarts, validDartIndices, sewnLength, edgeToSewn, sewnToEdge, mouthFractions, applyDarts, mirrorPiece, edgeLength,
 } from './index.js';
 import { getSample } from '../samples/index.js';
 
@@ -482,6 +484,91 @@ function caseRemeshSleeve() {
   };
 }
 
+/** 100 x 100 square with one dart on its bottom edge: mouth 40..60, point (50, 60). @param {Partial<Piece>} [extra] @returns {Piece} */
+function dartedSquare(extra) {
+  return squarePiece({ darts: [{ id: 'd', edge: 0, t: 0.5, width_mm: 20, apex: [50, 60] }], ...extra });
+}
+
+/** @returns {SelfTestResult} */
+function caseDartsMouth() {
+  const p = dartedSquare();
+  const m = dartMouth(p, p.darts[0]);
+  const okMouth = Math.abs(m.a[0] - 40) < 1e-9 && Math.abs(m.b[0] - 60) < 1e-9 && m.a[1] === 0 && m.b[1] === 0;
+  const Ls = sewnLength(p, 0);
+  const u03 = edgeToSewn(p, 0, 0.3);
+  const uIn = edgeToSewn(p, 0, 0.5);
+  const back = sewnToEdge(p, 0, 0.5);
+  const low = sewnToEdge(p, 0, 0.25);
+  const high = sewnToEdge(p, 0, 0.75);
+  const fr = mouthFractions(p, 0);
+  // a cubic edge: the mouth sits on the curve, symmetric about x = 50, and the pieces either side sum to L - 20
+  const c = makePiece({ id: 'cu', vertices: [[0, 0], [100, 0], [100, 100], [0, 100]],
+    edges: [{ type: 'cubic', c1: [30, -20], c2: [70, -20] }, { type: 'line' }, { type: 'line' }, { type: 'line' }],
+    darts: [{ id: 'd', edge: 0, t: 0.5, width_mm: 20, apex: [50, 60] }] });
+  const mc = dartMouth(c, c.darts[0]);
+  const derived = applyDarts(c).piece;
+  const parts = edgeLength(derived, 0) + edgeLength(derived, 3);
+  const pass = okMouth && Math.abs(Ls - 80) < 1e-9 && Math.abs(u03 - 0.375) < 1e-12 && Math.abs(uIn - 0.5) < 1e-12
+    && back.length === 2 && Math.abs(back[0] - 0.4) < 1e-12 && Math.abs(back[1] - 0.6) < 1e-12
+    && low.length === 1 && Math.abs(low[0] - 0.2) < 1e-12 && high.length === 1 && Math.abs(high[0] - 0.8) < 1e-12
+    && fr.length === 1 && Math.abs(fr[0] - 0.5) < 1e-12
+    && Math.abs(mc.a[0] + mc.b[0] - 100) < 0.01 && Math.abs(mc.a[1] - mc.b[1]) < 0.01
+    && Math.abs(parts - (edgeLength(c, 0) - 20)) < 0.05;
+  return { name: 'darts.mouth', pass, details: `L_sewn ${f(Ls)}, u(0.3) ${f(u03)}, mouth -> [${back.map((x) => f(x)).join(', ')}], cubic parts ${f(parts)} vs ${f(edgeLength(c, 0) - 20)}` };
+}
+
+/** @returns {SelfTestResult} */
+function caseDartsApply() {
+  const p = dartedSquare();
+  const { piece: d, map } = applyDarts(p);
+  const legs = map.filter((x) => 'dart' in x).length;
+  const area = signedArea(d.vertices);
+  const pass = d.vertices.length === 7 && legs === 2 && area > 0 && isSimplePolygon(d.vertices) && Math.abs(area - (10000 - 600)) < 1e-6;
+  return { name: 'darts.apply', pass, details: `${d.vertices.length} vertices, ${legs} legs, area ${f(area)} (want 9400)` };
+}
+
+/** @returns {SelfTestResult} */
+function caseDartsCheck() {
+  /** @type {[string, Piece][]} */
+  const cases = [
+    ['DART_EDGE', dartedSquare({ darts: [{ id: 'd', edge: 9, t: 0.5, width_mm: 20, apex: [50, 60] }] })],
+    ['DART_EDGE', dartedSquare({ foldEdge: 3, vertices: [[0, 0], [100, 0], [100, 100], [0, 100]], darts: [{ id: 'd', edge: 3, t: 0.5, width_mm: 20, apex: [50, 50] }] })],
+    ['DART_WIDTH', dartedSquare({ darts: [{ id: 'd', edge: 0, t: 0.5, width_mm: 0.5, apex: [50, 60] }] })],
+    ['DART_MOUTH', dartedSquare({ darts: [{ id: 'd', edge: 0, t: 0.05, width_mm: 20, apex: [50, 60] }] })],
+    ['DART_APEX', dartedSquare({ darts: [{ id: 'd', edge: 0, t: 0.5, width_mm: 20, apex: [50, 150] }] })],
+    ['DART_APEX', dartedSquare({ darts: [{ id: 'd', edge: 0, t: 0.5, width_mm: 20, apex: [50, 99.5] }] })],
+    ['DART_OVERLAP', dartedSquare({ darts: [{ id: 'd', edge: 0, t: 0.3, width_mm: 20, apex: [30, 60] }, { id: 'e', edge: 0, t: 0.4, width_mm: 20, apex: [40, 60] }] })],
+    ['DART_CROSSES', makePiece({ id: 'L', vertices: [[0, 0], [100, 0], [100, 40], [40, 40], [40, 100], [0, 100]],
+      darts: [{ id: 'd', edge: 0, t: 0.8, width_mm: 10, apex: [20, 80] }] })],
+    ['DART_CROSSES', dartedSquare({ darts: [{ id: 'd', edge: 0, t: 0.25, width_mm: 10, apex: [75, 60] }, { id: 'e', edge: 0, t: 0.75, width_mm: 10, apex: [25, 60] }] })],
+    ['DART_ID', dartedSquare({ darts: [{ id: 'd', edge: 0, t: 0.25, width_mm: 10, apex: [25, 40] }, { id: 'd', edge: 2, t: 0.5, width_mm: 10, apex: [50, 50] }] })],
+    ['DART_NOTCH', dartedSquare({ notches: [{ edge: 0, t: 0.5, kind: 'single' }] })],
+  ];
+  const missed = [];
+  for (const [code, piece] of cases) if (!checkDarts(piece).issues.some((i) => i.code === code)) missed.push(code);
+  const clean = checkDarts(dartedSquare()).issues.length === 0;
+  const mixed = dartedSquare({ darts: [{ id: 'ok', edge: 0, t: 0.5, width_mm: 20, apex: [50, 60] }, { id: 'bad', edge: 2, t: 0.5, width_mm: 20, apex: [50, 150] }] });
+  const valid = validDartIndices(mixed);
+  const pass = missed.length === 0 && clean && valid.length === 1 && valid[0] === 0;
+  return { name: 'darts.check', pass, details: (missed.length ? 'codes not fired: ' + missed.join(', ') : cases.length + ' codes fired') + '; clean ' + clean + '; valid ' + JSON.stringify(valid) };
+}
+
+/** @returns {SelfTestResult} */
+function caseDartsCarry() {
+  const p = squarePiece({ darts: [{ id: 'd', edge: 0, t: 0.5, width_mm: 20, apex: [50, 60] }, { id: 'e', edge: 2, t: 0.5, width_mm: 10, apex: [50, 40] }] });
+  const { piece: s } = splitEdge(p, 0, 0.25);
+  const moved = s.darts[0];
+  const later = s.darts[1];
+  const splitOk = moved.edge === 1 && Math.abs(moved.t - 0.25 / 0.75) < 1e-9 && moved.width_mm === 20 && later.edge === 3;
+  const fold = makePiece({ id: 'fh', vertices: [[0, 0], [100, 0], [100, 100], [0, 100]], foldEdge: 3,
+    darts: [{ id: 'd', edge: 0, t: 0.6, width_mm: 10, apex: [60, 40] }] });
+  const m = mirrorPiece(fold);
+  const twin = m.darts.find((dd) => dd.id === 'd_m');
+  const mirrorOk = m.darts.length === 2 && !!twin && Math.abs(twin.apex[0] + 60) < 1e-9 && Math.abs(twin.t - 0.4) < 1e-9
+    && checkDarts(m).issues.length === 0;
+  return { name: 'darts.carry', pass: splitOk && mirrorOk, details: `split: edge ${moved.edge} t ${f(moved.t)}; mirror: ${m.darts.length} darts, twin apex ${twin ? twin.apex.join(',') : 'none'}` };
+}
+
 // ----------------------------------------------------------------------------------------------------------------- run
 
 /** @type {(() => SelfTestResult)[]} */
@@ -503,13 +590,18 @@ const CASES = [
   caseRemeshPerformance,
   caseRemeshAllSamples,
   caseRemeshSleeve,
+  caseDartsMouth,
+  caseDartsApply,
+  caseDartsCheck,
+  caseDartsCarry,
 ];
 
-/** Names in declaration order (the 15 of SPEC 5.9 plus remesh.allSamples and remesh.sleeve). @returns {string[]} */
+/** Names in declaration order (the 15 of SPEC 5.9, remesh.allSamples, remesh.sleeve, then the four darts cases). @returns {string[]} */
 export function listSelfTests() {
   return ['bezier.length', 'bezier.split', 'polygon.predicates', 'mirror.fullOutline', 'delaunay.basic',
     'delaunay.recover', 'remesh.square', 'remesh.seamParity', 'remesh.fold', 'remesh.notch', 'offset.square',
-    'offset.discontinuity', 'offset.fold', 'pack.shelf', 'remesh.performance', 'remesh.allSamples', 'remesh.sleeve'];
+    'offset.discontinuity', 'offset.fold', 'pack.shelf', 'remesh.performance', 'remesh.allSamples', 'remesh.sleeve',
+    'darts.mouth', 'darts.apply', 'darts.check', 'darts.carry'];
 }
 
 /** @returns {Promise<SelfTestResult[]>} */
