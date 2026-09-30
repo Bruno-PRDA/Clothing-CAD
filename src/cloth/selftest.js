@@ -369,8 +369,15 @@ export async function runSelfTest() {
     assert(!!p4 && p4.join() === '0,10,1,11,2,12,3,13', 'mouths on both: ' + p4);
     const p5 = pairByFraction([0, 1, 2], [0, 0.4, 1], [10, 11, 12, 13], [0, 0.6, 0.6, 1], true);
     assert(!!p5 && p5.join() === '0,13,1,12,1,11,2,10', 'mouth on reversed b: ' + p5);
+    // two mouths on one edge: each pair of corners meets the other side's vertex at its u, or its corners
+    const fTwo = [0, 0.3, 0.3, 0.5, 0.7, 0.7, 1];
+    const p6 = pairByFraction([0, 1, 2, 3, 4, 5, 6], fTwo, [10, 11, 12, 13, 14], [0, 0.3, 0.5, 0.7, 1], false);
+    assert(!!p6 && p6.join() === '0,10,1,11,2,11,3,12,4,13,5,13,6,14', 'two mouths on a: ' + p6);
+    const p7 = pairByFraction([0, 1, 2, 3, 4, 5, 6], fTwo, [10, 11, 12, 13, 14, 15], [0, 0.3, 0.5, 0.5, 0.7, 1], true);
+    assert(!!p7 && p7.join() === '0,15,1,14,2,14,3,13,3,12,4,11,5,11,6,10', 'two mouths on a, one on reversed b: ' + p7);
+    assert(pairByFraction([0, 1, 2, 3, 4, 5, 6], fTwo, [10, 11, 12, 13], [0, 0.3, 0.7, 1], false) === null, 'a side missing a position must not pair');
     assert(pairByIndex([0, 1], [5, 6, 7], false) === null, 'index pairing needs equal lengths');
-    return '6 pairings';
+    return '9 pairings, two of them with two mouths on one side';
   });
 
   check('dart.tube', () => {

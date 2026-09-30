@@ -2098,6 +2098,15 @@ Costs (T-shirt front at h = 15: full outline 480 × 620 mm → V ≈ 1500): step
 > `checkDarts` rejects is left out of the mesh, and each of its error issues is recorded as the warning
 > `'dart-ignored: ' + message`. Pieces without darts mesh exactly as before.
 
+> **Amendment (lead, 2026-09-30) — Darts: two mouths on one edge (tests).** `geometry/remesh.twoMouths`, after
+> `remesh.dartSeam` (the geometry self-test has 25 cases): a 300 × 120 mm piece with two 20 mm darts on its bottom edge,
+> sewn reversed to the 260 mm top edge of a plain piece. Both darts are valid and both mouths are forced samples
+> (`u = 80/260` and `180/260`); the two sides' fractions mirror; the darted edge lists `F_e.length + 2` vertices, each
+> mouth's corners A and B consecutive at one `u` and starting that dart's legs, which end at two different apexes; the
+> distinct fractions of the two sides pair under `u ↦ 1 − u`; Euler 1 and no warning on both meshes.
+> `cloth/seam.pairByFraction` also pairs two mouths on one side against single vertices, and against a mouth on a
+> reversed side, and returns `null` when the other side lacks one of the positions.
+
 ### 5.7 `offset.js` — seam allowance
 
 ```js
@@ -6186,7 +6195,7 @@ Store contract (section 3.3, authoritative): `update(mutator, label)` emits `doc
 >
 > | # | name | timeout | what passes |
 > |---|---|---|---|
-> | 26i | `incremental_remesh` | 20 s | the dress with a dart added on `bodice_back_r`'s shoulder (`{edge: 3, t: 0.5, width_mm: 10, apex: [140, 320]}`) is rebuilt; the T-shirt with the front armhole notch moved to `t = 0.43` is rebuilt; at size L a notch added on the front hem is rebuilt and replaces the front's mesh alone, and a placement change then leaves the live `ClothState` the same object (re-arranged, not rebuilt). §12.2.3 amendment "Darts: the mesh fingerprint is the seam sampling"; before it, the first two failed with `seam-parity` and the last rebuilt. |
+> | 26i | `incremental_remesh` | 20 s | the dress at sizes S and then XL: 6 of 6 pieces meshed, no mesh warning, `seamPairsEqual`, no new error line (`geometry/remesh.dress` sees the base size only); back at M, the dress with a dart added on `bodice_back_r`'s shoulder (`{edge: 3, t: 0.5, width_mm: 10, apex: [140, 320]}`) is rebuilt; the T-shirt with the front armhole notch moved to `t = 0.43` is rebuilt; at size L a notch added on the front hem is rebuilt and replaces the front's mesh alone, and a placement change then leaves the live `ClothState` the same object (re-arranged, not rebuilt). §12.2.3 amendment "Darts: the mesh fingerprint is the seam sampling"; before it, the first two failed with `seam-parity` and the last rebuilt. |
 > | 26j | `invalid_dart` | 20 s | the dress with `bodice_back_r`'s waist dart pointing outside the piece (`apex [89, −50]`, `DART_APEX`), once through `__app.load` and once through `__app.update` on the loaded dress: all 6 pieces meshed, `bodice_back_r`'s mesh warnings include a `dart-ignored:` line, `seamPairsEqual`, no new error line, and a live `ClothState` of 6 pieces whose `V` equals `mesh.stats().verts` (after the edit, a new one). §12.2.2 amendment "Darts: an invalid dart does not exclude its piece"; before it, the load meshed 5 pieces and the edit failed with `seam-parity`. |
 > | 26k | `pinned_dart` | 20 s | `reloadSample('skirt')` plus a front waist dart on the pinned waist (`{edge: 2, t: 0.5, width_mm: 20, apex: [125, 460]}`): no validation error, `seamPairsEqual`; after `sim.reset()` both corners of each of the 2 mouths (the dart and its mirrored twin) are pinned, to targets less than 1 µm apart; `s = step(120)`: `s.nanCount === 0` and every dart leg pair closer than 3 mm (as in 26g). §7.1 amendment "Darts: a dart on a pinned edge". 120 frames because the dart is shut when the sewing ends (0.29 mm at frame 60, 0.000 at 120). |
 >

@@ -1464,9 +1464,25 @@ async function editRebuilds(what, fn) {
 async function checkIncrementalRemesh() {
   /** @returns {Map<string, any>} live meshes by piece id */
   const meshes = () => new Map(app().mesh.all().map((m) => [m.pieceId, m]));
+  await reloadSample('dress');
+  // The dress meshes as cleanly at its smallest and largest sizes as at the base size, which is all the geometry
+  // self-test remesh.dress sees: every piece meshed, no mesh warning, every seam pairs, nothing logged.
+  for (const size of ['S', 'XL']) {
+    const errs = errorsNow().length;
+    app().sizes.setActive(size);
+    await app().idle();
+    app().sim.pause();
+    const st = app().mesh.stats();
+    const notes = st.perPiece.filter((p) => p.warnings.length > 0).map((p) => p.pieceId + ': ' + p.warnings.join(', '))
+      .concat(errorsNow().slice(errs).map((e) => e.message));
+    expect(st.pieces === 6 && st.seamPairsEqual && notes.length === 0,
+      `the dress at ${size}: ${st.pieces} of 6 pieces meshed, seams pair ${st.seamPairsEqual}; ${notes.join(' | ')}`);
+  }
+  app().sizes.setActive('M');
+  await app().idle();
+  app().sim.pause();
   // The dress: bodice_back_l's shoulder is sewn only to the front, but the front's shoulder is also sewn to
   // bodice_back_r's, so a mouth cut there is a sample of all three.
-  await reloadSample('dress');
   await editRebuilds('a dart on the right back shoulder', (d) => {
     pieceOf(d, 'bodice_back_r').darts.push({ id: 'shoulder_dart', edge: 3, t: 0.5, width_mm: 10, apex: [140, 320] });
   });
@@ -1492,7 +1508,8 @@ async function checkIncrementalRemesh() {
   app().sim.pause();
   expect(stateOf() === s0, 'a placement change at size L rebuilt the cloth instead of re-arranging it');
   drapeStage = 0;
-  return 'dress back shoulder dart, T-shirt armhole notch: rebuilt, seams pair; size L: a hem notch remeshed the front only, a move re-arranged';
+  return 'dress at S and XL: clean meshes, seams pair; dress back shoulder dart, T-shirt armhole notch: rebuilt, seams pair; '
+    + 'size L: a hem notch remeshed the front only, a move re-arranged';
 }
 
 /**

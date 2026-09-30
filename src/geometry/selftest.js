@@ -1,5 +1,6 @@
 // src/geometry/selftest.js — the 15 cases of SPEC 5.9 plus two regression cases (remesh.allSamples, remesh.sleeve), the
-// four darts cases of SPEC 5.10 and the two darted-mesh cases (remesh.dartNarrow, remesh.dartSeam), and remesh.dress (the fitted dress sample).
+// four darts cases of SPEC 5.10 and the three darted-mesh cases (remesh.dartNarrow, remesh.dartSeam, remesh.twoMouths),
+// and remesh.dress (the fitted dress sample).
 // Pure and DOM-free; this is the only file of src/geometry/ allowed to import ../samples/index.js (as a fixture source).
 import {
   segmentLength, sampleSegment, splitEdge,
@@ -631,6 +632,45 @@ function caseRemeshDartSeam() {
 }
 
 /** @returns {SelfTestResult} */
+function caseRemeshTwoMouths() {
+  // A's bottom edge (e0, left -> right) carries two darts; B's top edge (e2, right -> left) is 260 mm = A's sewn length
+  const A = makePiece({ id: 'A', vertices: [[0, 0], [300, 0], [300, 120], [0, 120]],
+    darts: [{ id: 'd1', edge: 0, t: 0.3, width_mm: 20, apex: [90, 70] }, { id: 'd2', edge: 0, t: 0.7, width_mm: 20, apex: [210, 70] }] });
+  const B = makePiece({ id: 'B', vertices: [[0, 200], [260, 200], [260, 300], [0, 300]] });
+  const doc = { pieces: [A, B], seams: [{ id: 's', kind: 'plain', a: { pieceId: 'A', edge: 0, mirror: false, reverse: false }, b: { pieceId: 'B', edge: 2, mirror: false, reverse: true } }] };
+  const valid = checkDarts(A).issues.length === 0;
+  const FA = seamSampleFractions(A, 0, doc);
+  const FB = seamSampleFractions(B, 2, doc);
+  const mirrored = FA.length === FB.length && FA.every((u, i) => Math.abs(u - (1 - FB[FB.length - 1 - i])) < 1e-9);
+  const mouthU = mouthFractions(A, 0);
+  const forced = mouthU.length === 2 && Math.abs(mouthU[0] - 80 / 260) < 1e-12 && Math.abs(mouthU[1] - 180 / 260) < 1e-12
+    && mouthU.every((u) => FA.some((x) => Math.abs(x - u) < 1e-12));
+  const mA = remeshPiece(A, doc);
+  const mB = remeshPiece(B, doc);
+  const ev = mA.edgeVerts[0][0];
+  const fr = mA.edgeFrac[0][0];
+  // each mouth is two consecutive edge vertices at one u, A then B, and they start that dart's legs
+  const corners = [];
+  for (let j = 1; j < fr.length; j++) if (Math.abs(fr[j] - fr[j - 1]) < 1e-12) corners.push(j - 1);
+  const legsOk = [0, 1].every((k) => {
+    const legs = mA.dartVerts[0][k];
+    const j = corners[k];
+    return legs.a.length === legs.b.length && legs.a.length >= 3 && legs.a[legs.a.length - 1] === legs.b[legs.b.length - 1]
+      && j !== undefined && legs.a[0] === ev[j] && legs.b[0] === ev[j + 1] && Math.abs(fr[j] - mouthU[k]) < 1e-12;
+  }) && mA.dartVerts[0][0].a[mA.dartVerts[0][0].a.length - 1] !== mA.dartVerts[0][1].a[mA.dartVerts[0][1].a.length - 1];
+  const counts = ev.length === FA.length + 2 && mB.edgeVerts[0][2].length === FB.length && corners.length === 2;
+  // the sides pair by sewn fraction: A's distinct fractions are B's read backwards, u -> 1 - u (cloth pairByFraction)
+  const uA = Array.from(fr).filter((u, i, all) => i === 0 || Math.abs(u - all[i - 1]) > 1e-12);
+  const uB = Array.from(mB.edgeFrac[0][2]).map((u) => 1 - u).reverse();
+  const pairs = uA.length === uB.length && uA.every((u, i) => Math.abs(u - uB[i]) < 1e-9);
+  const clean = eulerOf(mA).euler === 1 && eulerOf(mB).euler === 1 && mA.warnings.length === 0 && mA.quality.pctAbove20 >= 95;
+  const pass = valid && mirrored && forced && legsOk && counts && pairs && clean;
+  return { name: 'remesh.twoMouths', pass, details: `valid ${valid}; fractions mirror ${mirrored}; mouths at u ${mouthU.map((u) => f(u, 4)).join(', ')} forced ${forced}; `
+    + `A ${ev.length} edge vertices (F ${FA.length} + 2), B ${mB.edgeVerts[0][2].length}; legs ${legsOk}; pair by fraction ${pairs}; `
+    + `Euler ${eulerOf(mA).euler}, pctAbove20 ${f(mA.quality.pctAbove20, 1)}, warnings ${mA.warnings.length}` };
+}
+
+/** @returns {SelfTestResult} */
 function caseRemeshDress() {
   const doc = getSample('dress');
   let V = 0;
@@ -675,15 +715,17 @@ const CASES = [
   caseDartsCarry,
   caseRemeshDartNarrow,
   caseRemeshDartSeam,
+  caseRemeshTwoMouths,
   caseRemeshDress,
 ];
 
-/** Names in declaration order (the 15 of SPEC 5.9, remesh.allSamples, remesh.sleeve, the four darts cases, then the two darted-mesh cases, then the dress). @returns {string[]} */
+/** Names in declaration order (the 15 of SPEC 5.9, remesh.allSamples, remesh.sleeve, the four darts cases, then the three darted-mesh cases, then the dress). @returns {string[]} */
 export function listSelfTests() {
   return ['bezier.length', 'bezier.split', 'polygon.predicates', 'mirror.fullOutline', 'delaunay.basic',
     'delaunay.recover', 'remesh.square', 'remesh.seamParity', 'remesh.fold', 'remesh.notch', 'offset.square',
     'offset.discontinuity', 'offset.fold', 'pack.shelf', 'remesh.performance', 'remesh.allSamples', 'remesh.sleeve',
-    'darts.mouth', 'darts.apply', 'darts.check', 'darts.carry', 'remesh.dartNarrow', 'remesh.dartSeam', 'remesh.dress'];
+    'darts.mouth', 'darts.apply', 'darts.check', 'darts.carry', 'remesh.dartNarrow', 'remesh.dartSeam', 'remesh.twoMouths',
+    'remesh.dress'];
 }
 
 /** @returns {Promise<SelfTestResult[]>} */

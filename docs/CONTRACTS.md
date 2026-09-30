@@ -110,7 +110,7 @@ offsetOutline(piece, opts?) → Vec2[]        (half outline for fold pieces; fol
 // pack.js
 packRects(items{id,w,h}[], sheetWidth, {gap?=10, allowRotate?}) → {placements:{id,x,y,rotated}[], width, height}
 ```
-Errors: `RemeshError` (reason `'outline'|'fold'|'internal'`), `GeometryError` (`'Delaunay'|'Constraint'|'Offset'`). Emits/listens: nothing. Element ids: none. `selftest.js`: `runSelfTest()` (24 cases: the 15 of 5.9, the dart cases `darts.*` and `remesh.dart*`, `remesh.dress`; may import `src/samples`).
+Errors: `RemeshError` (reason `'outline'|'fold'|'internal'`), `GeometryError` (`'Delaunay'|'Constraint'|'Offset'`). Emits/listens: nothing. Element ids: none. `selftest.js`: `runSelfTest()` (25 cases: the 15 of 5.9, `remesh.allSamples`, `remesh.sleeve`, the four `darts.*` cases, `remesh.dartNarrow`, `remesh.dartSeam`, `remesh.twoMouths` (two darts on one edge), `remesh.dress`; may import `src/samples`).
 
 ---
 
@@ -187,7 +187,7 @@ pairByIndex(va, vb, reverse) → flat [a0, b0, a1, b1, …]|null   // equal-leng
 pairByFraction(va, fa, vb, fb, reverse) → flat [a, b, …]|null   // by sewn fraction (PieceMesh.edgeFrac): equal fractions meet; a mouth's two corners meet the other side's vertex (or its two corners) at that position; null when the fractions do not match
 FRACTION_EPS = 1e-6   // two sewn fractions closer than this are one position
 ```
-Arrangement (7.4): `ŝ = f̂ × â`, `θ_side` front 0 / left +π/2 / back π / right −π/2; pattern +x = "rightward as seen from outside"; `dy = 0` puts the top of the full outline at `Anchor.origin`. Emits/listens: nothing (wiring turns `nanCount` growth into `sim:nan`). Element ids: none. `selftest.js`: 18 cases (the 12 of 7.13 plus arrange, tears, the sewing schedule, the concavity bridge, `seam.pairByFraction` and `dart.tube`).
+Arrangement (7.4): `ŝ = f̂ × â`, `θ_side` front 0 / left +π/2 / back π / right −π/2; pattern +x = "rightward as seen from outside"; `dy = 0` puts the top of the full outline at `Anchor.origin`. Emits/listens: nothing (wiring turns `nanCount` growth into `sim:nan`). Element ids: none. `selftest.js`: 18 cases (the 12 of 7.13 plus arrange, tears, the sewing schedule, the concavity bridge, `seam.pairByFraction` (with two mouths on one side) and `dart.tube`).
 
 ---
 
