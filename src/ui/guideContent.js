@@ -93,7 +93,7 @@ export const GUIDE_SECTIONS = Object.freeze([
 <h4>Opening</h4>
 <p>Click <span class="guide-ui">Open</span> (<kbd>Ctrl</kbd>+<kbd>O</kbd>) and choose a project <code>.json</code> file. It replaces the current project, including the layout and active size saved with it. If the file is not a valid project, an error appears in the status bar and your current work is left as it was.</p>
 <h4>New projects and samples</h4>
-<p><span class="guide-ui">New</span> starts an empty project called <em>Untitled</em>: no pieces, the <em>Female M</em> body, a size chart from S to XL with M as the base size, and one cotton fabric. The sample list offers <span class="guide-ui">T-shirt</span> (front and back on the fold, two sleeves) and <span class="guide-ui">A-line skirt</span> (front and back, waist pinned to the body). Choose one and click <span class="guide-ui">Load sample</span>. Unless you ask for something else (see the tip below), the app starts with the T-shirt.</p>
+<p><span class="guide-ui">New</span> starts an empty project called <em>Untitled</em>: no pieces, the <em>Female M</em> body, a size chart from S to XL with M as the base size, and one cotton fabric. The sample list offers <span class="guide-ui">T-shirt</span> (front and back on the fold, two sleeves), <span class="guide-ui">A-line skirt</span> (front and back, waist pinned to the body) and <span class="guide-ui">Fitted dress</span> (a sleeveless bodice and skirt joined at the waist, with <a data-guide="darts">darts</a>). Choose one and click <span class="guide-ui">Load sample</span>. Unless you ask for something else (see the tip below), the app starts with the T-shirt.</p>
 <h4>Autosave and recovery</h4>
 <p>While you work, the app keeps a copy of the project in this browser, a second or two after each change and again when you close or leave the tab. If the tab closes, the browser crashes or you reload before saving, the next time you open the app a banner at the top offers your unsaved work back: <span class="guide-ui">Restore</span> brings it back, <span class="guide-ui">Discard</span> forgets it. Autosave pauses until you choose.</p>
 <p>The copy lives in this browser only. It is not a file, it does not follow you to another browser or computer, and clearing the browser's site data deletes it. Only changes to the work itself count as unsaved: moving the pane divider or changing the scene does not bring up the banner.</p>
@@ -169,13 +169,15 @@ export const GUIDE_SECTIONS = Object.freeze([
   {
     id: "pattern-tools",
     title: "Pattern tools",
-    keywords: ["split", "notch", "double notch", "grain", "grainline", "measure", "distance", "area", "fold", "cut on fold", "mirror", "fit", "zoom", "shift+m", "X", "N", "G", "M", "F"],
+    keywords: ["split", "notch", "double notch", "grain", "grainline", "measure", "distance", "area", "fold", "cut on fold", "mirror", "fit", "zoom", "shift+m", "dart", "X", "N", "T", "G", "M", "F"],
     html: `
 <p>These toolbar tools add construction details. While one is active, the status bar shows a short reminder of how to use it.</p>
 <h3>Split (<kbd>X</kbd>)</h3>
 <p>Hover over an edge (a small yellow cross marks the spot) and click to add a point there, dividing the edge in two. Use it when only part of an edge should be sewn. If the edge was sewn, that seam is removed; re-create it on the half you need. The fold edge cannot be split.</p>
 <h3>Notch (<kbd>N</kbd>)</h3>
 <p>Click an edge to add a notch; <kbd>Shift</kbd>+click adds a double notch. Drag a notch to slide it along its edge, double-click it to switch between single and double, and press <kbd>Delete</kbd> to remove the selected one. On a folded piece, place notches on the solid half; they are repeated on the dashed half.</p>
+<h3>Dart (<kbd>T</kbd>)</h3>
+<p>Click an edge to open a dart there, then drag its point or the corners of its mouth to shape it. Darts have their own page: <a data-guide="darts">Darts</a>.</p>
 <h3>Grain (<kbd>G</kbd>)</h3>
 <p>Every piece has a grainline, drawn as an orange arrow. To redraw it, press on the piece and drag along the grain; the arrowhead goes where you let go. Hold <kbd>Shift</kbd> for 45° steps. Drags under 5 mm are ignored, so a click only selects the piece. To adjust the line instead, select the piece and drag either end.</p>
 <p>The grainline is a cutting mark on the exported pattern; the 3D simulation does not use it.</p>
@@ -212,11 +214,33 @@ export const GUIDE_SECTIONS = Object.freeze([
 <h3>Direction and Flip</h3>
 <p>A dot in the seam's colour sits at one end of each edge; the two dots mark the ends that are joined. The app pairs each end with the nearer end of the other edge on your layout, so it helps to lay pieces out the way they meet. If the dots sit on ends that should not meet, click <span class="guide-ui">Flip</span>; otherwise the seam is sewn crosswise and twists in 3D.</p>
 <h3>Ease</h3>
-<p>Ease is how much longer the longer edge is, as a percentage of the shorter one. Up to 8% passes without comment. Above 8% the seam is drawn red, its row in the list turns yellow and a warning appears under Issues; above 50% it is an error, which usually means the wrong edge was picked.</p>
+<p>Ease is how much longer the longer edge is, as a percentage of the shorter one. Both lengths are the <em>sewn</em> lengths, less any <a data-guide="darts">darts</a> on the edge. Up to 8% passes without comment. Above 8% the seam is drawn red, its row in the list turns yellow and a warning appears under Issues; above 50% it is an error, which usually means the wrong edge was picked.</p>
 <h3>The Seams list</h3>
 <p>The Seams section of the <a data-guide="pieces-panel">Pieces tab</a> lists every seam, for example <code>Front e2 ↔ Sleeve e3 · 312 / 328 mm · ease 5.1%</code>. The number after <em>e</em> is the edge number; click an edge to see its number in the Edge box. An apostrophe (<code>e1'</code>) means the mirrored half of a folded piece. Click a row to select that seam. Each row has its own <span class="guide-ui">Flip</span> and <span class="guide-ui">Delete</span> buttons, and the selected seam's ease is repeated under the list beside another pair.</p>
 <h3>Select and delete</h3>
 <p>Click a sewn edge with Seam or Select to select its seam (a thin white line runs along it), then press <kbd>Delete</kbd>. Deleting a piece deletes its seams. Splitting a sewn edge removes that seam with a note in the status bar, and setting a fold on an edge removes any seam on it.</p>
+`,
+  },
+  {
+    id: "darts",
+    title: "Darts",
+    keywords: ["dart", "darts", "dart tool", "T key", "bust dart", "waist dart", "intake", "dart point", "apex", "drill hole", "fitted", "shaping"],
+    html: `
+<p>A dart folds away a wedge of fabric so a flat piece can follow the body: over the bust, into the waist. In Clothing CAD a dart opens onto an edge of a piece; the piece's outline stays as drawn, and the dart is sewn shut in 3D.</p>
+<h3>Add a dart</h3>
+<ol>
+<li>Click <span class="guide-ui">Dart</span> or press <kbd>T</kbd>.</li>
+<li>Click the edge where the dart should open. A 20 mm dart appears there, pointing 80 mm into the piece (shorter when that does not fit).</li>
+</ol>
+<h3>Shape it</h3>
+<p>With the Dart tool, drag the <strong>point</strong> anywhere inside the piece, drag a <strong>corner of the mouth</strong> to change the width, or drag the <strong>middle of the mouth</strong> to slide the dart along its edge. A drag that would make the dart invalid — its point outside the piece, its legs crossing the outline or another dart — shows in red and snaps back. For exact values use the <span class="guide-ui">Darts</span> list in the <a data-guide="pieces-panel">Pieces tab</a>: position along the edge (<span class="guide-ui">Pos</span>, in mm from the start of the edge), width (<span class="guide-ui">W</span>), length (<span class="guide-ui">Len</span>) and angle (<span class="guide-ui">∠</span>, in degrees: 0 points straight into the piece, a positive angle leans toward the end of the edge). A value that would make any dart invalid is refused. <kbd>Delete</kbd> removes the selected dart.</p>
+<h3>Seams and darts</h3>
+<p>A seam compares the <em>sewn</em> lengths of its edges: an edge's length less the width of its darts. A 200 mm waist with a 20 mm dart sews to a 180 mm waist with no ease. The darts on the two sides of a seam do not have to line up.</p>
+<h3>Sizes</h3>
+<p>When the pattern is graded (see <a data-guide="sizes-grading">Sizes and grading</a>), each dart keeps its position and width, and its point moves with the piece.</p>
+<h3>Printing and exporting</h3>
+<p>The cut line ignores darts (the fabric is folded, not cut). The pattern sheet draws each dart's legs, a notch where each leg meets the edge, and a drill hole 10 mm back from the point. DXF-AAMA carries darts both ways.</p>
+<p>Try the <strong>Fitted dress</strong> sample: bust and waist darts on the bodice, waist darts on the skirt.</p>
 `,
   },
   {
@@ -254,6 +278,8 @@ export const GUIDE_SECTIONS = Object.freeze([
 <p><span class="guide-ui">Width ref</span> and <span class="guide-ui">Length ref</span> pick the size chart measurement that scales the piece's width and length between sizes; <em>(none)</em> keeps that direction fixed. <span class="guide-ui">Anchor X</span> and <span class="guide-ui">Anchor Y</span> pick the point that stays put. See <a data-guide="sizes-grading">Sizes and grading</a>.</p>
 <h3>Edge</h3>
 <p>Click an edge to fill this box; its heading shows the edge number, piece and length. <span class="guide-ui">Label</span> names the edge; it is shown along the edge while the piece is selected. <span class="guide-ui">Allowance (mm)</span> overrides the piece's allowance for this edge; leave it empty for the piece default. <span class="guide-ui">Pin to body</span> holds the edge fixed on the body, like a skirt waistband.</p>
+<h3>Darts</h3>
+<p>Lists the selected piece's darts, one row each with position, width, length and angle. Edit a value to change the dart, or use the Dart tool on the canvas. See <a data-guide="darts">Darts</a>.</p>
 <h3>Issues</h3>
 <p>Problems in the pattern: ⛔ for errors, ⚠ for warnings. Click one that names a piece to select it. Pieces with errors also get a red outline.</p>
 `,

@@ -249,6 +249,14 @@ def shot_skirt(page) -> None:
     save(shrink(center_crop(img, round(img.height * 0.9), img.height)), 'skirt.jpg')
 
 
+def shot_dress(page) -> None:
+    """The fitted dress: bust and waist darts, a waist seam, a centre-back zip."""
+    page.evaluate("(o) => window.__shot.drape(o)", {'sample': 'dress', 'scene': 'studio'})
+    full_body(page, 25)
+    img = png_from_data_url(page.evaluate('() => window.__shot.canvasPng()'))
+    save(shrink(center_crop(img, round(img.height * 0.72), img.height)), 'dress.jpg')
+
+
 def shot_fit(page) -> None:
     """A size too small for the body: the banner and the markers where the cloth over-stretches."""
     page.evaluate("(o) => window.__shot.drape(o)", {'body': 'plus_f', 'size': 'S', 'scene': 'dark', 'layout': '3d',
@@ -305,6 +313,7 @@ SHOTS = {
     'fabrics': shot_fabrics,
     'bodies': shot_bodies,
     'skirt': shot_skirt,
+    'dress': shot_dress,
     'fit': shot_fit,
     'export': shot_export,
     'drape': shot_drape_gif,

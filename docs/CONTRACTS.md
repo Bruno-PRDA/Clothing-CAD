@@ -58,7 +58,7 @@ Names that do NOT exist (older drafts): `doc:loaded`, `cloth:built`, `status`, `
 
 ## src/samples (Lead, frozen; imports nothing)
 
-`deepFreeze(o)`, `DEFAULT_SAMPLE_ID = 'tshirt'`, `SAMPLES` (frozen `{id, name, doc}[]`), `listSamples() → {id, name}[]`, `getSample(id) → ProjectDoc` (fresh clone; unknown id throws `code 'UNKNOWN_SAMPLE'`). T-shirt: pieces `front, back, sleeve_l, sleeve_r`, **10 `Seam` records** (8 garment seams), fabric `main` (cotton `#c8102e`). Skirt: `front, back`, 2 seams, `pinnedEdges [2]`, fabric `main` (denim `#3b5b8c`, twill 4 mm).
+`deepFreeze(o)`, `DEFAULT_SAMPLE_ID = 'tshirt'`, `SAMPLES` (frozen `{id, name, doc}[]`), `listSamples() → {id, name}[]`, `getSample(id) → ProjectDoc` (fresh clone; unknown id throws `code 'UNKNOWN_SAMPLE'`). T-shirt: pieces `front, back, sleeve_l, sleeve_r`, **10 `Seam` records** (8 garment seams), fabric `main` (cotton `#c8102e`). Skirt: `front, back`, 2 seams, `pinnedEdges [2]`, fabric `main` (denim `#3b5b8c`, twill 4 mm). Dress (`'dress'`, "Fitted dress"; SPEC amendment "Darts: the fitted dress"): pieces `bodice_front` (on the fold; bust dart on the side edge, waist dart), `bodice_back_r` / `bodice_back_l` (centre-back halves, the `_l` a mirrored duplicate), `skirt_front` (on the fold), `skirt_back_r` / `skirt_back_l`, a waist dart on each of the six, **14 `Seam` records** (two shoulders, two bodice sides, four waist seams, four skirt sides, two centre-back), fabric `main` (cotton `#1f3a5f`); `SAMPLE_IDS = ['tshirt', 'skirt', 'dress']`.
 
 ---
 
@@ -91,17 +91,26 @@ mulberry32(seed) → () => number             jitterSeed(piece) → uint32
 // delaunay.js
 delaunay(points) → Uint32Array 3T           recoverEdges(points, tris, constraints) → Uint32Array (flips only, no insertion)
 buildAdjacency(vertexCount, tris) → {edges, triA, triB, edgeIndex}
+// darts.js (SPEC amendments "Darts: contracts" and "Darts: meshing"): a dart opens onto an edge; its mouth is A..B on that edge, its legs A→apex and B→apex
+dartMouth(piece, dart) → {a, b, ta, tb, L}      dartDrillPoint(a, b, apex) → Vec2   // valid or not (the editor previews invalid darts); the drill hole sits DART_DRILL_BACK_MM back from the point, at most half way to the mouth
+checkDarts(piece) → {issues: Issue[], bad: Set<number>}   validDartIndices(piece) → number[]   // codes DART_EDGE, DART_ID, DART_WIDTH, DART_MOUTH, DART_APEX, DART_OVERLAP, DART_CROSSES (errors), DART_NOTCH (warning); a bad dart is ignored everywhere; cached per piece content
+mouthsOn(piece, e) → Mouth[] {k, dart, s0, s1, ta, tb, a, b, apex}   // the valid darts of edge e, sorted along it
+sewnLength(piece, e) → mm        // arc length of edge e less the widths of its valid darts
+edgeToSewn(piece, e, t) → u      sewnToEdge(piece, e, u) → number[]   // arc-length fraction ↔ sewn fraction; a mouth is ONE sewn position, so sewnToEdge returns [ta, tb] there
+mouthFractions(piece, e) → number[]   insideMouth(piece, e, t) → boolean
+applyDarts(piece, ks?) → {piece, map}   // the outline with every mouth cut in as A → apex → B; outline-only (darts, notches, pinnedEdges, internalLines, grade.vertexRules emptied); map[j] = {edge, t0, t1} | {dart, leg: 'a'|'b'}
+DART_CORNER_MM = 2   DART_GAP_MM = 2   DART_APEX_CLEAR_MM = 1   DART_MIN_WIDTH_MM = 1   DART_DRILL_BACK_MM = 10
 // remesh.js
 effectiveSpacing(piece, spacingFactor = 1) → mm
-seamSampleFractions(piece, edgeIndex, doc, spacingFactor = 1) → number[]   (symmetric on seam partners = parity)
-remeshPiece(piece, doc, {spacingFactor?}) → PieceMesh   throws Error{code:'RemeshError', pieceId, reason}
+seamSampleFractions(piece, edgeIndex, doc, spacingFactor = 1) → number[]   SEWN fractions u (arc length with dart mouths removed; symmetric on seam partners = parity; a mouth is one position carried by two vertices)
+remeshPiece(piece, doc, {spacingFactor?}) → PieceMesh   throws Error{code:'RemeshError', pieceId, reason}   // cuts each valid dart's V into the boundary; an invalid dart is skipped with a 'dart-ignored: …' warning
 // offset.js
 offsetPolygon(stitch, allowance[], {join?:'mitre'|'round', mitreLimit?}) → Vec2[]   (allowance is ALWAYS an array, per segment)
 offsetOutline(piece, opts?) → Vec2[]        (half outline for fold pieces; fold edge allowance 0)
 // pack.js
 packRects(items{id,w,h}[], sheetWidth, {gap?=10, allowRotate?}) → {placements:{id,x,y,rotated}[], width, height}
 ```
-Errors: `RemeshError` (reason `'outline'|'fold'|'internal'`), `GeometryError` (`'Delaunay'|'Constraint'|'Offset'`). Emits/listens: nothing. Element ids: none. `selftest.js`: `runSelfTest()` (15 cases, 5.9; may import `src/samples`).
+Errors: `RemeshError` (reason `'outline'|'fold'|'internal'`), `GeometryError` (`'Delaunay'|'Constraint'|'Offset'`). Emits/listens: nothing. Element ids: none. `selftest.js`: `runSelfTest()` (24 cases: the 15 of 5.9, the dart cases `darts.*` and `remesh.dart*`, `remesh.dress`; may import `src/samples`).
 
 ---
 
@@ -121,12 +130,16 @@ createView(canvas, onChange) → View { get(), set({cx?, cy?, pxPerMm?}), worldT
 HIT_TOL_PX, hitTest(doc, view, px, py, {selection, tool, handlesVisible?}) → Hit|null, flattenCache(piece)
 STYLE, hueOf(seamId), seamColor(seamId, warn?), render(ctx, view, doc, ui)
 validateDoc(doc) → Issue[], validatePiece(doc, piece), validateSeam(doc, seam), ISSUE_CODES
-edgeLengthOf(piece, e), sideEndpoints(doc, side), chooseReverse(doc, a, b), seamEase(doc, seam) → {lenA_mm, lenB_mm, easePct, longer},
+edgeLengthOf(piece, e), sewnLengthOf(piece, e) /* edge length less its valid darts' widths; what a seam compares */, sideEndpoints(doc, side), chooseReverse(doc, a, b), seamEase(doc, seam) → {lenA_mm, lenB_mm, easePct, longer},
 seamEaseOf(doc, a, b), formatEase(ease) → 'A 312 mm / B 328 mm - ease 5.1%', formatSeamRow(doc, seam), seamOfEdge(doc, pieceId, edge, mirror?),
 seamsOfPiece(doc, pieceId), makeSeam(doc, a, b, reverse?) → Seam, remapAfterEdgeChange(doc, pieceId, map) → removedSeamIds, seamEaseGraded(doc, seam, gradedPieces)
-TOOL_NAMES, TOOL_HINTS, runSelfTest()
+EDITOR_TOOLS   TOOL_NAMES   // select, draw, edit, split, seam, notch, dart, grainline, measure
+TOOL_HINTS, runSelfTest()
+acceptsDartEdit(before, k, dart) → boolean   // the one rule for changing dart k (the Dart tool's drags and the Darts list): refused when the result makes dart k invalid OR any other dart invalid that was valid before
+proposeDart(piece, e, t) → Dart|null         // a 20 mm wide, 80 mm long dart centred at t on edge e; shortened in 10 mm steps to 20 mm, then half as wide once; null when nothing fits
+// tools/dart.js (not re-exported by index.js): createDartTool(ctx), nearestT(piece, e, q), DART_DEFAULT_WIDTH_MM = 20, DART_DEFAULT_LENGTH_MM = 80, DART_MIN_LENGTH_MM = 20
 ```
-Store: writes only with `store.update(fn, label)` / `store.batch(label)` on pointer-up (labels 11.12.2: `piece:*`, `vertex:*`, `handle:*`, `edge:*`, `notch:*`, `seam:*`, `grainline:*`); writes `store.transient.{tool, selection, hover, seamPick}`. Emits: `selection:changed`, `tool:changed`, `hover:changed`, `seam:preview`, `view2d:changed`, `pattern:issues`, `ui:status`. Listens: `doc:changed` (via `store.subscribe`; repaint; validate unless `drag`; fit on `replace`), `size:active` (graded ghost), `fabric:changed` (fill colour), `ui:layout` (frame). Element ids owned: `canvas-2d`. Error codes: `PATTERN_BAD_TOOL, PATTERN_FOLD_SPLIT, PATTERN_MIN_VERTICES, PATTERN_FOLD_NOT_ON_AXIS, PATTERN_BAD_OUTLINE, SEAM_SAME_EDGE, SEAM_ON_FOLD_EDGE, SEAM_MIRROR_WITHOUT_FOLD, SEAM_EDGE_TAKEN, SEAM_DANGLING`.
+Store: writes only with `store.update(fn, label)` / `store.batch(label)` on pointer-up (labels 11.12.2: `piece:*`, `vertex:*`, `handle:*`, `edge:*`, `notch:*`, `seam:*`, `grainline:*`, `dart:add` / `dart:move` / `dart:delete` (the Dart tool) and `dart:edit` (the Darts list)); writes `store.transient.{tool, selection, hover, seamPick}`. Emits: `selection:changed`, `tool:changed`, `hover:changed`, `seam:preview`, `view2d:changed`, `pattern:issues`, `ui:status`. Listens: `doc:changed` (via `store.subscribe`; repaint; validate unless `drag`; fit on `replace`), `size:active` (graded ghost), `fabric:changed` (fill colour), `ui:layout` (frame). Element ids owned: `canvas-2d`. Error codes: `PATTERN_BAD_TOOL, PATTERN_FOLD_SPLIT, PATTERN_MIN_VERTICES, PATTERN_FOLD_NOT_ON_AXIS, PATTERN_BAD_OUTLINE, SEAM_SAME_EDGE, SEAM_ON_FOLD_EDGE, SEAM_MIRROR_WITHOUT_FOLD, SEAM_EDGE_TAKEN, SEAM_DANGLING, PATTERN_SPLIT_IN_DART`; `validatePiece` also reports the `DART_*` issues of `checkDarts`. `selftest.js`: 29 cases (the last four: `darts-model`, `dart-tool`, `dart-tool-handles`, `dart-edit-refused-when-it-breaks-another`). SPEC amendments "Darts: pattern model", "Darts: the Dart tool".
 
 ---
 
@@ -146,7 +159,7 @@ fitBodyLS(tpl, params, opts?) / calibrateLS(tpl) / FITLS_MEASURES / FITLS_CONTRO
 fitBody / calibrate / MEASURE_TARGETS / UNSTEERABLE / FIT_DEFAULTS   // the older one-slider-per-measurement fit, kept for comparison
 measureTemplate(tpl, pos, {index?}) → TemplateMeasurements        bakeMeshSdf(pos, indices, opts) · BAND_M · BAND_CELLS
 ```
-`BodyModel = {params, landmarks, anchors{torso, armL, armR, legL, legR, skirt, head}, rings, sdf, geometry{positions, normals, indices}, measured{chest_cm, waist_cm, hips_cm}, buildMs}`, plus on the template body `source: 'template'`, `fit`, `measuredFull`, `skeleton`, `timing`; `schema.DEFAULT_BODY_PARAMS` must equal `BODY_PRESETS.female_m`. Emits/listens: nothing. Element ids: none. `selftest.js`: 17 cases (the 12 of 6.9, three build cases, `template.fit`, `template.tapeVsSdf`).
+`BodyModel = {params, landmarks, anchors{torso, armL, armR, legL, legR, skirt, head}, rings, sdf, geometry{positions, normals, indices}, measured{chest_cm, waist_cm, hips_cm}, buildMs}`, plus on the template body `source: 'template'`, `fit`, `measuredFull`, `skeleton`, `timing`; `schema.DEFAULT_BODY_PARAMS` must equal `BODY_PRESETS.female_m`. Emits/listens: nothing. Element ids: none. `selftest.js`: 19 cases (the 12 of 6.9, three build cases, `template.fit`, `template.tapeVsSdf`, `macro.sexBlend`, `sdfMesh.seamSigns`, `stability.range`).
 
 ---
 
@@ -168,8 +181,13 @@ sphereField(centre, radius, cell)  capsuleField(a, b, r, cell)  floorField(y0, c
 makeHangingSheet({fabric, width_m, height_m, spacing_mm, pinTopCorners, selfCollision}) → ClothState   // row-major, row 0 = top edge
 makeSphereDrape({fabric, width_m, spacing_mm, sphereRadius, dropHeight}) → {state, sdf}
 makeSeamFixture({fabric, spacing_mm}) → {state}
+makeDartTubeFixture({fabric, spacing_mm, legs?}) → {state, legs}   // one 100 × 150 mm lattice whose two side columns are a dart's legs (PieceMesh.dartVerts), for the dart-closing tests
+// pairing.js (SPEC amendment "Darts: sewing")
+pairByIndex(va, vb, reverse) → flat [a0, b0, a1, b1, …]|null   // equal-length sides without edgeFrac (vertex i meets i, or N−1−i reversed)
+pairByFraction(va, fa, vb, fb, reverse) → flat [a, b, …]|null   // by sewn fraction (PieceMesh.edgeFrac): equal fractions meet; a mouth's two corners meet the other side's vertex (or its two corners) at that position; null when the fractions do not match
+FRACTION_EPS = 1e-6   // two sewn fractions closer than this are one position
 ```
-Arrangement (7.4): `ŝ = f̂ × â`, `θ_side` front 0 / left +π/2 / back π / right −π/2; pattern +x = "rightward as seen from outside"; `dy = 0` puts the top of the full outline at `Anchor.origin`. Emits/listens: nothing (wiring turns `nanCount` growth into `sim:nan`). Element ids: none. `selftest.js`: the 12 cases of 7.13 plus arrange, tears, the sewing schedule and the concavity bridge.
+Arrangement (7.4): `ŝ = f̂ × â`, `θ_side` front 0 / left +π/2 / back π / right −π/2; pattern +x = "rightward as seen from outside"; `dy = 0` puts the top of the full outline at `Anchor.origin`. Emits/listens: nothing (wiring turns `nanCount` growth into `sim:nan`). Element ids: none. `selftest.js`: 18 cases (the 12 of 7.13 plus arrange, tears, the sewing schedule, the concavity bridge, `seam.pairByFraction` and `dart.tube`).
 
 ---
 
@@ -208,7 +226,8 @@ gradeDoc(doc, sizeName) → Piece[]   gradeDocDetailed(doc, sizeName) → {piece
 seamEasePct(pieces, seam) → {lenA, lenB, easePct}   seamEaseDrift(doc, sizeName) → Issue[]
 EASE_LIMITS {tight: 0, snug: 4}   SHOULDER_LIMIT = 1.5   checkFit(doc, sizeName, body) → FitReport   torsoGirth(pieces) → cm   skirtGirth(pieces) → cm   shoulderSpan(pieces) → cm|null   closestRow(body, chart)
 // GradeRule {vertex, dx_mm, dy_mm, ref?, refAxis?: 'x'|'y'|'both'}: with `ref` the vertex follows that chart column instead of widthRef/lengthRef
-runSelfTest()
+// darts (SPEC amendments "Darts: grading", "Darts: the fit check by part"): gradePiece keeps each dart's position along its edge and its width, and moves its point with the piece; seamEasePct uses SEWN lengths; checkFit measures each part of a garment against the body it covers (bodice against bust/waist, skirt against waist/hips)
+runSelfTest()   // 15 cases
 ```
 Errors: `ValidationError` with codes `SIZE_*`, `GRADE_*`. Emits/listens: nothing. Element ids: none.
 
@@ -231,8 +250,9 @@ downloadClothObj(state, filename?) → string   FILENAMES {sheetSvg, pieceSvg, n
 // document-level (1:1 onto __app.export); sizeName defaults to doc.ui.activeSize
 exportDocSheet(doc, sizeName?, opts?) → SheetResult   exportDocSvg(doc, sizeName?, opts?) → string   exportDocPieceSvg(doc, pieceId, sizeName?, opts?)
 exportDocGradeNestSvg(doc, pieceId, opts?)   exportDocPrintHtml(doc, sizeName?, {paper?, orientation?}) → {html, plan}
-exportDocSizesCsv(doc)   exportDocSizesJson(doc)   exportDocMeasurementsCsv(doc, opts?)   runSelfTest()
+exportDocSizesCsv(doc)   exportDocSizesJson(doc)   exportDocMeasurementsCsv(doc, opts?)   runSelfTest()   // 14 cases
 ```
+Darts (SPEC amendments "Darts: the pattern sheet", "Darts: sewn lengths in the CSV"): the cut line ignores them; each dart is drawn as its two legs, a notch at each leg's mouth corner and a drill hole `DART_DRILL_BACK_MM` back from the point; the measurements CSV reports sewn lengths.
 SVG: 1 unit = 1 mm, single y flip in `toSheet`; `g.piece[data-piece-id][data-size]`, `path.cut`, `path.stitch`, `path.fold`, `rect.calibration`. Print: `<div class="page" data-tile>` per tile, `@page { size: A4 portrait; margin: 0; }`. Errors: `ValidationError` codes `EXPORT_*`, `PRINT_*`, `CSV_PARSE`, `PROJECT_*`, `NO_DOM`. Emits/listens: nothing. Element ids: none.
 
 ---
@@ -246,8 +266,9 @@ fitCubics(pts, tol, t0?, t1?) → [p0, c1, c2, p1][]   ringToEdges(ring, isTurn,
 LAYER   NOTCH_SHAPE_LAYERS   TEXT_KEY   FIT_TOL_MM (0.25)   FLATTEN_TOL_MM (0.1)   DEFAULT_AUTHOR   layerNo(layer) → '1'…
 exportAama(doc, {sizes?, sampleSize?, units?: 'mm'|'in', fold?: 'whole'|'mirror', date?, author?}) → string
 importAama(text, {units?: 'mm'|'in'|'cm', size?}) → {pieces: draft[], report: {units, unitsFrom, sizes, size, style, author, pieces[{name, vertices, notches, fold, allowance_mm, from}], warnings, skipped}}
-runSelfTest()
+runSelfTest()   // 16 cases
 ```
+Darts (SPEC amendment "Darts: DXF-AAMA"): `exportAama` writes each dart's legs on layer 8, its drill hole on layer 13 and its mouth notches on layer 4, and `importAama` reads them back (a dart-bearing piece round-trips, with or without seam allowance).
 
 ## src/ui (A7) — `index.js` exports (SPEC 11.3–11.8); owns index.html except `#canvas-2d` / `#view-3d` internals
 
@@ -258,7 +279,7 @@ createDock(store, bus, root?) → {setTab(name), getTab(), destroy()}
 createStatusbar(bus, root?) → {setMessage(text, level?, ttl_ms?), setToolHint(text), setCursor(x_mm|null, y_mm?), setSeamEase(text|null, warn?), setQuality(text|null, level?), setSim(stats|null), getLog(), destroy()}
 createShortcuts(bus, root?) → {enable(), disable(), isEnabled(), destroy()}   SHORTCUTS   // Tab never handled; 1/2/3 layouts, F1–F4 dock tabs
 createPiecesPanel / createBodyPanel / createFabricPanel / createSizesPanel (store, bus, root?) → {refresh(), destroy()}
-REQUIRED_IDS   // the 160 static ids (135 of 11.1.1 + fit banner 4 + guide 8 + scene control 4 + recovery banner 4 + DXF 4, kept in src/ui/ids.js)
+REQUIRED_IDS   // the 163 static ids (135 of 11.1.1 + fit banner 4 + guide 8 + scene control 4 + recovery banner 4 + DXF 4 + the Dart tool's `tool-dart` and the Darts list's `piece-darts`, `list-darts`; kept in src/ui/ids.js)
 createRecoveryBanner(store, bus, root?) → {show({name, savedAt}), hide(), isShown(), destroy()}   // emits ui:action recoverRestore / recoverDiscard
 createSceneControls(store, bus, root?) → {refresh(), setPresetBackground(hex), destroy()}   // writes doc.ui.scene
 createFitWarning(store, bus, root?) → {refresh(), report(), destroy()}
@@ -266,7 +287,7 @@ createGuide(store, bus, root?) → {open(section?), close(), toggle(section?), i
 createUi({store, bus, root?}) → {layout, toolbar, dock, statusbar, fitWarning, guide, scene, recovery, shortcuts, panels:{pieces, body, fabric, sizes}, setSelection, elements, refresh, destroy()}
 runSelfTest()
 ```
-Store: `store.update(fn, label)` with the 11.12.2 labels (`body:*`, `fabric:*`, `sim:*`, `sizes:*`, `ui:*`, `piece:*`, `seam:*`); the fabric colour/texture/scale sliders and bend/stretch sliders use `store.batch` (input = step, change = commit); the Body panel does NOT write during a drag (emits `body:params:drag`, one `store.update` on release then `body:params:commit`). Emits: `ui:action` (all intents), `ui:layout`, `ui:dock`, `ui:status`, `body:params:drag`, `body:params:commit`. Listens: `doc:changed` (via `store.subscribe`), `selection:changed`, `tool:changed`, `hover:changed`, `seam:preview`, `view2d:changed`, `pattern:issues`, `body:built`, `mesh:built`, `sim:built`, `sim:stats`, `sim:phase`, `sim:nan`, `fabric:changed`, `size:active`, `ui:layout`, `ui:dock`, `ui:status`, `popout:open/close`, `app:ready`. Element ids owned (by file): layout → `app`(data-*), `main`, `pane-left`, `pane-right`, `pane-2d`, `pane-3d`, `resizer`, `msg-3d-popout`; toolbar → every `btn-*`/`tool-*`/`sel-*`/`chk-selfcollision`/`input-file` in `#toolbar` + `btn-popin`; dock → `dock-tabs`, `tab-*`, `panel-*` visibility; statusbar → `status-tool`, `status-msg`, `status-cursor`, `status-seam-ease`, `status-quality`, `status-sim`; panels/pieces → `list-pieces`, `btn-piece-*`, `piece-props`, `piece-fold`, `inp-piece-name`, `num-piece-*`, `sel-piece-fabric`, `chk-piece-*`, `piece-placement`, `sel-placement-*`, `num-placement-*`, `range-placement-wrap(-val)`, `chk-placement-flip`, `piece-grade`, `sel-grade-*`, `edge-props`, `edge-index`, `inp-edge-label`, `edge-labels`, `num-edge-allowance`, `chk-edge-pinned`, `list-seams`, `seam-ease`, `btn-seam-*`, `list-issues`; panels/body → `sel-body-preset`, `body-params` (generated `body-<key>`, `body-<key>-num`), `body-measured`, `body-closest-size`, `btn-body-fit-size`, `body-build-ms`; panels/fabric → `sel-fabric-piece`, `fabric-id`, `sel-fabric-preset`, `input-color`, `sel-texture`, `input-color2`, `range-texture-scale(-val)`, `range-bend-scale(-val)`, `range-stretch-scale(-val)`, `fabric-physics`; panels/sizes → `table-sizes`, `btn-size-*`, `sel-base-size`, `list-size-issues`. `styles/app.css` is A7's; `styles/shell.css` is frozen.
+Store: `store.update(fn, label)` with the 11.12.2 labels (`body:*`, `fabric:*`, `sim:*`, `sizes:*`, `ui:*`, `piece:*`, `seam:*`); the fabric colour/texture/scale sliders and bend/stretch sliders use `store.batch` (input = step, change = commit); the Body panel does NOT write during a drag (emits `body:params:drag`, one `store.update` on release then `body:params:commit`). Emits: `ui:action` (all intents), `ui:layout`, `ui:dock`, `ui:status`, `body:params:drag`, `body:params:commit`. Listens: `doc:changed` (via `store.subscribe`), `selection:changed`, `tool:changed`, `hover:changed`, `seam:preview`, `view2d:changed`, `pattern:issues`, `body:built`, `mesh:built`, `sim:built`, `sim:stats`, `sim:phase`, `sim:nan`, `fabric:changed`, `size:active`, `ui:layout`, `ui:dock`, `ui:status`, `popout:open/close`, `app:ready`. Element ids owned (by file): layout → `app`(data-*), `main`, `pane-left`, `pane-right`, `pane-2d`, `pane-3d`, `resizer`, `msg-3d-popout`; toolbar → every `btn-*`/`tool-*`/`sel-*`/`chk-selfcollision`/`input-file` in `#toolbar` + `btn-popin`; dock → `dock-tabs`, `tab-*`, `panel-*` visibility; statusbar → `status-tool`, `status-msg`, `status-cursor`, `status-seam-ease`, `status-quality`, `status-sim`; panels/pieces → `list-pieces`, `btn-piece-*`, `piece-props`, `piece-fold`, `inp-piece-name`, `num-piece-*`, `sel-piece-fabric`, `chk-piece-*`, `piece-placement`, `sel-placement-*`, `num-placement-*`, `range-placement-wrap(-val)`, `chk-placement-flip`, `piece-grade`, `sel-grade-*`, `edge-props`, `edge-index`, `inp-edge-label`, `edge-labels`, `num-edge-allowance`, `chk-edge-pinned`, `piece-darts` (the Darts fieldset, disabled without a primary piece), `list-darts` (one `li[data-testid="dart-row"][data-index]` per dart, with `input[data-field=position|width|length|angle]` and `button[data-action=delete]`; SPEC amendment "Darts: the Darts list"), `list-seams`, `seam-ease`, `btn-seam-*`, `list-issues`; panels/body → `sel-body-preset`, `body-params` (generated `body-<key>`, `body-<key>-num`), `body-measured`, `body-closest-size`, `btn-body-fit-size`, `body-build-ms`; panels/fabric → `sel-fabric-piece`, `fabric-id`, `sel-fabric-preset`, `input-color`, `sel-texture`, `input-color2`, `range-texture-scale(-val)`, `range-bend-scale(-val)`, `range-stretch-scale(-val)`, `fabric-physics`; panels/sizes → `table-sizes`, `btn-size-*`, `sel-base-size`, `list-size-issues`. The Dart tool is `tool-dart` (key `T`, `ui:action` `{action: 'tool', tool: 'dart'}`); `GUIDE_SECTIONS` has a `darts` page. `selftest.js`: 20 cases (the last two: `guide`, `darts-panel`). `styles/app.css` is A7's; `styles/shell.css` is frozen.
 
 ---
 

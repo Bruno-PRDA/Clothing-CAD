@@ -25,7 +25,7 @@ troubleshooting.
 ![The 2D pattern editor with the T-shirt's front, back and sleeves; the front is selected, showing its edge labels, and the dock shows its properties](docs/images/editor.png)
 
 Lines and bezier curves, point editing, split edges, seams (click edge A, then edge B), notches, grainlines,
-fold edges and a seam allowance per edge. Seam lengths are compared as you work, and each piece carries its
+fold edges, darts and a seam allowance per edge. Seam lengths are compared as you work, and each piece carries its
 own placement, fabric and grading rules.
 
 ### Sew it and drape it
@@ -59,7 +59,20 @@ Seven fabric presets (cotton, denim, silk, jersey, wool, leather, chiffon), each
 look, any colour, and six procedural textures (solid, stripes, gingham, dots, twill, knit). Two sliders scale
 stretch and bending stiffness for the whole simulation.
 
-Two garments are built in: a T-shirt and an A-line skirt.
+Three garments are built in: a T-shirt, an A-line skirt and a fitted dress.
+
+<br clear="right">
+
+### Shape it with darts
+
+<img src="docs/images/dress.jpg" alt="The fitted dress sample: a navy cotton sheath with bust and waist darts, a waist seam and a centre-back zip" width="300" align="right">
+
+A dart folds a wedge out of a flat piece so it can follow the bust or the waist. Press `T`, click an edge and a
+dart opens there; drag its point, the corners of its mouth or its middle to reshape it, and the piece is meshed
+with the dart cut in and sewn shut in 3D. Seams compare **sewn lengths** (an edge's length less the width of its
+darts), so a bodice and a skirt still close at the waist when their darts do not line up. The SVG and print
+sheets draw each dart's legs and drill hole, and DXF-AAMA carries darts both ways. The **fitted dress** sample
+is built on them: a sleeveless bodice with bust and waist darts, a waist seam, a skirt, and a centre-back zip.
 
 <br clear="right">
 
@@ -93,7 +106,7 @@ full plan, with what works and what does not yet, is in **[docs/ROADMAP.md](docs
 
 | | Next | What it unlocks |
 |---|---|---|
-| 1 | **Darts and a fitted dress** *(in design)* | Darts that shape the cloth, a dart tool, seams that skip dart openings; a sleeveless dress with a waist seam |
+| 1 ✓ | **Darts and a fitted dress** *(done)* | Darts that shape the cloth, a dart tool, seams that compare sewn lengths; a sleeveless dress with a waist seam |
 | 2 | **Speed** | The cloth solver in a Web Worker; bigger garments stay smooth |
 | 3 | **Shirts** | Set-in sleeves, collar and stand, cuffs, plackets; gathers, pleats and elastic |
 | 4 | **Outfits on a posed body** | Several garments layered; posing the body; later, a walk |
@@ -120,7 +133,7 @@ That copy lives only in that browser, so use **Save** to keep a project as a fil
 
 | Pane | What it does |
 |---|---|
-| Left: **2D pattern editor** | Draw pieces (lines and bezier curves), edit points, split edges, define seams (click edge A then edge B), notches, grainlines, fold edges, seam allowance. |
+| Left: **2D pattern editor** | Draw pieces (lines and bezier curves), edit points, split edges, define seams (click edge A then edge B), notches, darts, grainlines, fold edges, seam allowance. |
 | Right: **3D physics view** | The garment is arranged around the body, sewn (seams pull together) and draped with an XPBD cloth solver. Orbit with the mouse. `Pop out` opens the 3D view in its own window. |
 | Dock: **Pieces / Body / Fabric / Sizes** | Piece properties and placement; body presets and 24 sliders (measurements plus height, weight, build, age and sex); fabric presets, colour and texture; size chart and grading. |
 
@@ -128,7 +141,7 @@ The body is MakeHuman's CC0 template mesh (`assets/body/`, see its `LICENSE.md`)
 measurements match the Body tab. If those files cannot be loaded, a simpler analytic mannequin is used instead.
 A banner warns when the active size is too small for the body, and markers show where the cloth over-stretches.
 
-Keyboard: `V` select, `P` draw, `E` edit, `S` seam, `N` notch, `G` grainline, `M` measure,
+Keyboard: `V` select, `P` draw, `E` edit, `S` seam, `N` notch, `T` dart, `G` grainline, `M` measure,
 `Space` play/pause, `D` drape, `R` reset, `Ctrl+Z`/`Ctrl+Y` undo/redo, `Delete`, `Esc`, `?` guide.
 The guide's *Keyboard shortcuts* page lists every binding.
 
@@ -140,7 +153,7 @@ serve.py, run.bat          dev server (Python standard library only)
 vendor.py                  optional: vendor three.js locally for offline use
 styles/                    CSS
 src/core/                  shared contracts: types, events, store, schema, units, fabrics, sdf
-src/samples/               built-in garments (T-shirt, A-line skirt)
+src/samples/               built-in garments (T-shirt, A-line skirt, fitted dress)
 src/geometry/              2D maths: beziers, polygons, Delaunay remesh, offset, packing
 src/pattern/               2D pattern editor
 src/body/                  body: MakeHuman template, measurements, fit to the sliders, SDF bake (+ analytic fallback)

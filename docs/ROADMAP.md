@@ -16,38 +16,42 @@ dependency, everything running in the browser.
 
 | Works today | Not yet |
 |---|---|
-| 2D pattern editor: straight and curved edges, seams, notches, grainlines, fold edges, per-edge seam allowance | Darts that shape the garment (they are drawn and exported only), tools for internal lines |
-| XPBD cloth simulation: sewing, gravity, body collision with friction, self-collision | Gathers, pleats, elastic; seams across several edges or part of one |
+| 2D pattern editor: straight and curved edges, seams, notches, darts (a dart tool and a Darts list), grainlines, fold edges, per-edge seam allowance | Tools for internal lines; darts pointed at both ends, inside a piece (every dart opens onto an edge) |
+| XPBD cloth simulation: sewing, gravity, body collision with friction, self-collision; darts sewn shut, seams that compare sewn lengths | Gathers, pleats, elastic; seams across several edges or part of one |
 | MakeHuman CC0 body fitted to 24 measurements, 9 presets | Posing (the arm and leg angle sliders do not move the template body), animation |
-| Size chart and grading; drapes the size you pick; warns before a size too small tears | Men's and children's size charts (the default chart is a women's S–XL) |
-| 7 fabric presets, 6 procedural textures, 7 scene presets | Fabric textures from image files; warp/weft anisotropy |
-| Export: 1:1 SVG, tiled print, CSV/JSON, OBJ, DXF-AAMA in and out | More than one garment at a time; collars, cuffs, plackets, pockets |
-| About 180 self-tests and 32 acceptance checks on every push | A cloth solver off the main thread (it is designed for a Web Worker but does not use one) |
+| Size chart and grading (darts keep their width); drapes the size you pick; warns before a size too small tears, checking each part of a garment against the body it covers | Men's and children's size charts (the default chart is a women's S–XL) |
+| 7 fabric presets, 6 procedural textures, 7 scene presets; three built-in garments (T-shirt, A-line skirt, fitted dress) | Fabric textures from image files; warp/weft anisotropy |
+| Export: 1:1 SVG, tiled print, CSV/JSON, OBJ, DXF-AAMA in and out; darts included | More than one garment at a time; collars, cuffs, plackets, pockets |
+| 205 self-tests and 34 acceptance checks on every push | A cloth solver off the main thread (it is designed for a Web Worker but does not use one) |
 
 Visible limits of the drape today:
 
 * Woven cotton stretches about 8 % under its own weight; real cotton stretches 1–2 %. Acceptance check 10 stays
   red on purpose until that is fixed rather than tuned away (SPEC section 13).
-* Without darts, the only way a flat piece can follow the bust or the waist is to stretch or stand away from it.
+* A piece without darts can follow the bust or the waist only by stretching or standing away from it; the T-shirt and the skirt have none.
 * Collision uses a 15 mm distance grid, so body details smaller than that (nipples) show through close-fitting
   cloth, visible in the pictures in the README.
 * On a laptop GPU the 4 000-vertex benchmark takes about 22 ms a frame, against a 16 ms budget.
 
 ## The plan
 
-### 1. Darts and a fitted dress — *in design*
+### 1. Darts and a fitted dress — *done*
 
 The first garment beyond the T-shirt and skirt: a **sleeveless dress with a waist seam**. The bodice has bust
-darts opening into the side seams and waist darts opening into the waist seam, and a centre-back zip. Every dart
-opens onto an edge, so the mesher needs no holes, and there are no sleeves, so no arm collisions.
+darts opening into the side seams and waist darts opening into the waist seam, the back is cut in two halves with
+a centre-back zip, and the skirt has waist darts. Every dart opens onto an edge, so the mesher needs no holes, and
+there are no sleeves, so no arm collisions.
 
-* **Darts become real objects** on a piece: the edge they open onto, their position along it, their width, and
+* **Darts are real objects** on a piece: the edge they open onto, their position along it, their width, and
   their point. The outline stays clean; the dart is cut in when the piece is meshed and its legs are sewn
   automatically.
 * **Seams pair by sewn length**, skipping dart openings, so the bodice waist and the skirt waist stay one seam
   even when their darts do not line up.
-* A **dart tool** in the editor; grading keeps each dart's position along its edge; export draws darts the way a
-  pattern-maker does (legs and a drill hole) in SVG, print and DXF-AAMA.
+* A **dart tool** in the editor (`T`) and a Darts list in the Pieces tab; grading keeps each dart's position and
+  width; export draws darts the way a pattern-maker does (legs and a drill hole) in SVG, print and DXF-AAMA.
+* The fit check now measures each part of a garment against the body it covers (the bodice against bust and
+  waist, the skirt against waist and hips), so the dress and the A-line skirt no longer get false "will tear"
+  warnings.
 
 ### 2. Speed
 
@@ -85,7 +89,7 @@ the dart model of step 1.
 
 ### Later and ideas
 
-* Dart manipulation: move, pivot and transfer darts; dart caps on the cut line.
+* Dart manipulation: pivot and transfer darts; dart caps on the cut line.
 * Drafting from measurements: pattern points that follow the body.
 * Men's and children's size charts.
 * Fabric textures from your own images.
