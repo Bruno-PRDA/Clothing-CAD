@@ -5684,6 +5684,13 @@ All keys are `hashString(JSON.stringify(...))` (uint32; `hashString` from `core/
 
 Cost: one `JSON.stringify` of the pieces/seams per `doc:changed` — < 1 ms for the samples (< 100 vertices per piece), negligible against the 120 ms debounce.
 
+> **Amendment (lead, 2026-09-30) — Darts: the mesh fingerprint.** `mesh[pieceId]` also covers `dt: piece.darts`, and
+> every `seamsTouching` entry ends with the partner edge's darts as `[[t, width_mm], …]` (a partner's dart mouth
+> changes its sewn length and forces a sample on this edge, §5.6 amendment "Darts: meshing"). Before, a dart edit — the
+> Dart tool, the Darts list, `__app.update` — changed the pattern but never reached the cloth: removing every dart from
+> the dress left it draped on its darted meshes (waist band 10.875 mm from the body with and without darts). Found by
+> acceptance check 26h (§13 amendment "Darts: acceptance"), which is its regression test.
+
 #### 12.2.4 Debounce, throttle and flush rules
 
 | Job | Trigger | Timing | Coalescing |

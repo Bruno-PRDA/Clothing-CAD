@@ -252,6 +252,9 @@ export function createWiring(ctx) {
           seam.id, side.edge, !!side.mirror, !!side.reverse,
           other.pieceId, other.edge, !!other.mirror,
           Math.round(edgeLengthMm(/** @type {any} */ (otherPiece), other.edge) * 100),
+          // the partner edge's dart mouths change its sewn length and force samples on this edge (SPEC 5.6 "Darts")
+          ((otherPiece && Array.isArray(otherPiece.darts)) ? otherPiece.darts : [])
+            .filter((dt) => dt && dt.edge === other.edge).map((dt) => [dt.t, dt.width_mm]),
         ]);
       }
     }
@@ -289,7 +292,7 @@ export function createWiring(ctx) {
   /** @param {ProjectDoc} d @param {Piece} p @returns {number} */
   function meshKeyOf(d, p) {
     return keyOf({
-      v: p.vertices, e: p.edges, f: p.foldEdge, n: p.notches,
+      v: p.vertices, e: p.edges, f: p.foldEdge, n: p.notches, dt: p.darts,
       h: p.meshSpacing_mm, sf: ctx.mesh.spacingFactor, s: seamsTouching(d, p.id),
       z: (d.ui && d.ui.activeSize) || '', g: p.grade,
     });
