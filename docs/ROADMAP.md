@@ -56,7 +56,7 @@ there are no sleeves, so no arm collisions.
 ### 2. Speed
 
 Move the cloth solver into a **Web Worker** (it was written for that: typed arrays, no DOM), so the page stays
-responsive while bigger garments simulate. The dress is about 6 000 vertices; layered outfits will be more. Add a
+responsive while bigger garments simulate. The dress is about 4 600 vertices; layered outfits will be more. Add a
 performance check that fails on a real regression instead of only warning.
 
 ### 3. Shirts

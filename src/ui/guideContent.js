@@ -432,8 +432,13 @@ export const GUIDE_SECTIONS = Object.freeze([
     html: `
 <p>Before anything is simulated, the app checks whether the active size can go round the body. If it can't, a banner appears at the top-left of the work area.</p>
 <h3>What ease means</h3>
-<p><strong>Ease</strong> is how much bigger the garment is around than the body. The app adds up the widths of the pieces placed on the torso (a piece cut on the fold counts twice) and subtracts the body's largest torso measurement: chest, waist or hips, whichever is biggest, because the garment has to pass over it.</p>
-<div class="guide-tip">Only pieces with <span class="guide-ui">Simulate</span> ticked and Placement <span class="guide-ui">Anchor</span> set to <em>torso</em> count. New pieces start on the torso, so move sleeves to <em>armL</em> or <em>armR</em> for an honest reading.</div>
+<p><strong>Ease</strong> is how much bigger the garment is around than the body. The app measures each part of the garment against the part of the body it has to pass over. It adds up the widths of the pieces in that part (a piece cut on the fold counts twice) and subtracts the body's largest measurement there:</p>
+<ul>
+<li><strong>Torso pieces</strong> (Placement <span class="guide-ui">Anchor</span> <em>torso</em>) go against the largest of chest, waist and hips. When the garment also has skirt pieces, as the fitted dress does, they go against the larger of chest and waist, because the skirt covers the hips.</li>
+<li><strong>Skirt pieces</strong> (Placement <span class="guide-ui">Anchor</span> <em>skirt</em>) go against the larger of waist and hips.</li>
+</ul>
+<p>The warning follows whichever part has the least ease. A garment with neither part, such as a pair of sleeves on their own, gets no girth check.</p>
+<div class="guide-tip">Only pieces with <span class="guide-ui">Simulate</span> ticked count. New pieces start on the torso, so move sleeves to <em>armL</em> or <em>armR</em> for an honest reading.</div>
 <h3>The three levels</h3>
 <ul>
 <li><strong>No banner</strong>: 4 cm of ease or more, shoulders wide enough, every seam still matching.</li>
