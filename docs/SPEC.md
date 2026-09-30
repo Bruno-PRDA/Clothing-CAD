@@ -3424,8 +3424,9 @@ Physics columns are the effective simulation values of 7.10 (`bend_Nm` effective
 > **Amendment (lead, 2026-09-30) — Darts: DXF-AAMA.** A dart travels as the shape the standard already has for one, in
 > both directions (`src/dxf/aama.js`). **Written:** for every *valid* dart (`validDartIndices`, §5.10), after the
 > block's internal lines: (1) its legs as ONE open 3-point POLYLINE `A → apex → B` on layer 8, with `A` and `B` from
-> `dartMouth` (so on the sew line, layer 14, and not on the cut line) and a turn POINT on layer 2 at each of the three
-> points; (2) a POINT on layer 13 (drill) at `dartDrillPoint(A, B, apex)`: on the centre line, 10 mm back from the
+> `dartMouth` (so on the sew line, layer 14, and not on the cut line) and a turn POINT on layer 2 at the point ONLY —
+> `A` and `B` lie on the outline, and with no seam allowance the cut line is the sew line with vertices added at the
+> mouth notches, so a turn mark there would make a reader split the edge at `A` and `B`; (2) a POINT on layer 13 (drill) at `dartDrillPoint(A, B, apex)`: on the centre line, 10 mm back from the
 > point, at most half way to the mouth; (3) the two mouth corners as notches on layer 4 — they are appended to the
 > piece's notches before `notchPoints` runs, so they get the usual place on the cut line, depth and angle. A fold
 > piece is written whole by `mirrorPiece`, which already carries every dart twice, so the mirrored half has its own
@@ -3440,9 +3441,11 @@ Physics columns are the effective simulation values of 7.10 (`bend_Nm` effective
 > purpose is lost with it; the dart's own mouth shows it). Anything else — a 3-point line with no drill hole, a closed
 > line, a line of 2 or 4 points, legs that end on two edges — stays an internal line, as before, so a file from another
 > system is never changed into darts by guesswork. Round trip: mouth, point and width agree to the file's precision
-> (0.0001 mm in a metric file; about 0.002 mm in an inch file). `dxf.darts` is the 14th self-test: a dart on a whole
-> piece and one on a fold piece come back as exactly one dart each, with no extra notch and no stray internal line, within
-> 0.1 mm.
+> (0.0001 mm in a metric file, about 0.002 mm in an inch file, up to 0.03 mm on a curved edge, where the outline is
+> refitted within 0.25 mm). `dxf.darts` and `dxf.dartsEdgeCases` are the 14th and 15th self-tests: a dart on a whole
+> piece and one on a fold piece, with a seam allowance and with none (no layer 14), and one on a curved edge, each come
+> back as exactly one dart within 0.1 mm, with the same number of outline edges, no extra notch and no stray internal
+> line; a layer-8 three-point line with no drill hole stays an internal line.
 
 > **Amendment (lead, 2026-09-17) — shoulder width is a graded measurement, and the fit check (10.4).**
 > Two related defects, both of which showed up as a garment tearing in the 3D view rather than as anything the UI

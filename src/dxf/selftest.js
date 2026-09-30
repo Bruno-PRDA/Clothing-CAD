@@ -372,5 +372,62 @@ export async function runSelfTest() {
     return 'both pieces keep their dart within 0.1 mm';
   });
 
+  check('dxf.dartsEdgeCases', () => {
+    const doc = normalizeDoc({ version: 2, name: 'Dart edge cases', pieces: [
+      // no seam allowance anywhere: no layer 14, the cut line IS the sew line and the mouth notches add vertices to it
+      { id: 'plain0', name: 'Plain0', vertices: [[0, 0], [200, 0], [200, 300], [0, 300]], seamAllowance_mm: 0,
+        darts: [{ id: 'd', edge: 0, t: 0.5, width_mm: 20, apex: [100, 120] }] },
+      { id: 'fold0', name: 'Fold0', vertices: [[0, 0], [150, 0], [150, 300], [0, 300]], foldEdge: 3, seamAllowance_mm: 0,
+        edges: [{ type: 'line', allowance_mm: 0 }, { type: 'line', allowance_mm: 0 }, { type: 'line', allowance_mm: 0 }, { type: 'line', allowance_mm: 0 }],
+        darts: [{ id: 'e', edge: 0, t: 0.6, width_mm: 16, apex: [90, 110] }] },
+      // a dart on a curved edge
+      { id: 'curve', name: 'Curve', vertices: [[0, 0], [300, 0], [300, 300], [0, 300]], seamAllowance_mm: 10,
+        edges: [{ type: 'cubic', c1: [100, -60], c2: [200, -60] }, { type: 'line' }, { type: 'line' }, { type: 'line' }],
+        darts: [{ id: 'c', edge: 0, t: 0.4, width_mm: 24, apex: [120, 140] }] },
+    ] });
+    const { pieces } = importAama(exportAama(doc, { sizes: ['M'] }));
+    const worst = [];
+    for (const src of doc.pieces) {
+      const got = pieces.find((p) => p.name === src.name);
+      assert(!!got, src.name + ' imported');
+      assert(Array.isArray(got.darts) && got.darts.length === 1, src.name + ': one dart back, got ' + (got.darts || []).length);
+      assert(got.vertices.length === src.vertices.length, src.name + ': the outline keeps its ' + src.vertices.length + ' edges, got ' + got.vertices.length);
+      assert(got.notches.length === src.notches.length, src.name + ': the mouth notches are not notches (' + got.notches.length + ')');
+      assert(got.internalLines.length === 0, src.name + ': no stray internal lines (' + got.internalLines.length + ')');
+      const ms = dartMouth(src, src.darts[0]);
+      const mg = dartMouth(got, got.darts[0]);
+      const dA = Math.min(Math.hypot(ms.a[0] - mg.a[0], ms.a[1] - mg.a[1]), Math.hypot(ms.a[0] - mg.b[0], ms.a[1] - mg.b[1]));
+      const dX = Math.hypot(src.darts[0].apex[0] - got.darts[0].apex[0], src.darts[0].apex[1] - got.darts[0].apex[1]);
+      const dW = Math.abs(src.darts[0].width_mm - got.darts[0].width_mm);
+      assert(dA < 0.1 && dX < 0.1 && dW < 0.1, src.name + ': mouth ' + dA.toFixed(3) + ' mm, apex ' + dX.toFixed(3) + ' mm, width ' + got.darts[0].width_mm);
+      worst.push(Math.max(dA, dX, dW));
+    }
+
+    // no drill hole near the point: the line is not a dart, it stays an internal line (and the mouth notches stay notches)
+    const one = normalizeDoc({ version: 2, name: 'No drill', pieces: [
+      { id: 'p', name: 'P', vertices: [[0, 0], [200, 0], [200, 300], [0, 300]], seamAllowance_mm: 10,
+        darts: [{ id: 'd', edge: 0, t: 0.5, width_mm: 20, apex: [100, 120] }] },
+    ] });
+    const lines = exportAama(one, { sizes: ['M'] }).split(/\r?\n/);
+    const kept = [];
+    let dropped = 0;
+    for (let i = 0; i + 1 < lines.length; i += 2) {
+      if (lines[i].trim() === '0' && lines[i + 1] === 'POINT' && lines[i + 2].trim() === '8' && lines[i + 3] === '13') {
+        dropped++;
+        i += 4;
+        while (i < lines.length && lines[i].trim() !== '0') i += 2;
+        i -= 2;
+        continue;
+      }
+      kept.push(lines[i], lines[i + 1]);
+    }
+    assert(dropped === 1, 'one drill hole taken out of the file, took ' + dropped);
+    const bare = importAama(kept.join('\r\n') + '\r\n').pieces[0];
+    assert(bare.darts.length === 0, 'no drill hole: no dart, got ' + bare.darts.length);
+    assert(bare.internalLines.length === 1 && bare.internalLines[0].points.length === 3, 'the legs stay one internal line of 3 points, got ' + bare.internalLines.length);
+    assert(bare.notches.length === 2, 'the mouth notches stay notches, got ' + bare.notches.length);
+    return 'no-allowance plain and fold pieces and a curved edge keep their dart (worst ' + Math.max(...worst).toFixed(3) + ' mm); without a drill hole the legs stay a line';
+  });
+
   return results;
 }

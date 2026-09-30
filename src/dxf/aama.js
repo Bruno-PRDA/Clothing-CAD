@@ -379,11 +379,13 @@ export function exportAama(doc, opts = {}) {
       polyline(LAYER.internal, il.points, false);
       marks(il.points, il.points.map(() => true));
     }
-    // darts: the legs as one open line through the point (layer 8, every point a turn), the drill hole on layer 13
+    // darts: the legs as one open line through the point (layer 8), the drill hole on layer 13. Only the point is marked
+    // as a turn: A and B lie on the outline, where (with no allowance the cut line IS the sew line) a turn mark would
+    // make a reader split the edge there
     for (const { dt, m } of dartList) {
       const legs = [m.a, dt.apex, m.b];
       polyline(LAYER.internal, legs, false);
-      marks(legs, [true, true, true]);
+      marks([dt.apex], [true]);
       const dr = dartDrillPoint(m.a, m.b, dt.apex);
       w.entity('POINT', LAYER.drill).point(X(dr[0]), X(dr[1]));
     }
