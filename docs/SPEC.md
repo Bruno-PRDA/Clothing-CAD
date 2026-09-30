@@ -2650,7 +2650,9 @@ Also exported from `state.js`: `setFabricParams(state, pieceIndex, fabric)` (rew
 > in walk order. A fraction without a partner, or vertices left over, gives `null` and `ClothBuildError 'seam-parity'`
 > (the equal-length rule of step 5 holds only for index pairing). After the seams, every dart of every piece
 > (`mesh.dartVerts[m][k]`, legs of equal length, mouth → apex) contributes `a[i] ↔ b[i]` for each `i`, pairs whose ids are
-> equal (the shared apex) skipped, appended to `sIdx` after all the seam pairs. Dart pairs are ordinary seam pairs from
+> equal (the shared apex) skipped, appended to `sIdx` after all the seam pairs. A dart whose two leg arrays are both empty
+> is an ignored dart and adds nothing; unequal, or non-empty but shorter than 2, legs throw `ClothBuildError 'dart-parity'`
+> naming the piece id and the dart index. Dart pairs are ordinary seam pairs from
 > there on: the sewing ramp of §7.2 (`sRest0`, `sStart`), the self-collision exclusions and seam-neighbour mask of step 7,
 > the seam-gap statistics of §7.9 and tear detection all treat them like any other. `__app.mesh.stats().seamPairsEqual`
 > (§12) uses the same rule: `false` when the pairing returns `null` or a side is missing.

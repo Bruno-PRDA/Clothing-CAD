@@ -302,7 +302,8 @@ export function buildCloth(args) {
   if (!Number.isFinite(hMin)) hMin = 0.015;
 
   // 5. seams — paired by sewn fraction when the meshes carry it (SPEC 7.1, amendment "Darts"), else by index; then
-  //    every dart's legs, corner to corner, down to the shared apex (identical ids are skipped)
+  //    every dart's legs, corner to corner, down to the shared apex (identical ids are skipped; an ignored dart has
+  //    empty legs; legs of unequal or too short a length are a mesher fault: 'dart-parity')
   /** @type {number[]} */
   const seamPairs = [];
   for (const seam of docSeams) {
@@ -337,8 +338,12 @@ export function buildCloth(args) {
     const dv = pc.mesh.dartVerts;
     if (!Array.isArray(dv)) continue;
     for (const list of dv) {
-      for (const legs of (list || [])) {
-        if (!legs || legs.a.length < 2 || legs.a.length !== legs.b.length) continue;
+      for (let k = 0; k < (list || []).length; k++) {
+        const legs = list[k];
+        if (!legs || (legs.a.length === 0 && legs.b.length === 0)) continue; // an ignored dart: nothing to sew
+        if (legs.a.length !== legs.b.length || legs.a.length < 2) {
+          throw clothError('dart-parity', 'buildCloth: piece ' + pc.pieceId + ' dart ' + k + ' legs have ' + legs.a.length + ' / ' + legs.b.length + ' vertices', { pieceId: pc.pieceId, dart: k });
+        }
         for (let i = 0; i < legs.a.length; i++) {
           const gi = pc.start + legs.a[i];
           const gj = pc.start + legs.b[i];

@@ -235,8 +235,9 @@ export function makeSeamFixture(args) {
 /**
  * A 100 × 150 mm sheet whose left and right columns are declared as the two legs of one dart (`dartVerts`), floating
  * with gravity 0: sewing the legs rolls the sheet into a tube. Dart fixture — the legs must meet and the sheet must stop
- * being flat. A 1 mm sine bulge picks the side it rolls to. Self-collision off.
- * @param {{fabric: FabricResolved, spacing_mm: number}} args
+ * being flat. A 1 mm sine bulge picks the side it rolls to. Self-collision off. `legs` replaces the declared legs (a
+ * deliberately malformed dart, for the build-error test).
+ * @param {{fabric: FabricResolved, spacing_mm: number, legs?: {a: Uint32Array, b: Uint32Array}}} args
  * @returns {{state: ClothState, legs: {a: Uint32Array, b: Uint32Array}}}
  */
 export function makeDartTubeFixture(args) {
@@ -247,7 +248,7 @@ export function makeDartTubeFixture(args) {
   const a = new Uint32Array(ny);
   const b = new Uint32Array(ny);
   for (let r = 0; r < ny; r++) { a[r] = r * nx; b[r] = r * nx + nx - 1; }
-  const legs = { a, b };
+  const legs = args.legs || { a, b };
   const mesh = /** @type {PieceMesh} */ ({ ...base, dartVerts: [[legs], []] });
   const state = buildFromLattices([mesh], fabric, { selfCollision: false, sewTime_s: 1, gravity_ms2: 0 }, []);
   const pos = state.pos;

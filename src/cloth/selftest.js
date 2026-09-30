@@ -389,6 +389,14 @@ export async function runSelfTest() {
     assert(state.nanCount === 0 && allFinite(state), 'NaN in the tube');
     assert(worst < 0.002, 'dart legs still ' + f(worst * 1000) + ' mm apart at frame 120 (want < 2)');
     assert(zMax - zMin > 0.010, 'the sheet stayed flat: out-of-plane spread ' + f((zMax - zMin) * 1000) + ' mm (want > 10)');
+    // a dart whose legs do not match is a mesher fault: refused, not silently left open (an empty dart is an ignored one)
+    for (const bad of [{ a: new Uint32Array([0, 1, 2]), b: new Uint32Array([5, 6]) }, { a: new Uint32Array([3]), b: new Uint32Array([4]) }]) {
+      let reason = '';
+      try { makeDartTubeFixture({ fabric: fab('cotton'), spacing_mm: 10, legs: bad }); } catch (e) { reason = /** @type {any} */ (e).reason; }
+      assert(reason === 'dart-parity', 'legs of ' + bad.a.length + ' / ' + bad.b.length + ' vertices must throw dart-parity, got "' + reason + '"');
+    }
+    const ignored = makeDartTubeFixture({ fabric: fab('cotton'), spacing_mm: 10, legs: { a: new Uint32Array(0), b: new Uint32Array(0) } });
+    assert(ignored.state.sIdx.length === 0, 'an ignored dart (empty legs) must add no seam pairs');
     return 'gap ' + f(worst * 1000) + ' mm, spread ' + f((zMax - zMin) * 1000) + ' mm';
   });
   return results;
