@@ -1,29 +1,110 @@
-# Clothing App
+# Clothing CAD
 
 [![Tests](https://github.com/Bruno-PRDA/Clothing-CAD/actions/workflows/tests.yml/badge.svg)](https://github.com/Bruno-PRDA/Clothing-CAD/actions/workflows/tests.yml)
 
-A self-contained web application for designing clothing: draw pattern pieces in 2D, sew them
-together, and drape them on a 3D human body fitted to your measurements, with a real cloth simulation
-(XPBD). Export size charts and print-ready sewing patterns, and exchange patterns with other pattern CAD
-(Gerber, Lectra, Optitex, CLO…) as DXF-AAMA.
+**Design clothes in 2D, sew them, and drape them on a 3D body, in the browser, with nothing to install.**
+An open-source garment CAD in the spirit of CLO 3D and Marvelous Designer: draw the pattern, fit it to real
+measurements with a real cloth simulation (XPBD), grade it across sizes, and send it to print or to other pattern
+CAD (Gerber, Lectra, Optitex, CLO…) as DXF-AAMA.
 
-**New here? Click `? Guide` at the right end of the toolbar, or press `?`.** The built-in user guide walks
-through the whole app — a five-minute tour, every tool and panel, sizes and fit warnings, exporting, keyboard
-shortcuts and troubleshooting — and the small `?` buttons on the panels open it at the matching section.
+### ▶ [Try it online: bruno-prda.github.io/Clothing-CAD](https://bruno-prda.github.io/Clothing-CAD/)
 
-No installation, no build step, no Node.js. Everything is plain JavaScript ES modules; three.js is
-loaded from a CDN import map (run `python vendor.py` once if you want it to work offline).
+![Clothing CAD: the T-shirt pattern in the 2D editor, draped on the body in 3D, with the body measurements in the dock](docs/images/hero.jpg)
 
-## Try it online
+Nothing is uploaded: the app runs entirely in your browser and your projects stay on your computer. The first
+visit downloads about 20 MB (mostly the body model); after that the browser caches it.
 
-**https://bruno-prda.github.io/Clothing-CAD/** runs the app straight from this repository (GitHub Pages).
-Nothing is uploaded: the app runs entirely in your browser, and your projects stay on your computer.
-The first visit downloads about 20 MB (mostly the body model); after that the browser caches it.
+**New here? Click `? Guide` at the right end of the toolbar, or press `?`.** The built-in guide walks through
+the whole app: a five-minute tour, every tool and panel, sizes and fit warnings, exporting, shortcuts and
+troubleshooting.
 
-Your work is autosaved in the browser as you go, and offered back after a crash or a closed tab.
-That copy lives only in that browser, so use **Save** to keep a project as a file.
+## What it does today
+
+### Draw the pattern
+
+![The 2D pattern editor with the T-shirt's front, back and sleeves; the front is selected, showing its edge labels, and the dock shows its properties](docs/images/editor.png)
+
+Lines and bezier curves, point editing, split edges, seams (click edge A, then edge B), notches, grainlines,
+fold edges and a seam allowance per edge. Seam lengths are compared as you work, and each piece carries its
+own placement, fabric and grading rules.
+
+### Sew it and drape it
+
+<img src="docs/images/drape.gif" alt="The T-shirt pieces wrap around the body, sew shut and settle under gravity" width="330" align="right">
+
+The pieces are arranged around the body, sewn together, and dropped under gravity by an **XPBD cloth solver**
+written for this app: stretch and bending, seam sewing, collision with the body and friction, and
+self-collision, stepped at a fixed rate so every drape is reproducible.
+
+Orbit, zoom and frame the 3D view, choose a backdrop (workshop, studios, pedestal, runway, wood, terrace), or
+pop the 3D view out into its own window.
+
+<br clear="right">
+
+### On any body, in every size
+
+![The same T-shirt on four female bodies from small to plus size, each wearing its closest size from S to XL](docs/images/bodies.jpg)
+
+The body is MakeHuman's CC0 template mesh, reshaped until it measures what you type: **24 measurements and
+traits** (height, chest, waist, hips… weight, build, age, sex) and 9 presets, or type your height and weight and
+let it estimate the rest. The size chart grades the pattern, and the 3D view drapes the size you pick.
+
+### Pick the fabric
+
+![The T-shirt in red cotton, blue denim twill, cream silk and navy striped jersey](docs/images/fabrics.jpg)
+
+<img src="docs/images/skirt.jpg" alt="The A-line skirt in a red gingham wool" width="300" align="right">
+
+Seven fabric presets (cotton, denim, silk, jersey, wool, leather, chiffon), each with its own physics and
+look, any colour, and six procedural textures (solid, stripes, gingham, dots, twill, knit). Two sliders scale
+stretch and bending stiffness for the whole simulation.
+
+Two garments are built in: a T-shirt and an A-line skirt.
+
+<br clear="right">
+
+### Know when it won't fit
+
+![A plus-size body in size S: a banner warns the size is 15 cm too small and the seams will tear, and rings mark where](docs/images/fit-warning.jpg)
+
+Before a frame is simulated, the pattern is checked against the body. A size that is too small gets a banner,
+with a one-click switch to a size that fits when the chart has one, and rings in 3D mark where the cloth
+over-stretches or a seam cannot close.
+
+### Take it to the cutting table
+
+![The size M pattern sheet with seam allowances, grainlines and a 100 mm calibration square, next to the front piece graded from S to XL](docs/images/export.png)
+
+On the right, the front piece graded from S to XL: the nest the DXF export writes for other pattern CAD.
+
+* **SVG** pattern sheet at 1:1 scale in millimetres, per size, with cut line, stitch line, notches, grainline,
+  fold labels and a 100 mm calibration square.
+* **Print** tiled pages (A4 / Letter / A3) for printing at 100 %, then taping together.
+* **CSV / JSON** size chart and piece measurements.
+* **JSON** project save / load (and autosave in the browser); **OBJ** of the draped garment.
+* **DXF-AAMA** (ASTM D6673) for other pattern CAD and cutters: one size or every size as a graded nest, with cut
+  and sew lines, corner and curve points, notches, grainline and piece text. **Import DXF** reads files from
+  Gerber, Lectra, CLO, Optitex, Valentina and Seamly2D, rebuilding editable curves and seam allowances.
+
+## Where it's heading
+
+The aim is a garment CAD a **fashion designer** can use for real work: any garment, on a body they trust. The
+full plan, with what works and what does not yet, is in **[docs/ROADMAP.md](docs/ROADMAP.md)**.
+
+| | Next | What it unlocks |
+|---|---|---|
+| 1 | **Darts and a fitted dress** *(in design)* | Darts that shape the cloth, a dart tool, seams that skip dart openings; a sleeveless dress with a waist seam |
+| 2 | **Speed** | The cloth solver in a Web Worker; bigger garments stay smooth |
+| 3 | **Shirts** | Set-in sleeves, collar and stand, cuffs, plackets; gathers, pleats and elastic |
+| 4 | **Outfits on a posed body** | Several garments layered; posing the body; later, a walk |
+| 5 | **Trousers** | Crotch and inseam, legs apart, cloth between the legs |
+| 6 | **A drape you can trust** | Calibrated woven stretch, grain direction, finer collision, pinning in 3D |
+| 7 | **Sheath dress** | Darts pointed at both ends, inside the piece |
 
 ## Run
+
+No installation, no build step, no Node.js. Everything is plain JavaScript ES modules; three.js is loaded from a
+CDN import map (run `python vendor.py` once if you want it to work offline).
 
 ```bash
 python serve.py
@@ -31,6 +112,9 @@ python serve.py
 
 This starts a local server on http://localhost:8710/ and opens it in your default browser
 (Chrome, Edge or Firefox). Double-clicking `run.bat` does the same on Windows.
+
+Your work is autosaved in the browser as you go, and offered back after a crash or a closed tab.
+That copy lives only in that browser, so use **Save** to keep a project as a file.
 
 ## Windows
 
@@ -47,18 +131,6 @@ A banner warns when the active size is too small for the body, and markers show 
 Keyboard: `V` select, `P` draw, `E` edit, `S` seam, `N` notch, `G` grainline, `M` measure,
 `Space` play/pause, `D` drape, `R` reset, `Ctrl+Z`/`Ctrl+Y` undo/redo, `Delete`, `Esc`, `?` guide.
 The guide's *Keyboard shortcuts* page lists every binding.
-
-## Export
-
-* **SVG** pattern sheet at 1:1 scale in millimetres, per size, with cut line, stitch line,
-  notches, grainline, fold labels and a 100 mm calibration square.
-* **Print** tiled pages (A4 / Letter / A3) for printing at 100 %, then taping together.
-* **CSV / JSON** size chart and piece measurements.
-* **JSON** project save / load; **OBJ** of the draped garment.
-* **DXF-AAMA** (ASTM D6673) for other pattern CAD and cutters: one size or every size as a graded nest,
-  with cut and sew lines, corner and curve points, notches, grainline and piece text. **Import DXF** reads
-  files from Gerber, Lectra, CLO, Optitex, Valentina and Seamly2D, rebuilding editable curves and seam
-  allowances.
 
 ## Project layout
 
@@ -80,8 +152,10 @@ src/dxf/                   DXF-AAMA / ASTM D6673 import and export (reader, writ
 src/ui/                    toolbar, dock panels, status bar, shortcuts, fit banner, user guide (guideContent.js)
 src/app/                   boot, wiring, window.__app automation API
 tests/acceptance.js        in-page acceptance suite: __app.acceptance.run()
+tools/screenshots.py       regenerates the pictures in this README (docs/images/)
 docs/SPEC.md               the full specification (single source of truth)
 docs/CONTRACTS.md          per-module API cheat sheet
+docs/ROADMAP.md            where the project is going
 ```
 
 ## Automation / debugging
@@ -115,6 +189,9 @@ python tests/ci/run_browser_tests.py --serve
 
 Or open the app and run `__app.selftest.run()` / `__app.acceptance.run()` in the console. Check 10 is red on
 purpose (see `docs/SPEC.md` section 13); speed assertions only warn on the CI runners, which have no GPU.
+
+The README pictures come from the same automation API: `python -m pip install pillow`, then
+`python tools/screenshots.py` (or name the shots to retake, e.g. `hero bodies`; `--list` shows them).
 
 ## Licence
 
