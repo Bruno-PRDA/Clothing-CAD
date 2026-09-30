@@ -206,7 +206,7 @@ rowFromBody(body, chart, name) → SizeRow                     rowToBodyParams(c
 gradePieceDetailed(piece, chart, sizeName) → {piece, sx, sy, pivot, step, issues}   gradePiece(piece, chart, sizeName) → Piece
 gradeDoc(doc, sizeName) → Piece[]   gradeDocDetailed(doc, sizeName) → {pieces, issues}   gradeScale(piece, chart, sizeName) → {sx, sy}
 seamEasePct(pieces, seam) → {lenA, lenB, easePct}   seamEaseDrift(doc, sizeName) → Issue[]
-EASE_LIMITS {tight: 0, snug: 4}   SHOULDER_LIMIT = 1.5   checkFit(doc, sizeName, body) → FitReport   torsoGirth(pieces) → cm   shoulderSpan(pieces) → cm|null   closestRow(body, chart)
+EASE_LIMITS {tight: 0, snug: 4}   SHOULDER_LIMIT = 1.5   checkFit(doc, sizeName, body) → FitReport   torsoGirth(pieces) → cm   skirtGirth(pieces) → cm   shoulderSpan(pieces) → cm|null   closestRow(body, chart)
 // GradeRule {vertex, dx_mm, dy_mm, ref?, refAxis?: 'x'|'y'|'both'}: with `ref` the vertex follows that chart column instead of widthRef/lengthRef
 runSelfTest()
 ```

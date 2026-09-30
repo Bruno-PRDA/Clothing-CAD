@@ -9,9 +9,13 @@
 // So we check it up front, geometrically, before a single frame is simulated. Two independent ways a
 // garment runs out of cloth:
 //
-//   GIRTH     the torso panels together are narrower than the body they have to wrap. Measured as the
-//             summed width of the graded pieces anchored to the torso, against the body's largest torso
-//             girth, because the garment has to pass over the widest part to be worn at all.
+//   GIRTH     a part of the garment is narrower than the part of the body it has to wrap. Each part is
+//             measured on its own, as the summed width of its graded panels: the TORSO panels against the
+//             chest and waist (and the hips too when nothing below them covers the hips, because a top has
+//             to pass over the widest part to be worn at all), the SKIRT panels against the waist and the
+//             hips. A fitted dress is a bodice that stops at the waist plus a skirt that covers the hips;
+//             comparing the bodice with the hips, or a skirt alone with the chest, would cry "tear" on a
+//             garment that fits.
 //   SHOULDER  the shoulder seam is shorter than the body's shoulder. This one does NOT go away by
 //             choosing a bigger size unless the chart grades shoulder width, which is why it is
 //             reported separately (see chart.js DEFAULT_MEASUREMENTS).
@@ -59,9 +63,33 @@ function outlineWidth(piece) {
   return hi > lo ? hi - lo : 0;
 }
 
+/**
+ * Is this piece a simulated panel anchored at `anchor`?
+ * @param {Piece} p @param {'torso'|'skirt'} anchor @returns {boolean}
+ */
+function anchoredAt(p, anchor) {
+  return !!p && p.simulate !== false && !!p.placement && p.placement.anchor === anchor;
+}
+
 /** Is this piece one of the ones that wraps the torso? @param {Piece} p @returns {boolean} */
-function wrapsTorso(p) {
-  return !!p && p.simulate !== false && !!p.placement && p.placement.anchor === 'torso';
+function wrapsTorso(p) { return anchoredAt(p, 'torso'); }
+
+/** Is this piece one of the ones that wraps the hips, a skirt panel? @param {Piece} p @returns {boolean} */
+function wrapsSkirt(p) { return anchoredAt(p, 'skirt'); }
+
+/**
+ * Summed outline width of the pieces `wraps` picks, in cm, a fold piece counted twice.
+ * @param {Piece[]} pieces @param {(p: Piece) => boolean} wraps @returns {number}
+ */
+function panelGirth(pieces, wraps) {
+  let mm = 0;
+  for (const p of pieces) {
+    if (!wraps(p)) continue;
+    const w = outlineWidth(p);
+    // a fold piece stores half the panel; the mirrored half is the same width
+    mm += (p.foldEdge !== null && p.foldEdge !== undefined) ? w * 2 : w;
+  }
+  return mm / 10;
 }
 
 /**
@@ -69,14 +97,15 @@ function wrapsTorso(p) {
  * @param {Piece[]} pieces already graded @returns {number}
  */
 export function torsoGirth(pieces) {
-  let mm = 0;
-  for (const p of pieces) {
-    if (!wrapsTorso(p)) continue;
-    const w = outlineWidth(p);
-    // a fold piece stores half the panel; the mirrored half is the same width
-    mm += (p.foldEdge !== null && p.foldEdge !== undefined) ? w * 2 : w;
-  }
-  return mm / 10;
+  return panelGirth(pieces, wrapsTorso);
+}
+
+/**
+ * Finished circumference of the skirt panels, in cm.
+ * @param {Piece[]} pieces already graded @returns {number}
+ */
+export function skirtGirth(pieces) {
+  return panelGirth(pieces, wrapsSkirt);
 }
 
 /**
@@ -103,13 +132,60 @@ export function shoulderSpan(pieces) {
 }
 
 /**
+ * @typedef {Object} PartCheck
+ * @property {'torso'|'skirt'} part
+ * @property {number} garment_cm   finished girth of the part's panels
+ * @property {number} body_cm      the largest body girth the part has to pass over
+ * @property {string} key          which body measurement that was
+ * @property {number} ease_cm      garment - body
+ */
+
+/**
+ * The girth check of each part of a graded garment against the part of the body it covers. This is the one
+ * place the rule lives: `checkFit` and its search for a better size both come here.
+ *
+ *   torso panels   against max(chest, waist), and the hips too when the garment has no skirt panels — a top
+ *                  has to pass over the hips, a bodice does not because the skirt covers them
+ *   skirt panels   against max(waist, hips)
+ *
+ * A part the garment does not have is left out, so a garment with neither (only sleeves, say) gets [].
+ * @param {Piece[]} graded already graded @param {BodyParams} body @returns {PartCheck[]}
+ */
+function partChecks(graded, body) {
+  const hasTorso = graded.some(wrapsTorso);
+  const hasSkirt = graded.some(wrapsSkirt);
+  /** @type {PartCheck[]} */
+  const checks = [];
+  /** @param {'torso'|'skirt'} part @param {number} garment @param {string[]} keys the body girths it covers */
+  const add = (part, garment, keys) => {
+    let body_cm = 0, key = keys[0];
+    for (const k of keys) {
+      const v = body && body[k];
+      if (typeof v === 'number' && Number.isFinite(v) && v > body_cm) { body_cm = v; key = k; }
+    }
+    checks.push({ part, garment_cm: garment, body_cm, key, ease_cm: garment - body_cm });
+  };
+  if (hasTorso) add('torso', torsoGirth(graded), hasSkirt ? ['chest_cm', 'waist_cm'] : ['chest_cm', 'waist_cm', 'hips_cm']);
+  if (hasSkirt) add('skirt', skirtGirth(graded), ['waist_cm', 'hips_cm']);
+  return checks;
+}
+
+/** The part that runs out of cloth first, or null when there is nothing to check. @param {PartCheck[]} checks @returns {PartCheck|null} */
+function tightestPart(checks) {
+  /** @type {PartCheck|null} */
+  let t = null;
+  for (const c of checks) if (t === null || c.ease_cm < t.ease_cm) t = c;
+  return t;
+}
+
+/**
  * @typedef {Object} FitReport
  * @property {'ok'|'snug'|'tight'} level          'tight' = cannot close without stretching
  * @property {string} size                        the size that was checked
- * @property {number} garmentGirth_cm
- * @property {number} bodyGirth_cm                the largest torso girth the garment must pass over
- * @property {string} bodyGirthKey                which measurement that was
- * @property {number} ease_cm                     garment - body; negative means it cannot close
+ * @property {number} garmentGirth_cm             the girth of the part that governs (0 when there is no torso or skirt panel)
+ * @property {number} bodyGirth_cm                the girth of the body that part must pass over
+ * @property {string} bodyGirthKey                which measurement that was ('' when there is nothing to check)
+ * @property {number} ease_cm                     garment - body for the tightest part; negative means it cannot close; 0 when there is nothing to check
  * @property {number|null} shoulderSpan_cm        null when the pattern has no shoulder seam
  * @property {number|null} bodyShoulder_cm
  * @property {number|null} shoulderShort_cm       body - pattern, when positive and past SHOULDER_LIMIT
@@ -124,15 +200,13 @@ export function shoulderSpan(pieces) {
  */
 export function checkFit(doc, sizeName, body) {
   const graded = gradeDoc(doc, sizeName);
-  const garment = torsoGirth(graded);
 
-  // The garment has to pass over the widest part of the torso it covers, not just the chest: a straight
-  // tee that clears a 113 cm bust still will not go over 125 cm hips.
-  let bodyGirth = 0, bodyKey = 'chest_cm';
-  for (const k of ['chest_cm', 'waist_cm', 'hips_cm']) {
-    const v = body && body[k];
-    if (typeof v === 'number' && Number.isFinite(v) && v > bodyGirth) { bodyGirth = v; bodyKey = k; }
-  }
+  // Each part of the garment against the part of the body it covers; the tightest one decides. A tee that
+  // clears a 113 cm bust still will not go over 125 cm hips, but a fitted dress's bodice is not asked to.
+  const governing = tightestPart(partChecks(graded, body));
+  const garment = governing ? governing.garment_cm : 0;
+  const bodyGirth = governing ? governing.body_cm : 0;
+  const bodyKey = governing ? governing.key : '';
 
   // Grading can also break a garment against ITSELF: move a shoulder point and the armhole it bounds
   // changes length while the sleeve cap does not, so the cap seam arrives too long. That has nothing
@@ -140,7 +214,7 @@ export function checkFit(doc, sizeName, body) {
   let seamDrift = 0;
   try { seamDrift = (seamEaseDrift(doc, sizeName) || []).length; } catch { seamDrift = 0; }
 
-  const ease = garment - bodyGirth;
+  const ease = governing ? governing.ease_cm : 0;
   const span = shoulderSpan(graded);
   const bodyShoulder = body && Number.isFinite(body.shoulderWidth_cm) ? body.shoulderWidth_cm : null;
   const shoulderShort = (span !== null && bodyShoulder !== null && bodyShoulder - span > SHOULDER_LIMIT)
@@ -148,8 +222,8 @@ export function checkFit(doc, sizeName, body) {
 
   /** @type {'ok'|'snug'|'tight'} */
   let level = 'ok';
-  if (ease < EASE_LIMITS.tight) level = 'tight';
-  else if (ease < EASE_LIMITS.snug) level = 'snug';
+  if (governing && ease < EASE_LIMITS.tight) level = 'tight';
+  else if (governing && ease < EASE_LIMITS.snug) level = 'snug';
   if (level === 'ok' && shoulderShort !== null) level = 'snug';
   if (level === 'ok' && seamDrift > 0) level = 'snug';
 
@@ -159,16 +233,19 @@ export function checkFit(doc, sizeName, body) {
   if (level !== 'ok') {
     for (const row of (doc.sizes && doc.sizes.rows) || []) {
       if (row.name === sizeName) continue;
-      let g;
-      try { g = torsoGirth(gradeDoc(doc, row.name)); } catch { continue; }
-      const e = g - bodyGirth;
+      let t;
+      try { t = tightestPart(partChecks(gradeDoc(doc, row.name), body)); } catch { continue; }
+      if (!t) continue;
+      const e = t.ease_cm;   // the tightest part, so a size that clears it clears them all
       if (e >= EASE_LIMITS.snug && (better === null || e < better.ease_cm)) better = { name: row.name, ease_cm: e };
     }
   }
 
   const round = (v) => Math.round(v * 10) / 10;
   let message;
-  if (level === 'tight') {
+  if (!governing) {
+    message = 'No torso or skirt panels to check.';
+  } else if (level === 'tight') {
     message = `Size ${sizeName} is ${round(-ease)} cm smaller than the body — the seams will tear.`;
   } else if (ease < EASE_LIMITS.snug) {
     message = `Size ${sizeName} has only ${round(ease)} cm of ease — expect visible tension.`;

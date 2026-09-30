@@ -306,6 +306,36 @@ export async function runSelfTest() {
     return 'M girth ' + g + ' cm; ' + hippy.message;
   }));
 
+  out.push(runCase('fit.parts', () => {
+    // Each part of a garment is measured against the part of the body it covers: a bodice with a skirt
+    // below it need not pass over the hips (the skirt does), and a skirt has no chest to wrap.
+    const skirt = checkFit(normalizeDoc(getSample('skirt')), 'M', female_m);
+    assert(skirt.level === 'ok', 'the skirt sample fits its own body at M: ' + skirt.message);
+    assert(skirt.bodyGirthKey === 'hips_cm', 'a skirt is measured against the hips, not ' + skirt.bodyGirthKey);
+    assert(skirt.garmentGirth_cm > 96, 'skirt girth must be counted, got ' + skirt.garmentGirth_cm);
+
+    const dressDoc = normalizeDoc(getSample('dress'));
+    const dress = checkFit(dressDoc, 'M', female_m);
+    assert(dress.level === 'ok' && !/smaller/.test(dress.message), 'the dress fits its own body at M: ' + dress.message);
+    const wide = checkFit(dressDoc, 'M', { ...female_m, hips_cm: 115 });
+    assert(wide.level === 'tight' && wide.bodyGirthKey === 'hips_cm', 'hips past the skirt: the skirt part governs: ' + JSON.stringify(wide));
+    const busty = checkFit(dressDoc, 'M', { ...female_m, chest_cm: 100 });
+    assert(busty.level === 'tight' && busty.bodyGirthKey === 'chest_cm', 'a chest past the bodice: the bodice part governs: ' + JSON.stringify(busty));
+
+    // a top has no skirt to cover the hips, so it still has to pass over them
+    const tee = checkFit(normalizeDoc(getSample('tshirt')), 'M', { ...female_m, hips_cm: 125 });
+    assert(tee.level === 'tight' && tee.bodyGirthKey === 'hips_cm', 'a top must still clear the hips: ' + JSON.stringify(tee));
+
+    // nothing to wrap: only a sleeve
+    const sleeveOnly = normalizeDoc(getSample('tshirt'));
+    sleeveOnly.pieces = sleeveOnly.pieces.filter((p) => p.id === 'sleeve_l');
+    sleeveOnly.seams = [];
+    const sl = checkFit(sleeveOnly, 'M', female_m);
+    assert(sl.level === 'ok' && sl.garmentGirth_cm === 0 && sl.ease_cm === 0, 'a sleeve alone has no girth to check: ' + JSON.stringify(sl));
+    assert(/No torso or skirt panels/.test(sl.message), 'the message says why: ' + sl.message);
+    return 'skirt ' + skirt.garmentGirth_cm + ' cm, dress ' + dress.bodyGirthKey + ' ' + dress.ease_cm + ' cm ease';
+  }));
+
   out.push(runCase('grade.easeDrift', () => {
     const doc = makeDOC2();
     assert(gradeDoc(doc, 'L').length === 2, 'gradeDoc should return 2 pieces');

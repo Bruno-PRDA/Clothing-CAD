@@ -13,7 +13,7 @@ export {
 } from './grading.js';
 
 export {
-  EASE_LIMITS, SHOULDER_LIMIT, checkFit, torsoGirth, shoulderSpan, closestRow,
+  EASE_LIMITS, SHOULDER_LIMIT, checkFit, torsoGirth, skirtGirth, shoulderSpan, closestRow,
 } from './fit.js';
 
 export { runSelfTest } from './selftest.js';

@@ -1907,9 +1907,9 @@ Consumers: `src/app/wiring.js` calls `getSample(DEFAULT_SAMPLE_ID)` at start-up 
 > M and ≤ 1 pp drift at S, L and XL, sewn lengths; measured worst 0.12 % at M, worst drift 0.50 pp) and `remesh.allSamples`
 > (now three samples). Because a dart's mouth lists two vertices at one sewn fraction, `remesh.allSamples` compares the
 > number of *distinct* sewn fractions on the two sides of a seam, not the raw vertex counts.
-> **Known limitation.** `checkFit` (§10.4, unchanged) sums only the torso-anchored panels (the bodice, 94 cm at M) against
-> the largest of chest, waist and hips (96 cm), so the dress at M reports "2 cm smaller than the body". The skirt (101 cm
-> at the hips) is not counted: a fit check for the skirt part of a dress is out of scope.
+> **Fit check.** `checkFit` measures the bodice against the chest and waist and the skirt against the waist and hips, so the
+> dress at M fits (§10 amendment "Darts: the fit check by part"). It first summed only the torso panels (the bodice, 94 cm
+> at M) against the largest of chest, waist and hips (96 cm) and reported "2 cm smaller than the body".
 
 ---
 
@@ -3533,6 +3533,35 @@ Physics columns are the effective simulation values of 7.10 (`bend_Nm` effective
 > Also fixed here: `setActiveSize` only re-meshed when the size NAME changed, so editing a chart cell re-graded the
 > 2D ghost and the exports while the 3D garment kept its old mesh — the model went on wearing a size that no longer
 > existed. It now also compares the chart key.
+
+> **Amendment (lead, 2026-09-30) — Darts: the fit check by part.** `checkFit` (the amendment "shoulder width is a graded
+> measurement, and the fit check" above) summed the widths of the torso-anchored panels and compared them with
+> max(chest, waist, hips). That is right for a top, which must pass over the hips, and wrong in two other cases. On the
+> fitted dress it compared the bodice (94 cm at M) with the hips (96 cm) and ignored the skirt, which covers the hips, so
+> loading the dress showed "Size M is 2 cm smaller than the body — the seams will tear … Use XL". On the A-line skirt
+> sample, which has no torso panels at all, the garment girth was 0 and the banner read "Size M is 96 cm smaller than the
+> body … No size in the chart is large enough." Both were false.
+>
+> Each part of the garment is now measured against the part of the body it covers:
+>
+> | Part | Panels (simulated) | Garment girth | Body girth it must pass over |
+> |---|---|---|---|
+> | Torso | `placement.anchor === 'torso'` | summed outline widths, a fold piece doubled (`torsoGirth`) | max(chest, waist, hips) when the garment has no skirt part (a top, as before); max(chest, waist) when it also has one (a bodice: the skirt covers the hips) |
+> | Skirt | `placement.anchor === 'skirt'` | the same sum over the skirt panels (`skirtGirth`, new) | max(waist, hips) |
+>
+> The ease is the smallest ease over the parts present, and `garmentGirth_cm`, `bodyGirth_cm` and `bodyGirthKey` report
+> that governing part, so the level, the message wording and the banner are unchanged. A garment with neither part (only
+> sleeves, say) gets no girth check: level `'ok'`, `ease_cm` 0, `garmentGirth_cm` 0, `bodyGirth_cm` 0, `bodyGirthKey`
+> `''` and the message "No torso or skirt panels to check." (seam drift can still raise it to `'snug'`). The shoulder
+> check and the seam-drift check are unchanged. The `better` size search applies the same rule through the same private
+> helper (`partChecks`), so the size it proposes clears every part. A top without a skirt behaves exactly as before.
+>
+> At M on the default female body: T-shirt 112 cm against the hips 96 (ease 16, unchanged); dress governed by the bodice,
+> 94 cm against the chest 88 (ease 6; the skirt, 104.8 cm against the hips 96, has 8.8); skirt 128 cm against the hips 96
+> (ease 32). None shows the banner. The dress with hips 115 reads tight on `hips_cm` (the skirt governs), with chest 100
+> tight on `chest_cm` (the bodice governs), and the T-shirt with hips 125 is still tight on `hips_cm`. Self-test
+> `sizing/fit.parts` (the 15th). The girth of a part is the width of its widest outline, so an A-line skirt is measured
+> at its hem rather than at the hip line: it is not a check that the waist reaches the hips.
 
 > **Amendment (lead, 2026-09-17) — the simulation drapes the ACTIVE SIZE.** Section 12.2 originally left the
 > simulation untouched on `size:active`: the size selector drove the 2D ghost outline and the exported pattern, while
