@@ -250,6 +250,7 @@ export function createPiecesPanel(store, bus, root = document) {
         for (const line of copy.internalLines || []) {
           for (const pt of line.points || []) pt[0] += dx;
         }
+        for (const dt of copy.darts || []) dt.apex[0] += dx;
         d.pieces.push(copy);
       }
     }, 'piece:duplicate');

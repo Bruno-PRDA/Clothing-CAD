@@ -413,6 +413,7 @@ export function installDebugApi(ctx, wiring) {
       q.grainline = { a: [q.grainline.a[0] + dx, q.grainline.a[1] + dy], b: [q.grainline.b[0] + dx, q.grainline.b[1] + dy] };
     }
     q.internalLines = (q.internalLines || []).map((l) => ({ ...l, points: l.points.map((pt) => [pt[0] + dx, pt[1] + dy]) }));
+    q.darts = (q.darts || []).map((d) => ({ ...d, apex: [d.apex[0] + dx, d.apex[1] + dy] }));
     return q;
   }
 

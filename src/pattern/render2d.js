@@ -89,6 +89,7 @@ function applyOverrides(piece, t) {
     edges: piece.edges.map((e) => ({ ...e, c1: e.c1 ? [e.c1[0], e.c1[1]] : undefined, c2: e.c2 ? [e.c2[0], e.c2[1]] : undefined })),
     notches: (piece.notches || []).map((nt) => ({ ...nt })),
     grainline: { a: [piece.grainline.a[0], piece.grainline.a[1]], b: [piece.grainline.b[0], piece.grainline.b[1]] },
+    darts: (piece.darts || []).map((d) => ({ ...d, apex: [d.apex[0], d.apex[1]] })),
   });
   for (const e of copy.edges) {
     if (e.type !== 'cubic') {
@@ -118,6 +119,10 @@ function applyOverrides(piece, t) {
     copy.grainline.b[0] += dx;
     copy.grainline.b[1] += dy;
     copy.internalLines = (piece.internalLines || []).map((l) => ({ kind: l.kind, points: l.points.map((p) => [p[0] + dx, p[1] + dy]) }));
+    for (const d of copy.darts) {
+      d.apex[0] += dx;
+      d.apex[1] += dy;
+    }
   }
   if (vo) {
     const i = vo.index;

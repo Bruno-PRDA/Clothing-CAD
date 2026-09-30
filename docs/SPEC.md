@@ -5099,6 +5099,20 @@ export const ISSUE_CODES  // the table below, code -> {level, message template}
 
 Issues carry `pieceId`, `seamId`, `edge` where applicable. The editor runs `validateDoc` after every store notification, coalesced to the next animation frame, and emits `EVENT.PATTERN_ISSUES {issues}` (3.2.2); the status bar shows `n issues` (level `error` if any error) only when the count changes. `error`-level issues do not block editing; the wiring layer (section 12) decides which pieces are excluded from meshing (`PIECE_*`/`FOLD_*` errors exclude the piece; `SEAM_*` errors exclude the seam).
 
+> **Amendment (lead, 2026-09-30) — Darts: pattern model.** A seam compares *sewn* lengths. `seams.js` exports
+> `sewnLengthOf(piece, e)` beside `edgeLengthOf`: `geometry.sewnLength(piece, e)`, the arc length of edge `e` minus the
+> widths of the valid darts on it, cached per piece object identity like `edgeLengthOf` (a piece without darts returns
+> `edgeLengthOf`). `seamEase`, `seamEaseOf` and `seamLengths` use it, so a 200 mm edge with a 20 mm dart sewn to a plain
+> 180 mm edge reads ease 0%. `validatePiece` appends `checkDarts(piece).issues` (§5.10: `DART_ID` … `DART_NOTCH`, each
+> with its own message and level; they are not rows of the table above), so `validateDoc` includes them. The pure piece
+> ops keep darts consistent. `clonePieceLocal` copies them; `opTranslate` shifts each `apex`; `opSplitEdge` lets
+> `geometry.splitEdge` remap them and throws `PATTERN_SPLIT_IN_DART` when the clamped split `t` lies inside a valid dart's
+> mouth (`ta − 1e-9 < t < tb + 1e-9`); `opDeleteVertex` drops the darts on the two merged edges and renumbers the rest;
+> `opReflectX` maps edge `e` to `n−1−e`, `t` to `1−t` and negates the apex x. The 2D drag preview, the Duplicate button
+> of the Pieces panel, the automation API's `translatePiece` fallback and the DXF import layout move a piece's apexes with it. The editor
+> selection gains `dart: {pieceId, index}|null` (same spelling as `notch`), frozen, normalised by `select()` and pruned
+> when the piece or the index disappears.
+
 ---
 
 ### 11.12 `index.js`, labels, events, `selftest.js`

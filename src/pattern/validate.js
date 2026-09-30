@@ -1,6 +1,6 @@
 // src/pattern/validate.js — document issues shown by the 2D editor (SPEC 11.11.2). Pure.
 
-import { signedArea, isSimplePolygon, offsetOutline } from '../geometry/index.js';
+import { signedArea, isSimplePolygon, offsetOutline, checkDarts } from '../geometry/index.js';
 import { flattenCache } from './hit.js';
 import { seamEase, seamOfEdge, EASE_WARN_PCT, EASE_ERROR_PCT } from './seams.js';
 
@@ -162,6 +162,7 @@ export function validatePiece(doc, piece) {
     if (!sewn) push(out, 'EDGES_UNSEWN', { name }, { pieceId: id });
   }
 
+  for (const issue of checkDarts(piece).issues) out.push(issue);
   return out;
 }
 

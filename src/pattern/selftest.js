@@ -4,9 +4,9 @@
 import { EventBus, EVENT } from '../core/events.js';
 import { createStore } from '../core/store.js';
 import { normalizeDoc } from '../core/schema.js';
-import { createEditor, opSplitEdge, makeCcw } from './editor.js';
+import { createEditor, opSplitEdge, opTranslate, opDeleteVertex, opReflectX, makeCcw } from './editor.js';
 import { validateDoc } from './validate.js';
-import { seamEase, seamEaseOf, formatEase, edgeLengthOf } from './seams.js';
+import { seamEase, seamEaseOf, formatEase, edgeLengthOf, sewnLengthOf } from './seams.js';
 import { hitTest } from './hit.js';
 import { STYLE } from './render2d.js';
 
@@ -711,6 +711,37 @@ export async function runSelfTest() {
     moveWorld(h, 60, 60);
     assert(h.doc().pieces.length === 1, 'a destroyed editor must be inert');
     return 'hover payload, unsubscribe, destroy';
+  });
+
+  await run('darts-model', (h) => {
+    const id = addRect(h, 0, 0, 200, 300);
+    h.store.update((d) => { d.pieces[0].darts = [{ id: 'd', edge: 0, t: 0.5, width_mm: 20, apex: [100, 100] }]; }, 'test:dart');
+    let p = pieceOf(h.doc(), id);
+    near(sewnLengthOf(p, 0), 180, 1e-9, 'sewn length of the darted edge');
+    const b = addRect(h, 0, 400, 180, 100);
+    h.editor.addSeam({ pieceId: id, edge: 0, mirror: false, reverse: false }, { pieceId: b, edge: 0, mirror: false, reverse: false });
+    const seam = h.doc().seams[0];
+    near(seamEase(h.doc(), seam).easePct, 0, 1e-9, 'darted 200 vs plain 180: ease 0');
+    const moved = opTranslate(p, 10, -5);
+    near(moved.darts[0].apex[0], 110, 1e-9, 'translate moves the apex x');
+    near(moved.darts[0].apex[1], 95, 1e-9, 'translate moves the apex y');
+    assert(p.darts[0].apex[0] === 100, 'translate must not mutate the original');
+    const split = opSplitEdge(p, 0, 0.25);
+    assert(split.piece.darts[0].edge === 1, 'a split before the dart moves it to the second half');
+    let refused = null;
+    try { opSplitEdge(p, 0, 0.5); } catch (e) { refused = e.code; }
+    assert(refused === 'PATTERN_SPLIT_IN_DART', 'a split inside a mouth is refused, got ' + refused);
+    const del = opDeleteVertex(p, 1);
+    assert(del.piece.darts.length === 0, 'deleting a corner of the darted edge drops the dart');
+    const r = opReflectX(p).piece;
+    const rd = r.darts[0];
+    near(rd.apex[0], -100, 1e-9, 'reflect mirrors the apex');
+    near(rd.t, 0.5, 1e-9, 'reflect keeps a centred dart centred');
+    assert(r.edges.length === 4 && rd.edge === 3, 'reflect maps the edge (n-1-e): got ' + rd.edge);
+    h.store.update((d) => { d.pieces[0].darts[0].apex = [100, 400]; }, 'test:bad dart');
+    p = pieceOf(h.doc(), id);
+    assert(validateDoc(h.doc()).some((i) => i.code === 'DART_APEX' && i.pieceId === id), 'validateDoc reports DART_APEX');
+    return 'sewn ease, translate, split, delete, reflect, validate';
   });
 
   return results;

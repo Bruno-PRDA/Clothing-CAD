@@ -1106,6 +1106,7 @@ export function createWiring(ctx) {
         edges: dr.edges.map((e) => (e.type === 'cubic' ? { ...e, c1: T(e.c1), c2: T(e.c2) } : { ...e })),
         grainline: dr.grainline ? { a: T(dr.grainline.a), b: T(dr.grainline.b) } : undefined,
         internalLines: (dr.internalLines || []).map((il) => ({ ...il, points: il.points.map(T) })),
+        darts: (dr.darts || []).map((dt) => ({ ...dt, apex: T(dt.apex) })),
       };
     });
     const warnings = report.warnings.slice();

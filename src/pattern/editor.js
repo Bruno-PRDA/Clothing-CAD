@@ -5,7 +5,7 @@ import { EVENT } from '../core/events.js';
 import { uid } from '../core/ids.js';
 import { clamp } from '../core/units.js';
 import {
-  signedArea, isSimplePolygon, bbox as bboxOf, splitEdge as geoSplitEdge, mirrorPoint,
+  signedArea, isSimplePolygon, bbox as bboxOf, splitEdge as geoSplitEdge, mirrorPoint, validDartIndices, dartMouth,
 } from '../geometry/index.js';
 import { createView } from './view.js';
 import { hitTest } from './hit.js';
@@ -77,6 +77,7 @@ export function clonePieceLocal(piece) {
     notches: (piece.notches || []).map((n) => ({ edge: n.edge, t: n.t, kind: n.kind })),
     grainline: { a: cp(piece.grainline.a), b: cp(piece.grainline.b) },
     internalLines: (piece.internalLines || []).map((l) => ({ kind: l.kind, points: l.points.map(cp) })),
+    darts: (piece.darts || []).map((d) => ({ id: d.id, edge: d.edge, t: d.t, width_mm: d.width_mm, apex: cp(d.apex) })),
     pinnedEdges: Array.isArray(piece.pinnedEdges) ? piece.pinnedEdges.slice() : [],
     placement: { ...piece.placement, offset_mm: cp(piece.placement.offset_mm) },
     grade: { ...piece.grade, vertexRules: (piece.grade.vertexRules || []).map((r) => ({ ...r })) },
@@ -118,6 +119,10 @@ export function opTranslate(piece, dx, dy) {
       p[1] += dy;
     }
   }
+  for (const d of out.darts) {
+    d.apex[0] += dx;
+    d.apex[1] += dy;
+  }
   return out;
 }
 
@@ -132,6 +137,12 @@ export function opSplitEdge(piece, e, t) {
     throw patternError('PATTERN_FOLD_SPLIT', 'The fold edge cannot be split');
   }
   const tt = clamp(t, 0.02, 0.98);
+  for (const k of validDartIndices(piece)) {
+    const dt = piece.darts[k];
+    if (dt.edge !== e) continue;
+    const m = dartMouth(piece, dt);
+    if (tt > m.ta - 1e-9 && tt < m.tb + 1e-9) throw patternError('PATTERN_SPLIT_IN_DART', 'Split point is inside a dart');
+  }
   const res = geoSplitEdge(piece, e, tt);
   const out = /** @type {Piece} */ (res.piece);
   const map = res.edgeMap;
@@ -193,6 +204,9 @@ export function opDeleteVertex(piece, i) {
   out.notches = (piece.notches || [])
     .filter((nt) => nt.edge !== i && nt.edge !== prev)
     .map((nt) => ({ edge: map[nt.edge], t: nt.t, kind: nt.kind }));
+  out.darts = (piece.darts || [])
+    .filter((d) => d.edge !== i && d.edge !== prev)
+    .map((d) => ({ id: d.id, edge: map[d.edge], t: d.t, width_mm: d.width_mm, apex: cp(d.apex) }));
   const pinned = new Set();
   for (const k of (piece.pinnedEdges || [])) if (map[k] >= 0) pinned.add(map[k]);
   out.pinnedEdges = Array.from(pinned).sort((a, b) => a - b);
@@ -239,6 +253,7 @@ export function opReflectX(piece) {
   out.vertices = vertices;
   out.edges = edges;
   out.notches = (piece.notches || []).map((nt) => ({ edge: map[nt.edge], t: 1 - nt.t, kind: nt.kind }));
+  out.darts = (piece.darts || []).map((d) => ({ id: d.id, edge: map[d.edge], t: 1 - d.t, width_mm: d.width_mm, apex: /** @type {Vec2} */ ([-d.apex[0], d.apex[1]]) }));
   const pinned = new Set();
   for (const k of (piece.pinnedEdges || [])) if (map[k] !== undefined) pinned.add(map[k]);
   out.pinnedEdges = Array.from(pinned).sort((a, b) => a - b);
@@ -372,7 +387,7 @@ export function snapPoint(p, opts) {
 
 /** @returns {object} the default (empty) selection */
 function emptySelection() {
-  return { pieces: [], seams: [], vertex: null, edge: null, edgeMirror: false, handle: null, notch: null };
+  return { pieces: [], seams: [], vertex: null, edge: null, edgeMirror: false, handle: null, notch: null, dart: null };
 }
 
 /**
@@ -502,6 +517,7 @@ export function createEditor(canvas, store, bus, opts = {}) {
       edgeMirror: !!sel.edgeMirror,
       handle: sel.handle ? Object.freeze({ ...sel.handle }) : null,
       notch: sel.notch ? Object.freeze({ ...sel.notch }) : null,
+      dart: sel.dart ? Object.freeze({ ...sel.dart }) : null,
     });
   }
 
@@ -558,6 +574,7 @@ export function createEditor(canvas, store, bus, opts = {}) {
     const vertex = ('vertex' in p) ? point(p.vertex, 'index') : prev.vertex;
     const edge = ('edge' in p) ? point(p.edge, 'edge') : prev.edge;
     const notch = ('notch' in p) ? point(p.notch, 'index') : prev.notch;
+    const dart = ('dart' in p) ? point(p.dart, 'index') : prev.dart;
     let handle = ('handle' in p) ? p.handle : prev.handle;
     if (handle && (typeof handle !== 'object' || typeof handle.pieceId !== 'string')) handle = null;
 
@@ -569,6 +586,7 @@ export function createEditor(canvas, store, bus, opts = {}) {
       edgeMirror: ('edgeMirror' in p) ? !!p.edgeMirror : !!prev.edgeMirror,
       handle: (handle && known.has(handle.pieceId)) ? handle : null,
       notch: (notch && known.has(notch.pieceId)) ? notch : null,
+      dart: (dart && known.has(dart.pieceId)) ? dart : null,
     };
     applySelection(next);
   }
@@ -601,6 +619,7 @@ export function createEditor(canvas, store, bus, opts = {}) {
       edgeMirror: selection.edgeMirror,
       handle: selection.handle,
       notch: selection.notch,
+      dart: selection.dart,
     };
     const v = next.vertex;
     if (v && (!byId.has(v.pieceId) || v.index >= byId.get(v.pieceId).vertices.length)) next.vertex = null;
@@ -610,6 +629,8 @@ export function createEditor(canvas, store, bus, opts = {}) {
     if (h && (!byId.has(h.pieceId) || h.edge >= byId.get(h.pieceId).edges.length)) next.handle = null;
     const nt = next.notch;
     if (nt && (!byId.has(nt.pieceId) || nt.index >= (byId.get(nt.pieceId).notches || []).length)) next.notch = null;
+    const dk = next.dart;
+    if (dk && (!byId.has(dk.pieceId) || dk.index >= (byId.get(dk.pieceId).darts || []).length)) next.dart = null;
     applySelection(next);
   }
 

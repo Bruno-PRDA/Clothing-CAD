@@ -23,7 +23,7 @@ export { render, STYLE, hueOf, seamColor } from './render2d.js';
 export { validateDoc, validatePiece, validateSeam, formatIssue, ISSUE_CODES } from './validate.js';
 
 export {
-  edgeLengthOf, sideEndpoints, chooseReverse, autoReverse, seamEase, seamEaseOf, seamLengths, formatEase,
+  edgeLengthOf, sewnLengthOf, sideEndpoints, chooseReverse, autoReverse, seamEase, seamEaseOf, seamLengths, formatEase,
   formatSeamRow, seamOfEdge, seamsOfPiece, makeSeam, remapAfterEdgeChange, seamEaseGraded, easeLevel,
   pieceById, EASE_WARN_PCT, EASE_ERROR_PCT,
 } from './seams.js';

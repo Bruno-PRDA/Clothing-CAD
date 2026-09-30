@@ -1,7 +1,7 @@
 // src/pattern/seams.js — seam helpers, ease and edge-index remapping (SPEC 11.11.1). Pure: no DOM, no store, no bus.
 
 import { uid } from '../core/ids.js';
-import { edgeLength, mirrorPoint } from '../geometry/index.js';
+import { edgeLength, mirrorPoint, sewnLength } from '../geometry/index.js';
 
 /** @typedef {import('../core/types.js').Vec2} Vec2 */
 /** @typedef {import('../core/types.js').Piece} Piece */
@@ -40,6 +40,28 @@ export function edgeLengthOf(piece, e) {
   const cached = map.get(e);
   if (cached !== undefined) return cached;
   const len = edgeLength(piece, e);
+  map.set(e, len);
+  return len;
+}
+
+/** @type {WeakMap<object, Map<number, number>>} */
+const SEWN_CACHE = new WeakMap();
+
+/**
+ * Sewn length of outline edge e: its arc length less the intake of its valid darts (SPEC 11.11 amendment "Darts"). This
+ * is what a seam compares. Cached per piece object identity.
+ * @param {Piece} piece @param {number} e @returns {number}
+ */
+export function sewnLengthOf(piece, e) {
+  if (!piece || !Array.isArray(piece.vertices)) return 0;
+  const n = piece.vertices.length;
+  if (!(e >= 0 && e < n)) return 0;
+  if (!Array.isArray(piece.darts) || piece.darts.length === 0) return edgeLengthOf(piece, e);
+  let map = SEWN_CACHE.get(piece);
+  if (!map) { map = new Map(); SEWN_CACHE.set(piece, map); }
+  const cached = map.get(e);
+  if (cached !== undefined) return cached;
+  const len = sewnLength(piece, e);
   map.set(e, len);
   return len;
 }
@@ -109,7 +131,7 @@ function easeFrom(lenA, lenB) {
 function sideLength(doc, side) {
   const piece = side ? pieceById(doc, side.pieceId) : null;
   if (!piece) return 0;
-  return edgeLengthOf(piece, side.edge);
+  return sewnLengthOf(piece, side.edge);
 }
 
 /** @param {ProjectDoc} doc @param {Seam} seam @returns {Ease} */
