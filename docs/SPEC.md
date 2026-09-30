@@ -5706,6 +5706,17 @@ runPendingRemesh():
   emit mesh:built, sim:built ; status info "Remeshed front, back (1 812 v) · rebuilt 2 612 v / 5 020 tris in 138 ms"
 ```
 
+> **Amendment (lead, 2026-09-30) — Darts: an invalid dart does not exclude its piece.** In `runPendingRemesh` and
+> `rebuildAll`, `excluded` is the set of pieces with an error-level issue **other than a `DART_*` code**
+> (`excludedPieces(issues)` in `wiring.js`). The mesher leaves an invalid dart out and records `'dart-ignored: …'` in the
+> mesh's warnings (§5.6 amendment "Darts: meshing"), and its partners' seam sampling ignores it too, so the piece meshes
+> and sews as if that dart were not there: §5.10's "one bad dart never stops a drape". Excluding the piece contradicted
+> this. After a load the piece was missing from the drape. After an edit it kept its old mesh with the dart's mouth
+> while its partners were remeshed without it, and the build failed with `seam-parity`; a vertex drag that shortens
+> the waist edge is enough to raise `DART_MOUTH`. Every other error-level piece issue still excludes its piece, so the
+> last sentence of §11.11.2 (only `PIECE_*` and `FOLD_*` exclude) is superseded by this rule. Regression test:
+> acceptance check 26j `invalid_dart` (§13 amendment "Darts: the fix wave").
+
 "Keep the old cloth running until the new one is built" means exactly: `ctx.cloth.state` and the viewer's cloth geometry are replaced **only** at the swap line, after `rebuildCloth()` and `arrange()` succeeded; frames rendered meanwhile (the debounce window, and any frame in which a reaction threw) show and step the previous state. The rebuild itself is synchronous (< 200 ms for the samples) inside one task.
 
 #### 12.2.3 Fingerprints (`computeKeys`)
@@ -6156,13 +6167,20 @@ Store contract (section 3.3, authoritative): `update(mutator, label)` emits `doc
 > cannot crash it before `results.json` is written.
 
 > **Amendment (lead, 2026-09-30) — Darts: the fix wave.** Checks after 26h that guard the fixes of the branch's final
-> review; the suite has **35 checks** (01–27 plus 26b–26i). "Rebuilt" below means: one `__app.update`, `await idle()`, no
+> review; the suite has **36 checks** (01–27 plus 26b–26j). "Rebuilt" below means: one `__app.update`, `await idle()`, no
 > new `errorsNow()` line, `mesh.stats().seamPairsEqual`, and a new live `ClothState` whose `V` equals
 > `mesh.stats().verts`.
 >
 > | # | name | timeout | what passes |
 > |---|---|---|---|
 > | 26i | `incremental_remesh` | 20 s | the dress with a dart added on `bodice_back_r`'s shoulder (`{edge: 3, t: 0.5, width_mm: 10, apex: [140, 320]}`) is rebuilt; the T-shirt with the front armhole notch moved to `t = 0.43` is rebuilt; at size L a notch added on the front hem is rebuilt and replaces the front's mesh alone, and a placement change then leaves the live `ClothState` the same object (re-arranged, not rebuilt). §12.2.3 amendment "Darts: the mesh fingerprint is the seam sampling"; before it, the first two failed with `seam-parity` and the last rebuilt. |
+> | 26j | `invalid_dart` | 20 s | the dress with `bodice_back_r`'s waist dart pointing outside the piece (`apex [89, −50]`, `DART_APEX`), once through `__app.load` and once through `__app.update` on the loaded dress: all 6 pieces meshed, `bodice_back_r`'s mesh warnings include a `dart-ignored:` line, `seamPairsEqual`, no new error line, and a live `ClothState` of 6 pieces whose `V` equals `mesh.stats().verts` (after the edit, a new one). §12.2.2 amendment "Darts: an invalid dart does not exclude its piece"; before it, the load meshed 5 pieces and the edit failed with `seam-parity`. |
+>
+> An invalid document is error-level by design, and the status bar reports it as an error-level `N issues` line that
+> `console.error` echoes into `__app.log()`. The runner (§13.1 rule 4) would count that line as a failure of the run, so a
+> check that loads an invalid document on purpose passes its error lines through `unprovokedErrorsSince(n)`: the
+> `[ui] N issues` lines are recorded in `provokedErrors` and left out of `summary.errors`, and every other error line is
+> returned so the check can fail on it. The set is cleared in the preamble.
 
 > **Amendment (lead, 2026-09-24) — continuous integration.** `.github/workflows/tests.yml` runs on every push and
 > pull request: `tests/ci/run_browser_tests.py` starts `serve.py`, boots the app in headless Chromium (WebGL through

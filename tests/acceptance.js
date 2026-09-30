@@ -86,6 +86,34 @@ function errorsNow() {
 }
 
 /**
+ * Error lines a check provoked on purpose, as `errorKey` strings. A document with an invalid dart has an error-level
+ * issue, and the status bar reports it as an error-level "N issues" line (SPEC 11.11.2) that console.error echoes into
+ * the log. The postamble leaves exactly these lines out; every other error line is still reported.
+ * @type {Set<string>}
+ */
+const provokedErrors = new Set();
+
+/** @param {{t:number, message:string}} e @returns {string} */
+function errorKey(e) {
+  return e.t + '|' + e.message;
+}
+
+/**
+ * The messages of the error lines logged since `before` (an `errorsNow().length`), except the status bar's "N issues"
+ * lines: the caller holds a deliberately invalid document, so those are marked as provoked instead.
+ * @param {number} before @returns {string[]}
+ */
+function unprovokedErrorsSince(before) {
+  /** @type {string[]} */
+  const out = [];
+  for (const e of errorsNow().slice(before)) {
+    if (/^\[ui\] \d+ issues?$/.test(e.message)) provokedErrors.add(errorKey(e));
+    else out.push(e.message);
+  }
+  return out;
+}
+
+/**
  * Promise that rejects after `ms`. The returned promise carries a `cancel()` so the runner can clear the
  * timer as soon as the raced check settles (no stray timers, no late unhandled rejections).
  * @param {number} ms @returns {Promise<never> & {cancel: () => void}}
@@ -1467,6 +1495,47 @@ async function checkIncrementalRemesh() {
   return 'dress back shoulder dart, T-shirt armhole notch: rebuilt, seams pair; size L: a hem notch remeshed the front only, a move re-arranged';
 }
 
+/**
+ * A piece with an invalid dart is still simulated: the mesher leaves that dart out and names it in the mesh's warnings
+ * (SPEC 5.10), so the piece must not be excluded from meshing like one with a broken outline (SPEC 12.2.2 amendment
+ * "Darts: an invalid dart does not exclude its piece"). Excluded, it was missing from the drape after a load, and after
+ * an edit it kept its old mesh while its partners were remeshed without its mouth, so the build failed with 'seam-parity'.
+ * @returns {Promise<string>}
+ */
+async function checkInvalidDart() {
+  /** @param {string} what @param {number} errs errorsNow().length before the change */
+  const expectMeshed = (what, errs) => {
+    const fresh = unprovokedErrorsSince(errs);
+    expect(fresh.length === 0, `${what}: ${fresh.join(' | ')}`);
+    const st = app().mesh.stats();
+    expect(st.pieces === 6, `${what}: ${st.pieces} of the 6 pieces are meshed`);
+    const back = st.perPiece.find((p) => p.pieceId === 'bodice_back_r');
+    const warnings = back ? back.warnings : [];
+    expect(warnings.some((w) => w.startsWith('dart-ignored:')), `${what}: bodice_back_r's mesh warnings name no ignored dart: ${JSON.stringify(warnings)}`);
+    expect(st.seamPairsEqual, `${what}: the two sides of a seam no longer pair`);
+    const live = stateOf();
+    expect(live.pieces.length === 6 && live.V === st.verts, `${what}: the cloth was not built from the six meshes`);
+  };
+  // the right back's waist dart points below the waist, outside the piece: DART_APEX
+  const dress = await reloadSample('dress');
+  pieceOf(dress, 'bodice_back_r').darts[0].apex = [89, -50];
+  let errs = errorsNow().length;
+  app().load(dress);
+  await app().idle();
+  app().sim.pause();
+  expectMeshed('loaded with an invalid dart', errs);
+  await reloadSample('dress');
+  const before = stateOf();
+  errs = errorsNow().length;
+  app().update((d) => { pieceOf(d, 'bodice_back_r').darts[0].apex = [89, -50]; }, 'acceptance: an invalid dart');
+  await app().idle();
+  app().sim.pause();
+  expectMeshed('a dart made invalid by an edit', errs);
+  expect(stateOf() !== before, 'a dart made invalid by an edit: the cloth was not rebuilt');
+  drapeStage = 0;
+  return 'loaded and edited: 6 of 6 pieces meshed, the bad dart ignored with a warning, seams pair, cloth built';
+}
+
 /** How long the runner waits for a timed-out check's abandoned work to settle before starting the next one. */
 const SETTLE_AFTER_TIMEOUT_MS = 30000;
 
@@ -1508,6 +1577,7 @@ export const CHECKS = Object.freeze([
   { id: '26g', name: 'dress_drape', timeoutMs: 40000, fn: checkDressDrape },
   { id: '26h', name: 'dart_shaping', timeoutMs: 40000, fn: checkDartShaping },
   { id: '26i', name: 'incremental_remesh', timeoutMs: 20000, fn: checkIncrementalRemesh },
+  { id: '26j', name: 'invalid_dart', timeoutMs: 20000, fn: checkInvalidDart },
   { id: '27', name: 'runtime', timeoutMs: 5000, fn: checkRuntime },
 ]);
 
@@ -1545,6 +1615,7 @@ export async function runAcceptance(filter, opts) {
 
   // ---- preamble (13.1 rule 1)
   try {
+    provokedErrors.clear();
     errorsAtStart = errorsNow().length;
     prevTitle = (typeof document !== 'undefined') ? document.title : '';
     app().sim.pause();
@@ -1619,7 +1690,7 @@ export async function runAcceptance(filter, opts) {
   const total = results.length;
   const ms = now() - t0;
   try {
-    for (const e of errorsNow().slice(errorsAtStart)) errors.push(e.message);
+    for (const e of errorsNow().slice(errorsAtStart)) if (!provokedErrors.has(errorKey(e))) errors.push(e.message);
   } catch (_) { /* ignore */ }
 
   /** @type {AcceptanceSummary} */

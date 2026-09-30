@@ -871,6 +871,21 @@ export function createWiring(ctx) {
     return [];
   }
 
+  /**
+   * The pieces left out of meshing: those with an error-level issue (12.2.2), except a dart error. The mesher leaves an
+   * invalid dart out and names it in the mesh's warnings, so one bad dart never stops a drape (SPEC 5.10; 12.2.2
+   * amendment "Darts: an invalid dart does not exclude its piece").
+   * @param {Issue[]} issues @returns {Set<string>}
+   */
+  function excludedPieces(issues) {
+    /** @type {Set<string>} */
+    const out = new Set();
+    for (const issue of issues) {
+      if (issue && issue.level === 'error' && issue.pieceId && !String(issue.code || '').startsWith('DART_')) out.add(issue.pieceId);
+    }
+    return out;
+  }
+
   /** The debounced remesh + rebuild job (12.2.2). Keeps the OLD cloth running until the swap line. */
   function runPendingRemesh() {
     const d = doc();
@@ -882,11 +897,7 @@ export function createWiring(ctx) {
     ctx.pending.remeshAll = false;
 
     const issues = docIssues();
-    /** @type {Set<string>} */
-    const excluded = new Set();
-    for (const issue of issues) {
-      if (issue && issue.level === 'error' && issue.pieceId) excluded.add(issue.pieceId);
-    }
+    const excluded = excludedPieces(issues);
     const ids = (requested || d.pieces.filter((p) => p.simulate).map((p) => p.id))
       .filter((id) => !excluded.has(id));
     const meshed = remesh(ids, { force: all });
@@ -961,11 +972,7 @@ export function createWiring(ctx) {
     if (!d) return;
     const t0 = nowMs();
     const issues = docIssues();
-    /** @type {Set<string>} */
-    const excluded = new Set();
-    for (const issue of issues) {
-      if (issue && issue.level === 'error' && issue.pieceId) excluded.add(issue.pieceId);
-    }
+    const excluded = excludedPieces(issues);
     const ids = d.pieces.filter((p) => p.simulate && !excluded.has(p.id)).map((p) => p.id);
     remesh(ids, { force: true });
     applyVertexCap();
