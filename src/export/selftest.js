@@ -149,6 +149,26 @@ export async function runSelfTest() {
     assert(svg.includes('class="calibration"') && svg.includes('class="legend"'), 'calibration + legend expected');
   }));
 
+  out.push(runCase('svg.darts', () => {
+    const base = { id: 'dp', name: 'Darted', vertices: [[0, 0], [200, 0], [200, 300], [0, 300]], edges: [{ type: 'line' }, { type: 'line' }, { type: 'line' }, { type: 'line' }],
+      foldEdge: null, notches: [], grainline: { a: [100, 50], b: [100, 250] }, internalLines: [], seamAllowance_mm: 10, fabricId: 'main', cutQty: 1 };
+    const withDart = { ...base, darts: [{ id: 'd', edge: 0, t: 0.5, width_mm: 20, apex: [100, 100] }] };
+    const g0 = buildPieceGeometry({ ...base, darts: [] }, 'M', { date: '2026-01-01' });
+    const g1 = buildPieceGeometry(withDart, 'M', { date: '2026-01-01' });
+    assert(g1.darts.length === 1, 'one dart in the geometry');
+    assert(g1.notches.length === 2, 'a notch at each leg, got ' + g1.notches.length);
+    assert(JSON.stringify(g1.cut) === JSON.stringify(g0.cut), 'the cut line ignores the dart (the fabric is folded, not cut away)');
+    assert(near(g1.darts[0].drill[1], 90, 1e-9), 'drill hole 10 mm back from the point, got y ' + g1.darts[0].drill[1]);
+    const svg = exportPieceSvg(withDart, { sizeName: 'M', date: '2026-01-01' });
+    assert(count(svg, 'class="dart"') === 1 && count(svg, 'class="drill"') === 2, 'dart legs and drill mark in the SVG');
+    checkSvgFrame(svg);
+    // the print tiles embed the sheet markup verbatim, so every page carries the dart
+    const html = printHtml(exportSheet([withDart], 'M', { date: '2026-01-01' }), { paper: 'A4' });
+    const pages = count(html, 'class="page"');
+    assert(pages >= 1 && count(html, 'class="dart"') === pages && count(html, 'class="drill"') === 2 * pages, 'every print tile carries the dart: ' + pages + ' pages, ' + count(html, 'class="dart"') + ' darts');
+    return 'legs, 2 mouth notches, drill at y ' + g1.darts[0].drill[1];
+  }));
+
   out.push(runCase('sheet.tiles', () => {
     const plan = tileSheet({ width_mm: 500, height_mm: 700 }, { paper: 'A4' });
     assert(plan.cols === 3 && plan.rows === 3 && plan.tiles.length === 9, `A4 should be 3×3, got ${plan.cols}×${plan.rows}`);

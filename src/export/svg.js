@@ -1,7 +1,7 @@
 // src/export/svg.js — 1:1 SVG sewing patterns (SPEC section 10.3). Pure. One SVG user unit = 1 mm; sheet space is
 // y DOWN and the ONLY y flip of the export pipeline is `toSheet` (step 5). Pattern points are never negated elsewhere.
 
-import { edgeLength, sampleEdge, offsetPolygon, packRects, signedArea, bbox } from '../geometry/index.js';
+import { edgeLength, sampleEdge, offsetPolygon, packRects, signedArea, bbox, validDartIndices, dartMouth, dartDrillPoint } from '../geometry/index.js';
 import { validationError } from '../sizing/index.js';
 
 /** @typedef {import('../core/types.js').Piece} Piece */
@@ -16,6 +16,7 @@ import { validationError } from '../sizing/index.js';
  * @property {number[]} allowances    per outline edge, mm (fold edge forced 0)
  * @property {Vec2[]}   cut           closed polygon from offsetPolygon(stitch, per-segment allowance)
  * @property {{p:Vec2, q:Vec2, kind:'single'|'double', p2?:Vec2, q2?:Vec2}[]} notches   ticks stitch -> cut
+ * @property {{a:Vec2, b:Vec2, apex:Vec2, drill:Vec2}[]} darts   valid darts: legs A→apex→B and the drill hole
  * @property {{minX:number, minY:number, maxX:number, maxY:number}} bbox   of `cut`
  * @property {Vec2}     labelAnchor   interior point for the label block
  * @property {number}   area_mm2      |signedArea(stitch)|
@@ -230,6 +231,27 @@ export function buildPieceGeometry(piece, sizeName, opts) {
     }
   }
 
+  // 4b. darts (SPEC 10.3 amendment "Darts"): the fabric in a dart is folded, not cut away, so the cut and stitch lines
+  //    above follow the clean outline; each valid dart adds its legs, a notch at each leg and a drill hole
+  /** @type {PieceGeometry['darts']} */
+  const darts = [];
+  for (const k of validDartIndices(piece)) {
+    const dt = piece.darts[k];
+    const m = dartMouth(piece, dt);
+    /** @type {Vec2} */
+    const apex = [dt.apex[0], dt.apex[1]];
+    darts.push({ a: m.a, b: m.b, apex, drill: dartDrillPoint(m.a, m.b, apex) });
+    for (const t of [m.ta, m.tb]) {
+      const { p, d } = edgePointAt(piece, dt.edge, t);
+      /** @type {Vec2} */
+      const nrm = [d[1], -d[0]];
+      const a = allowances[dt.edge];
+      /** @type {Vec2} */
+      const q = a > 0 ? [p[0] + nrm[0] * a, p[1] + nrm[1] * a] : [p[0] - nrm[0] * 5, p[1] - nrm[1] * 5];
+      notches.push({ kind: 'single', p, q });
+    }
+  }
+
   // 6. bbox / area
   const bb = bbox(cut);
 
@@ -246,7 +268,7 @@ export function buildPieceGeometry(piece, sizeName, opts) {
   labelLines.push(o.date !== undefined && o.date !== null ? String(o.date) : today());
 
   return {
-    piece, sizeName, stitch, stitchEdgeOf, allowances, cut, notches,
+    piece, sizeName, stitch, stitchEdgeOf, allowances, cut, notches, darts,
     bbox: bb, labelAnchor: labelAnchorOf(stitch, bb), area_mm2: Math.abs(area), labelLines,
   };
 }
@@ -402,6 +424,15 @@ function pieceMarkup(place, sizeName) {
     const attrs = kind === 'fold' ? 'stroke-width="0.35" stroke-dasharray="6 2 1 2"'
       : kind === 'dart' ? 'stroke-width="0.25"' : 'stroke-width="0.25" stroke-dasharray="2 1"';
     parts.push(`<path class="internal-${kind}" ${attrs} d="${polyPath(line.points.map(S), false)}"/>`);
+  }
+  parts.push('</g>');
+  // darts: legs as stitching, drill hole as a 2 mm circle with a cross
+  parts.push('<g class="darts" stroke-width="0.25">');
+  for (const dt of g.darts || []) {
+    parts.push(`<path class="dart" d="M ${pt(S(dt.a))} L ${pt(S(dt.apex))} L ${pt(S(dt.b))}"/>`);
+    const c = S(dt.drill);
+    parts.push(`<circle class="drill" cx="${fmt(c[0])}" cy="${fmt(c[1])}" r="2"/>`);
+    parts.push(`<path class="drill" d="M ${fmt(c[0] - 2)} ${fmt(c[1])} L ${fmt(c[0] + 2)} ${fmt(c[1])} M ${fmt(c[0])} ${fmt(c[1] - 2)} L ${fmt(c[0])} ${fmt(c[1] + 2)}"/>`);
   }
   parts.push('</g>');
   // label block

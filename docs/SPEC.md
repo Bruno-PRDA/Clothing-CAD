@@ -3765,6 +3765,22 @@ export function escapeXml(s: string): string
 
 **Grade nest.** `exportGradeNestSvg(pieceBySize, baseSize, opts)`: every entry is `buildPieceGeometry(piece, sizeName)`; all sizes are drawn in the **same** pattern frame (grading scales about a pivot that is invariant, so no alignment step is needed); `bbox` = union of all cut bboxes; one `<g class="size" data-size="…" stroke="${SIZE_COLORS[i % 8]}">` per size (index = position in `pieceBySize`) holding its `cut` (solid) and `stitch` (dashed) paths and notches; the base size uses stroke width 0.5, others 0.35; a legend at the top-left lists `size — colour`; the piece name and `opts.garmentName` are the title. Calibration square and margins as in a sheet. Section 12's `__app.export` builds `pieceBySize` from `gradePiece(piece, chart, name)` over `sizeNames(chart)`.
 
+> **Amendment (lead, 2026-09-30) — Darts: the pattern sheet.** A dart is *folded*, not cut away, so `stitch`, `cut`,
+> `bbox` and `area_mm2` follow the clean outline (`piece.vertices` / `edges`, which already carry no dart notch) and are
+> identical with or without darts. `PieceGeometry` gains `darts: {a: Vec2, b: Vec2, apex: Vec2, drill: Vec2}[]`, one
+> entry per *valid* dart (`validDartIndices`, §5.10; an invalid dart is skipped): `a` and `b` are the mouth legs on the
+> outline (`dartMouth`), `apex` is `dart.apex` and `drill = dartDrillPoint(a, b, apex)`, on the centre line
+> `DART_DRILL_BACK_MM` (10 mm, at most half way to the mouth) back from the point. A new step after the notches (step 4
+> above; the numbering of steps 5 to 7 is unchanged) also pushes, for each valid dart, a `single` notch at each leg into
+> `notches`, built exactly like a user notch (the point `p` on the stitch line at the leg's fraction `ta` / `tb`, `q` on
+> the cut line along the outward normal, or 5 mm inward when the edge allowance is 0), so `notches.length` grows by two
+> per valid dart. Markup: after `<g class="internal">` (and before the label) each piece carries
+> `<g class="darts" stroke-width="0.25">` holding, per valid dart, `<path class="dart" d="M a L apex L b"/>` (the legs, in
+> sheet space, not closed), `<circle class="drill" r="2"/>` at the drill point and `<path class="drill">`, a 4 mm cross
+> (`M x-2 y L x+2 y M x y-2 L x y+2`) through the same point. The group is always emitted (empty without darts). `inner`
+> is embedded verbatim by `print.js`, so every print tile carries the darts with no extra code; the grade nest draws
+> `notches` (and so the mouth notches) but neither legs nor drill holes.
+
 ### 10.4 `src/export/sheet.js` and `src/export/print.js` — tiled print pages
 
 **`sheet.js` (pure tiling math).** Paper sizes come from `PAPER` in `src/core/units.js` (section 3): A4 210 × 297, Letter 215.9 × 279.4, A3 297 × 420 mm, portrait. `orientation: 'landscape'` swaps width and height.
