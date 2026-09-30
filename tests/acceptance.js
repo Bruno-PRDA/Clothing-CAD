@@ -899,7 +899,7 @@ async function checkJsonRoundtrip() {
   const s3 = app().save();
   expect(s3 === s1, 'load(save()) then save() is not byte-identical');
   const o = JSON.parse(s1);
-  expect(o.version === 1, `version ${o.version} !== 1`);
+  expect(o.version === 2, `version ${o.version} !== 2`);
   const keys = Object.keys(o);
   expect(keys.join() === keys.slice().sort().join(), 'root keys are not sorted: ' + keys.join(','));
   drapeStage = 0;

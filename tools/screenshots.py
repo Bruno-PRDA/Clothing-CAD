@@ -23,16 +23,12 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'tests' / 'ci'))
-from run_browser_tests import CHROMIUM_ARGS, free_port, start_server  # noqa: E402
+from run_browser_tests import CHROMIUM_ARGS, GPU_ARGS, free_port, start_server  # noqa: E402
 
 OUT = ROOT / 'docs' / 'images'
 VIEWPORT = {'width': 1600, 'height': 900}
 SCALE = 2          # device pixels per CSS pixel while rendering; images are scaled back down by this
 DRAPE_FRAMES = 600  # 10 s of simulated time: sewn, dropped and settled
-# Headless Chromium renders on the GPU through ANGLE when asked to (Direct3D 11 on Windows); the status bar's frame
-# rate is then the real one. --software uses the CI flags instead.
-GPU_ARGS = ['--use-angle=d3d11' if sys.platform == 'win32' else '--use-angle=default', '--ignore-gpu-blocklist',
-            '--disable-background-timer-throttling', '--disable-renderer-backgrounding']
 
 # In-page helpers. Everything goes through window.__app except the camera, which the API only frames.
 HELPERS = r"""

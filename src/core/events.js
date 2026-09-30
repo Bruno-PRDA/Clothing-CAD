@@ -219,10 +219,12 @@ export const bus = new EventBus();
  * @property {string[]} seams        selected seam ids
  * @property {{pieceId:string, index:number}|null} vertex   single selected outline vertex (edit tool)
  * @property {{pieceId:string, edge:number}|null} edge      single selected outline edge
+ * @property {{pieceId:string, index:number}|null} [notch]  single selected notch (notch tool)
+ * @property {{pieceId:string, index:number}|null} [dart]   single selected dart (dart tool)
  */
 /** @typedef {{selection: Selection, prev: Selection}} SelectionChanged */
 
-/** @typedef {'select'|'draw'|'edit'|'split'|'seam'|'notch'|'grainline'|'measure'} ToolName */
+/** @typedef {'select'|'draw'|'edit'|'split'|'seam'|'notch'|'dart'|'grainline'|'measure'} ToolName */
 /** @typedef {{tool: ToolName, prev: ToolName}} ToolChanged */
 
 /**

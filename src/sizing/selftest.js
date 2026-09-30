@@ -76,7 +76,7 @@ export function makeDOC2() {
   b.grainline = { a: [250, 20], b: [250, 80] };
   b.grade = { widthRef: null, lengthRef: null, anchorX: 'center', anchorY: 'bottom', vertexRules: [] };
   return normalizeDoc({
-    version: 1,
+    version: 2,
     name: 'Doc2',
     fabrics: [{ id: 'main', name: 'Main', preset: 'cotton', color: '#c8102e' }],
     pieces: [a, b],

@@ -54,6 +54,7 @@ Names that do NOT exist (older drafts): `doc:loaded`, `cloth:built`, `status`, `
 - `ids.js` — `uid(prefix)`, `resetUidCounter(n)`, `seedUidRandom(seed)`, `isValidId(s)`, `hashString(s)`.
 - `fabrics.js` — `FABRIC_PRESETS, FABRIC_PRESET_IDS, PHYSICS_KEYS, TEXTURE_KINDS, DEFAULT_TEXTURE, BODY_LOOK, getPreset(id), hasPreset(id), isHexColor(s), resolveFabric(instance), resolveAll(doc) → Map, diffResolved(a, b), fabricForPiece(doc, piece), effectiveMeshSpacing(piece), mixHex(a, b, t)`.
 - `sdf.js` — `SDF_OUTSIDE, SDF_EPS_GRAD, gridIndex(grid, i, j, k), gridContains(grid, x, y, z), gridBounds(grid), sampleSdf(grid, x, y, z, outGrad) → number, makeGridFromFn(origin, cell, nx, ny, nz, fn), makeSphereGrid(centre, radius, cell, pad), makeCapsuleGrid(a, b, radius, cell, pad), sphereDistance(centre, radius, x, y, z, outGrad)`.
+- Darts (SPEC 3.1 amendment 2026-09-30): `DOC_VERSION = 2`; `Dart {id, edge, t, width_mm, apex}`; `Piece.darts: Dart[]`; `PieceMesh.edgeFrac` / `PieceMesh.dartVerts`; `migrate` v1 -> v2 adds `darts: []`; `ToolName` includes `'dart'`; `Selection` may carry `dart: {pieceId, index}|null`.
 
 ## src/samples (Lead, frozen; imports nothing)
 

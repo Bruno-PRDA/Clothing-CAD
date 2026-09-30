@@ -67,6 +67,17 @@ export {};
  */
 
 /**
+ * A dart that opens onto an outline edge (SPEC 3.1, amendment "Darts"). The outline itself stays undarted: the V is
+ * cut in when the piece is meshed, and its two legs are sewn together.
+ * @typedef {Object} Dart
+ * @property {string} id        unique within the piece (uid('dart'))
+ * @property {number} edge      outline edge index the dart opens onto; never the fold edge
+ * @property {number} t         arc-length fraction of the mouth's centre along that edge, strictly inside (0, 1)
+ * @property {number} width_mm  intake, measured as arc length along the edge; >= 1
+ * @property {Vec2} apex        the dart point, mm, strictly inside the piece
+ */
+
+/**
  * @typedef {Object} Piece
  * @property {string} id
  * @property {string} name
@@ -76,6 +87,7 @@ export {};
  * @property {Notch[]} notches
  * @property {Grainline} grainline
  * @property {InternalLine[]} internalLines
+ * @property {Dart[]} darts   darts opening onto outline edges (SPEC 3.1 amendment "Darts")
  * @property {number} seamAllowance_mm   default allowance for edges without allowance_mm
  * @property {string} fabricId           id of a FabricInstance in ProjectDoc.fabrics
  * @property {number} layer              0 = innermost; each layer adds 3 mm collision clearance and 20 mm arrangement radius
@@ -231,7 +243,9 @@ export {};
  * @property {Uint32Array} edges          2*E unique undirected edges, i < j
  * @property {Uint32Array} bendPairs      4*B, one per interior edge: [v0, v1 (shared edge), v2 (opposite in tri A), v3 (opposite in tri B)]
  * @property {Uint32Array} boundary       closed CCW loop of boundary vertex ids
- * @property {Uint32Array[][]} edgeVerts  edgeVerts[mirror][edgeIndex]: ordered vertex ids from the edge start vertex to its end vertex; edgeVerts[1] = [] for non-fold pieces; edgeVerts[*][foldEdge] = empty Uint32Array
+ * @property {Uint32Array[][]} edgeVerts  edgeVerts[mirror][edgeIndex]: ordered vertex ids from the edge start vertex to its end vertex; edgeVerts[1] = [] for non-fold pieces; edgeVerts[*][foldEdge] = empty Uint32Array; on an edge with darts each mouth adds a vertex (A then B)
+ * @property {Float64Array[][]} edgeFrac  parallel to edgeVerts: the sewn fraction u of each listed vertex (a dart mouth's A and B share one u); empty for the fold edge
+ * @property {{a:Uint32Array, b:Uint32Array}[][]} dartVerts  dartVerts[mirror][k]: dart k's legs, mouth -> apex, equal length, sharing the apex id; empty arrays for an ignored dart; dartVerts[1] = [] for non-fold pieces
  * @property {Uint32Array[]} notchVerts   notchVerts[mirror][k] = vertex id at Piece.notches[k] (forced boundary sample)
  * @property {number} area_mm2
  * @property {{minAngleDeg:number, pctAbove20:number, medianEdge_mm:number, triangles:number}} quality

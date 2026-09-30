@@ -4,7 +4,7 @@
 import { EventBus, EVENT } from './events.js';
 import { createStore, diffHints, HISTORY_LIMIT, makeTransient } from './store.js';
 import {
-  normalizeDoc, serializeDoc, parseDoc, validateShape, migrate, stableStringify, DEFAULT_BODY_PARAMS,
+  normalizeDoc, serializeDoc, parseDoc, validateShape, migrate, stableStringify, DEFAULT_BODY_PARAMS, DOC_VERSION,
 } from './schema.js';
 import {
   mmToM, mToMm, cmToMm, mmToCm, cmToM, fmtMm, fmtCm, PAPER, printableArea, tileStep, tileCount,
@@ -212,7 +212,7 @@ export async function runSelfTest() {
   await check('store/create-and-rename', () => {
     const b = new EventBus();
     const s = createStore(normalizeDoc({}), b);
-    assert(s.get().version === 1 && s.canUndo() === false, 'fresh store: version 1, nothing to undo');
+    assert(s.get().version === DOC_VERSION && s.canUndo() === false, 'fresh store: current version, nothing to undo');
     assert(deepEqual(s.transient, makeTransient()), 'transient defaults');
     const events = [];
     b.on(EVENT.DOC_CHANGED, (p) => events.push(p));
@@ -460,7 +460,7 @@ export async function runSelfTest() {
     const base = normalizeDoc(fixtureDoc());
     /** @type {[string, (d: any) => void][]} */
     const cases = [
-      ['DocVersion', (d) => { d.version = 2; }],
+      ['DocVersion', (d) => { d.version = 3; }],
       ['NoFabrics', (d) => { d.fabrics = []; }],
       ['DuplicateId', (d) => { d.pieces[1].id = 'sq'; }],
       ['FabricPreset', (d) => { d.fabrics[0].preset = 'nope'; }],
@@ -552,10 +552,43 @@ export async function runSelfTest() {
       && d.fabrics[0].overrides.friction === 0.7 && p.fabricId === 'main', 'fabric instance ' + stableStringify(d.fabrics));
     assert(d.seams[0].a.pieceId === 'p' && d.seams[0].a.edge === 0 && d.seams[0].b.edge === 1, 'seam sides');
     let code = null;
-    try { migrate({ version: 2 }); } catch (e) { code = e.code; }
-    assert(code === 'UnsupportedVersion', 'version 2 -> UnsupportedVersion');
-    const same = { version: 1 };
-    assert(migrate(same) === same, 'version 1 returned unchanged');
+    try { migrate({ version: 3 }); } catch (e) { code = e.code; }
+    assert(code === 'UnsupportedVersion', 'version 3 -> UnsupportedVersion');
+    const same = { version: 2 };
+    assert(migrate(same) === same, 'version 2 returned unchanged');
+    const v1 = { version: 1, pieces: [{ id: 'p' }] };
+    const m1 = migrate(v1);
+    assert(m1 !== v1 && m1.version === 2 && Array.isArray(m1.pieces[0].darts) && m1.pieces[0].darts.length === 0
+      && v1.pieces[0].darts === undefined, 'v1 -> v2 on a copy, every piece gets darts: []');
+    assert(d.pieces.every((pc) => Array.isArray(pc.darts)), 'a v0 document ends with darts on every piece');
+  });
+
+  await check('schema/darts', () => {
+    const base = normalizeDoc(fixtureDoc());
+    assert(base.version === DOC_VERSION && base.pieces.every((p) => Array.isArray(p.darts) && p.darts.length === 0),
+      'normalised pieces carry darts: []');
+    const withDart = structuredClone(base);
+    withDart.pieces[1].darts = [{ id: 'd1', edge: 0, t: 0.5, width_mm: 10, apex: [50, 30] }];
+    assert(validateShape(withDart).length === 0, 'a valid dart raises nothing: ' + stableStringify(validateShape(withDart)));
+    const again = normalizeDoc(JSON.parse(serializeDoc(withDart)));
+    assert(serializeDoc(again) === serializeDoc(withDart), 'darts round-trip byte-identical');
+    /** @type {[string, (d: any) => void][]} */
+    const cases = [
+      ['DART_ID', (d) => { d.pieces[1].darts.push({ ...d.pieces[1].darts[0], edge: 1 }); }],
+      ['DART_EDGE', (d) => { d.pieces[1].darts[0].edge = 5; }],
+      ['DART_EDGE', (d) => { d.pieces[0].darts = [{ id: 'f', edge: 3, t: 0.5, width_mm: 10, apex: [50, 50] }]; }],
+      ['DART_MOUTH', (d) => { d.pieces[1].darts[0].t = 1; }],
+      ['DART_WIDTH', (d) => { d.pieces[1].darts[0].width_mm = 0.5; }],
+      ['DART_APEX', (d) => { d.pieces[1].darts[0].apex = [50]; }],
+    ];
+    const failed = [];
+    for (const [code, mutate] of cases) {
+      const d = structuredClone(withDart);
+      mutate(d);
+      if (!validateShape(d).some((i) => i.code === code)) failed.push(code);
+    }
+    assert(failed.length === 0, 'codes not fired: ' + failed.join(', '));
+    return cases.length + ' structural dart codes';
   });
 
   // ---- units / ids -----------------------------------------------------------------------------------

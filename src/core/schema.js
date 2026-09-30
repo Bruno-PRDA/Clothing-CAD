@@ -20,7 +20,7 @@ import { getPreset, hasPreset, TEXTURE_KINDS, PHYSICS_KEYS, isHexColor, FABRIC_P
 /** @typedef {import('./types.js').Issue} Issue */
 /** @typedef {import('./types.js').Vec2} Vec2 */
 
-export const DOC_VERSION = 1;
+export const DOC_VERSION = 2;
 export const DEFAULT_BODY_PRESET = 'female_m';
 
 /** @type {Readonly<BodyParams>} MUST equal body/presets.js female_m (section 6.1); body/selftest.js asserts this. */
@@ -320,6 +320,17 @@ export function normalizePiece(partial, ctx) {
     return { kind: oneOf(s.kind, LINE_KINDS, 'mark'), points };
   });
 
+  const darts = (Array.isArray(p.darts) ? p.darts : []).map((dt) => {
+    const s = isObj(dt) ? dt : {};
+    return {
+      id: str(s.id, '') || uid('dart'),
+      edge: int(s.edge, 0),
+      t: num(s.t, 0.5),
+      width_mm: num(s.width_mm, 20),
+      apex: /** @type {Vec2} */ (vec2(s.apex, [0, 0])),
+    };
+  });
+
   const pinnedSet = new Set();
   for (const e of (Array.isArray(p.pinnedEdges) ? p.pinnedEdges : [])) {
     const v = num(e, NaN);
@@ -373,6 +384,7 @@ export function normalizePiece(partial, ctx) {
     notches,
     grainline,
     internalLines,
+    darts,
     seamAllowance_mm: num(p.seamAllowance_mm, 10),
     fabricId,
     layer: clampNum(int(p.layer, 0), 0, 4),
@@ -478,8 +490,8 @@ function normalizeUi(v, sizes) {
 export function normalizeDoc(partial) {
   let p = isObj(partial) ? partial : {};
   const rawVersion = num(p.version, NaN);
-  if (!(rawVersion >= 1)) p = migrate(p);
-  const version = num(p.version, 1);
+  if (!(rawVersion >= DOC_VERSION)) p = migrate(p);
+  const version = num(p.version, DOC_VERSION);
 
   const bodySrc = isObj(p.body) ? p.body : {};
   const body = {
@@ -763,6 +775,27 @@ function validatePiece(issues, pc, fabricIds, measurements) {
     }
     if (foldOk && nt.edge === fe) {
       push(issues, 'warn', 'NotchOnFold', 'Piece ' + show(pid) + ' notch ' + k + ' lies on the fold edge ' + fe, { pieceId: pid, edge: fe });
+    }
+  }
+  const darts = Array.isArray(pc.darts) ? pc.darts : [];
+  const dartIds = new Set();
+  for (let k = 0; k < darts.length; k++) {
+    const dt = darts[k] || /** @type {any} */ ({});
+    if (typeof dt.id !== 'string' || dt.id === '' || dartIds.has(dt.id)) {
+      push(issues, 'error', 'DART_ID', 'Piece ' + show(pid) + ' dart ' + k + ' id ' + show(dt.id) + ' is empty or repeated', { pieceId: pid });
+    }
+    dartIds.add(dt.id);
+    if (!isInt(dt.edge) || dt.edge < 0 || dt.edge >= ne || (foldOk && dt.edge === fe)) {
+      push(issues, 'error', 'DART_EDGE', 'Piece ' + show(pid) + ' dart ' + k + ' edge ' + show(dt.edge) + ' is not a sewable outline edge', { pieceId: pid });
+    }
+    if (!(isFiniteNum(dt.t) && dt.t > 0 && dt.t < 1)) {
+      push(issues, 'error', 'DART_MOUTH', 'Piece ' + show(pid) + ' dart ' + k + ' t ' + show(dt.t) + ' is not strictly inside (0, 1)', { pieceId: pid, edge: dt.edge });
+    }
+    if (!(isFiniteNum(dt.width_mm) && dt.width_mm >= 1)) {
+      push(issues, 'error', 'DART_WIDTH', 'Piece ' + show(pid) + ' dart ' + k + ' width_mm ' + show(dt.width_mm) + ' is below 1 mm', { pieceId: pid, edge: dt.edge });
+    }
+    if (!isVec2(dt.apex)) {
+      push(issues, 'error', 'DART_APEX', 'Piece ' + show(pid) + ' dart ' + k + ' apex ' + show(dt.apex) + ' is not a point', { pieceId: pid });
     }
   }
   const g = pc.grainline;
@@ -1203,8 +1236,9 @@ function migrateFabrics(doc) {
 }
 
 /**
- * Bring a document to DOC_VERSION. version 1 -> same object; missing / < 1 -> v0 migration on a deep copy;
- * > 1 -> Error{code:'UnsupportedVersion'}. `migrate.warnings` is reset at each call.
+ * Bring a document to DOC_VERSION. version 2 -> same object; version 1 -> darts added on a deep copy; missing / < 1 ->
+ * v0 migration then the v1 step, on a deep copy; > 2 -> Error{code:'UnsupportedVersion'}. `migrate.warnings` is reset
+ * at each call.
  * @param {*} doc @returns {*}
  */
 export function migrate(doc) {
@@ -1216,15 +1250,24 @@ export function migrate(doc) {
     throw codedError('UnsupportedVersion', 'Document version ' + v + ' is newer than this app (' + DOC_VERSION + ')');
   }
   const d = deepCopy(src);
-  migrateTopLevel(d);
-  if (Array.isArray(d.pieces)) for (const pc of d.pieces) migratePiece(pc);
-  migrateSim(d.sim);
-  migrateBody(d);
-  migrateSizes(d);
-  migrateSeams(d);
-  migrateFabrics(d);
+  if (v !== 1) {
+    migrateTopLevel(d);
+    if (Array.isArray(d.pieces)) for (const pc of d.pieces) migratePiece(pc);
+    migrateSim(d.sim);
+    migrateBody(d);
+    migrateSizes(d);
+    migrateSeams(d);
+    migrateFabrics(d);
+  }
+  migrateV1(d);
   d.version = DOC_VERSION;
   return d;
 }
 /** @type {string[]} populated during the last migrate() call */
 migrate.warnings = [];
+
+/** v1 -> v2 (SPEC 3.1 amendment "Darts"): every piece gets an empty dart list. @param {any} d */
+function migrateV1(d) {
+  if (!Array.isArray(d.pieces)) return;
+  for (const pc of d.pieces) if (isObj(pc) && !Array.isArray(pc.darts)) pc.darts = [];
+}

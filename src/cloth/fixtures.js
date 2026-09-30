@@ -132,7 +132,7 @@ function simSettings(over) {
 function buildFromLattices(meshes, fabric, sim, seams, pinnedEdges) {
   const fab = Object.assign({}, fabric, { id: fabric.id || 'fx' });
   const doc = /** @type {any} */ ({
-    version: 1,
+    version: 2,
     name: 'fixture',
     fabrics: [],
     pieces: meshes.map((m) => ({

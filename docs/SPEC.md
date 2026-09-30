@@ -1,6 +1,6 @@
 # Clothing App — v1 Specification (single source of truth)
 
-Status: FROZEN after Phase 0. Reconciled 2026-09-12 (Phase-0 audit): consumer sections 10-14 now use the owner names of sections 3-8 and 11; `EVENT` gained `UI_ACTION` and `PATTERN_ISSUES` (3.2.2); the cheat sheet is `docs/CONTRACTS.md`. Only the lead edits this file and `src/core/`. Every implementation agent builds from this document; where code and this document disagree, the document wins and the code is fixed. Nothing in here is "TBD".
+Status: FROZEN after Phase 0. Reconciled 2026-09-12 (Phase-0 audit): consumer sections 10-14 now use the owner names of sections 3-8 and 11; `EVENT` gained `UI_ACTION` and `PATTERN_ISSUES` (3.2.2); the cheat sheet is `docs/CONTRACTS.md`. Only the lead edits this file and `src/core/`. Every implementation agent builds from this document; where code and this document disagree, the document wins and the code is fixed. Nothing in here is "TBD". Amended 2026-09-30 (Darts, roadmap item 1): DOC_VERSION 2; Dart, Piece.darts, PieceMesh.edgeFrac/dartVerts; seams pair by sewn fraction; the Dart tool; the fitted dress sample. Design: docs/superpowers/specs/2026-09-30-darts-and-fitted-dress-design.md.
 
 ## 0. What we are building
 
@@ -433,6 +433,18 @@ export {};
 /** @typedef {{name:string, pass:boolean, details:string}} SelfTestResult */
 ```
 
+> **Amendment (lead, 2026-09-30) — Darts: contracts.** `Piece.darts: Dart[]` (default `[]`), where
+> `Dart = {id, edge, t, width_mm, apex}`. A dart opens onto outline edge `edge` (never the fold edge). Its mouth runs from
+> arc length `t·L − width_mm/2` (point A) to `t·L + width_mm/2` (point B), and its legs are A→apex and B→apex. The
+> stored outline stays undarted: the V is cut in only when meshing. The *sewn length* of an edge is its arc length
+> minus its darts' widths, and a *sewn fraction* `u` is a position along it measured the same way; a mouth is one `u`.
+> `PieceMesh.edgeVerts[m][e]` lists A and B both (one extra id per dart). `PieceMesh.edgeFrac[m][e]` (Float64Array,
+> parallel) gives each listed vertex's `u`. `PieceMesh.dartVerts[m][k] = {a, b}` gives dart k's legs from the mouth to
+> the shared apex, or empty arrays for a dart the mesher ignored. `DOC_VERSION` is 2: `migrate` adds `darts: []` to v1
+> pieces. `validateShape` checks darts structurally (`DART_ID`, `DART_EDGE`, `DART_MOUTH` for t ∉ (0,1),
+> `DART_WIDTH` for width < 1 mm, `DART_APEX` for a non-point). The geometric checks live in `src/geometry/darts.js`
+> (§5.10).
+
 ---
 
 ### 3.2 `src/core/events.js` — EventBus and the event table
@@ -856,7 +868,7 @@ Rules:
 `schema.js` imports `types.js`, `ids.js` (uid), `fabrics.js` (getPreset, DEFAULT_TEXTURE, TEXTURE_KINDS, PHYSICS_KEYS, isHexColor). It never imports `geometry/` (dependency rule) — the little geometry it needs (bbox, control-polygon area) is inlined.
 
 ```js
-export const DOC_VERSION = 1;
+export const DOC_VERSION = 2;
 export const DEFAULT_BODY_PRESET = 'female_m';
 /** @type {Readonly<import('./types.js').BodyParams>} MUST equal body/presets.js female_m (section 6.1); body/selftest.js asserts this. */
 export const DEFAULT_BODY_PARAMS = Object.freeze({

@@ -5,7 +5,7 @@
 
 /** @type {import('../core/types.js').ProjectDoc} */
 export const TSHIRT = {
-  version: 1,
+  version: 2,
   name: 'Basic T-shirt',
   body: {
     preset: 'female_m',
@@ -40,6 +40,7 @@ export const TSHIRT = {
       notches: [{ edge: 2, t: 0.5, kind: 'single' }],
       grainline: { a: [120, 100], b: [120, 450] },
       internalLines: [],
+      darts: [],
       seamAllowance_mm: 10,
       fabricId: 'main',
       layer: 0,
@@ -76,6 +77,7 @@ export const TSHIRT = {
       notches: [{ edge: 2, t: 0.5, kind: 'double' }],
       grainline: { a: [120, 100], b: [120, 450] },
       internalLines: [],
+      darts: [],
       seamAllowance_mm: 10,
       fabricId: 'main',
       layer: 0,
@@ -111,6 +113,7 @@ export const TSHIRT = {
       notches: [{ edge: 2, t: 0.5, kind: 'double' }, { edge: 3, t: 0.5, kind: 'single' }],
       grainline: { a: [0, 30], b: [0, 250] },
       internalLines: [],
+      darts: [],
       seamAllowance_mm: 10,
       fabricId: 'main',
       layer: 0,
@@ -136,6 +139,7 @@ export const TSHIRT = {
       notches: [{ edge: 2, t: 0.5, kind: 'double' }, { edge: 3, t: 0.5, kind: 'single' }],
       grainline: { a: [0, 30], b: [0, 250] },
       internalLines: [],
+      darts: [],
       seamAllowance_mm: 10,
       fabricId: 'main',
       layer: 0,

@@ -4,7 +4,7 @@
 
 /** @type {import('../core/types.js').ProjectDoc} */
 export const SKIRT = {
-  version: 1,
+  version: 2,
   name: 'A-line skirt',
   body: {
     preset: 'female_m',
@@ -37,6 +37,7 @@ export const SKIRT = {
       notches: [{ edge: 1, t: 0.5, kind: 'single' }],
       grainline: { a: [120, 80], b: [120, 480] },
       internalLines: [],
+      darts: [],
       seamAllowance_mm: 10,
       fabricId: 'main',
       layer: 0,
@@ -61,6 +62,7 @@ export const SKIRT = {
       notches: [{ edge: 1, t: 0.5, kind: 'double' }],
       grainline: { a: [120, 80], b: [120, 480] },
       internalLines: [],
+      darts: [],
       seamAllowance_mm: 10,
       fabricId: 'main',
       layer: 0,

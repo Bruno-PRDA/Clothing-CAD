@@ -67,6 +67,10 @@ CHROMIUM_ARGS = [
     '--disable-renderer-backgrounding',
     '--disable-backgrounding-occluded-windows',
 ]
+# Local runs can render on the machine's GPU through ANGLE (Direct3D 11 on Windows); CI keeps SwiftShader.
+GPU_ARGS = ['--use-angle=d3d11' if sys.platform == 'win32' else '--use-angle=default', '--ignore-gpu-blocklist',
+            '--disable-background-timer-throttling', '--disable-renderer-backgrounding',
+            '--disable-backgrounding-occluded-windows']
 
 
 def free_port() -> int:
@@ -124,6 +128,10 @@ def main() -> int:
     ap.add_argument('--timeout-scale', type=float, default=1.0, help='multiply every acceptance check timeout')
     ap.add_argument('--headed', action='store_true', help='show the browser (debugging)')
     ap.add_argument('--only', choices=['selftests', 'acceptance'], help='run one suite')
+    ap.add_argument('--module', action='append', default=[], metavar='NAME',
+                    help="run only this module's self-tests (repeatable; skips the acceptance suite)")
+    ap.add_argument('--checks', metavar='REGEX', help='acceptance checks to run: a regex over check ids and names')
+    ap.add_argument('--gpu', action='store_true', help='render WebGL on the GPU instead of SwiftShader (local runs)')
     args = ap.parse_args()
 
     try:
@@ -148,7 +156,7 @@ def main() -> int:
     t0 = time.time()
     try:
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=not args.headed, args=CHROMIUM_ARGS)
+            browser = p.chromium.launch(headless=not args.headed, args=GPU_ARGS if args.gpu else CHROMIUM_ARGS)
             page = browser.new_page(viewport={'width': 1440, 'height': 900})
             page.on('pageerror', lambda e: page_errors.append(str(e)))
             print(f'Opening {app_url}', flush=True)
@@ -167,20 +175,25 @@ def main() -> int:
                 for e in boot['errors']:
                     print(f"  boot error: {e}")
 
-            if boot['ok'] and args.only in (None, 'selftests'):
+            if boot['ok'] and (args.module or args.only in (None, 'selftests')):
                 print('Running the self-tests…', flush=True)
-                res = page.evaluate('async () => await window.__app.selftest.run()')
+                if args.module:
+                    res = []
+                    for m in args.module:
+                        res += page.evaluate('async (m) => await window.__app.selftest.run(m)', m)
+                else:
+                    res = page.evaluate('async () => await window.__app.selftest.run()')
                 for r in res:
                     rows.append({'kind': 'selftest', 'key': r['name'], 'name': r['name'],
                                  'pass': bool(r['pass']), 'details': str(r['details'])})
 
-            if boot['ok'] and args.only in (None, 'acceptance'):
+            if boot['ok'] and not args.module and args.only in (None, 'acceptance'):
                 print('Running the acceptance suite…', flush=True)
                 acc = page.evaluate("""async ([filter, scale]) => {
                     const r = await window.__app.acceptance.run(new RegExp(filter), { log: false, timeoutScale: scale });
                     return { errors: r.errors || [], results: r.results.map((x) => ({ id: x.id, name: x.name, pass: !!x.pass,
                              ms: Math.round(x.ms || 0), details: String(x.details || '') })) };
-                }""", [ACCEPTANCE_FILTER, args.timeout_scale])
+                }""", [args.checks or ACCEPTANCE_FILTER, args.timeout_scale])
                 for r in acc['results']:
                     rows.append({'kind': 'acceptance', 'key': r['id'], 'name': r['name'], 'pass': r['pass'],
                                  'details': r['details'], 'ms': r['ms']})
